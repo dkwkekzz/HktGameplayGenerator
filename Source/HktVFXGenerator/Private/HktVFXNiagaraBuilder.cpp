@@ -13,6 +13,8 @@
 #include "NiagaraRibbonRendererProperties.h"
 #include "NiagaraLightRendererProperties.h"
 
+#include "NiagaraSystemFactoryNew.h"
+
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
@@ -35,7 +37,7 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 		return nullptr;
 	}
 
-	// 패키지 & 시스템 생성
+	// 패키지 & 시스템 생성 (팩토리를 통해 내부 초기화 보장)
 	FString SystemName = FString::Printf(TEXT("NS_%s"), *Config.SystemName);
 	FString PackagePath = OutputDirectory / SystemName;
 
@@ -46,11 +48,13 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 		return nullptr;
 	}
 
-	UNiagaraSystem* System = NewObject<UNiagaraSystem>(Package, *SystemName,
-		RF_Public | RF_Standalone);
+	UNiagaraSystemFactoryNew* SystemFactory = NewObject<UNiagaraSystemFactoryNew>();
+	UNiagaraSystem* System = Cast<UNiagaraSystem>(SystemFactory->FactoryCreateNew(
+		UNiagaraSystem::StaticClass(), Package, *SystemName,
+		RF_Public | RF_Standalone, nullptr, GWarn));
 	if (!System)
 	{
-		UE_LOG(LogHktVFXBuilder, Error, TEXT("Failed to create NiagaraSystem"));
+		UE_LOG(LogHktVFXBuilder, Error, TEXT("Failed to create NiagaraSystem via Factory"));
 		return nullptr;
 	}
 
