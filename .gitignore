@@ -1,0 +1,64 @@
+# Unreal Engine
+.vs/
+.vscode/
+.idea/
+/Binaries/
+/Build/
+/DerivedDataCache/
+/Intermediate/
+/Saved/
+/Script/
+/Packages/
+*.VC.db
+*.opensdf
+*.opendb
+*.sdf
+*.sln
+*.suo
+*.svu
+*.suo-db
+*.user
+*.userprefs
+*.xcodeproj
+*.xcworkspace
+
+# Rider
+.idea/
+*.sln.DotSettings.user
+*.uproject.DotSettings.user
+
+# Visual Studio
+.vs/
+/Binaries/Win64/
+/Binaries/Mac/
+/Binaries/Linux/
+*.pdb
+*.obj
+*.exe
+*.dll
+
+# Mac
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Plugins
+/Plugins/**/Binaries/
+/Plugins/**/Intermediate/
+/Plugins/**/DerivedDataCache/
+
+# Windows 바로 가기(.lnk) 파일 모두 무시
+lnks/*
+
+# python cache
+__pycache__/
+
+# Legacy code for reference
+.legacy/*
+
+# Claude
+.claude/*
