@@ -1,5 +1,5 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
-// Config→Niagara 빌드용 설정 구조체 (Phase 0 단순화 버전)
+// Config->Niagara 빌드용 설정 구조체
 
 #pragma once
 
@@ -30,6 +30,10 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterSpawnConfig
 	// burst 모드일 때 파티클 수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	int32 BurstCount = 0;
+
+	// burst 발생 지연 시간 (초)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float BurstDelay = 0.f;
 };
 
 // ============================================================================
@@ -58,6 +62,18 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterInitConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	FLinearColor Color = FLinearColor::White;
+
+	// 초기 스프라이트 회전 (도 단위)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SpriteRotationMin = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SpriteRotationMax = 0.f;
+
+	// 초기 질량 (Force 계산용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float MassMin = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float MassMax = 1.f;
 };
 
 // ============================================================================
@@ -74,6 +90,50 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterUpdateConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float Drag = 0.f;
+
+	// 회전 속도 (도/초)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RotationRateMin = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RotationRateMax = 0.f;
+
+	// 수명 기반 크기 스케일 (1.0 = 변화없음)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SizeScaleStart = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SizeScaleEnd = 1.f;
+
+	// 수명 기반 투명도 (1.0 = 불투명)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float OpacityStart = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float OpacityEnd = 0.f;
+
+	// 수명 기반 컬러 보간 (bUseColorOverLife가 true일 때만)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bUseColorOverLife = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FLinearColor ColorEnd = FLinearColor::Black;
+
+	// Curl Noise 터뷸런스
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float NoiseStrength = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float NoiseFrequency = 1.f;
+
+	// Point Attractor (0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float AttractionStrength = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float AttractionRadius = 200.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector AttractionPosition = FVector::ZeroVector;
+
+	// Vortex (0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float VortexStrength = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float VortexRadius = 100.f;
 };
 
 // ============================================================================
@@ -95,6 +155,20 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterRenderConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	int32 SortOrder = 0;
+
+	// "unaligned", "velocity_aligned" (sprite only)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString Alignment = TEXT("unaligned");
+
+	// Light renderer
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float LightRadiusScale = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float LightIntensity = 1.f;
+
+	// Ribbon renderer
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RibbonWidth = 10.f;
 };
 
 // ============================================================================
@@ -137,11 +211,38 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	TArray<FHktVFXEmitterConfig> Emitters;
 
+	// 시스템 프리웜 (초)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float WarmupTime = 0.f;
+
+	// 시스템 루프 여부
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bLooping = false;
+
 	bool IsValid() const { return !SystemName.IsEmpty() && Emitters.Num() > 0; }
 
 	// ============================================================================
 	// JSON 직렬화
 	// ============================================================================
+
+	static FVector ParseJsonVector(const TSharedPtr<FJsonObject>& Obj)
+	{
+		return FVector(
+			Obj->GetNumberField(TEXT("x")),
+			Obj->GetNumberField(TEXT("y")),
+			Obj->GetNumberField(TEXT("z")));
+	}
+
+	static FLinearColor ParseJsonColor(const TSharedPtr<FJsonObject>& Obj)
+	{
+		double A = 1.0;
+		Obj->TryGetNumberField(TEXT("a"), A);
+		return FLinearColor(
+			Obj->GetNumberField(TEXT("r")),
+			Obj->GetNumberField(TEXT("g")),
+			Obj->GetNumberField(TEXT("b")),
+			A);
+	}
 
 	static bool FromJson(const FString& JsonString, FHktVFXNiagaraConfig& OutConfig)
 	{
@@ -153,6 +254,8 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		}
 
 		OutConfig.SystemName = Root->GetStringField(TEXT("systemName"));
+		Root->TryGetNumberField(TEXT("warmupTime"), OutConfig.WarmupTime);
+		Root->TryGetBoolField(TEXT("looping"), OutConfig.bLooping);
 
 		const TArray<TSharedPtr<FJsonValue>>* EmittersArray;
 		if (!Root->TryGetArrayField(TEXT("emitters"), EmittersArray))
@@ -171,13 +274,12 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			// Spawn
 			if (const TSharedPtr<FJsonObject>* SpawnObj; EmObj->TryGetObjectField(TEXT("spawn"), SpawnObj))
 			{
-				Emitter.Spawn.Mode = (*SpawnObj)->GetStringField(TEXT("mode"));
+				(*SpawnObj)->TryGetStringField(TEXT("mode"), Emitter.Spawn.Mode);
 				(*SpawnObj)->TryGetNumberField(TEXT("rate"), Emitter.Spawn.Rate);
-				int32 BurstCount = 0;
-				if ((*SpawnObj)->TryGetNumberField(TEXT("burstCount"), BurstCount))
-				{
-					Emitter.Spawn.BurstCount = BurstCount;
-				}
+				int32 BC = 0;
+				if ((*SpawnObj)->TryGetNumberField(TEXT("burstCount"), BC))
+					Emitter.Spawn.BurstCount = BC;
+				(*SpawnObj)->TryGetNumberField(TEXT("burstDelay"), Emitter.Spawn.BurstDelay);
 			}
 
 			// Init
@@ -187,61 +289,56 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				(*InitObj)->TryGetNumberField(TEXT("lifetimeMax"), Emitter.Init.LifetimeMax);
 				(*InitObj)->TryGetNumberField(TEXT("sizeMin"), Emitter.Init.SizeMin);
 				(*InitObj)->TryGetNumberField(TEXT("sizeMax"), Emitter.Init.SizeMax);
+				(*InitObj)->TryGetNumberField(TEXT("spriteRotationMin"), Emitter.Init.SpriteRotationMin);
+				(*InitObj)->TryGetNumberField(TEXT("spriteRotationMax"), Emitter.Init.SpriteRotationMax);
+				(*InitObj)->TryGetNumberField(TEXT("massMin"), Emitter.Init.MassMin);
+				(*InitObj)->TryGetNumberField(TEXT("massMax"), Emitter.Init.MassMax);
 
-				if (const TSharedPtr<FJsonObject>* VelMinObj; (*InitObj)->TryGetObjectField(TEXT("velocityMin"), VelMinObj))
-				{
-					Emitter.Init.VelocityMin.X = (*VelMinObj)->GetNumberField(TEXT("x"));
-					Emitter.Init.VelocityMin.Y = (*VelMinObj)->GetNumberField(TEXT("y"));
-					Emitter.Init.VelocityMin.Z = (*VelMinObj)->GetNumberField(TEXT("z"));
-				}
-				if (const TSharedPtr<FJsonObject>* VelMaxObj; (*InitObj)->TryGetObjectField(TEXT("velocityMax"), VelMaxObj))
-				{
-					Emitter.Init.VelocityMax.X = (*VelMaxObj)->GetNumberField(TEXT("x"));
-					Emitter.Init.VelocityMax.Y = (*VelMaxObj)->GetNumberField(TEXT("y"));
-					Emitter.Init.VelocityMax.Z = (*VelMaxObj)->GetNumberField(TEXT("z"));
-				}
-
-				if (const TSharedPtr<FJsonObject>* ColorObj; (*InitObj)->TryGetObjectField(TEXT("color"), ColorObj))
-				{
-					Emitter.Init.Color.R = (*ColorObj)->GetNumberField(TEXT("r"));
-					Emitter.Init.Color.G = (*ColorObj)->GetNumberField(TEXT("g"));
-					Emitter.Init.Color.B = (*ColorObj)->GetNumberField(TEXT("b"));
-					double A = 1.0;
-					(*ColorObj)->TryGetNumberField(TEXT("a"), A);
-					Emitter.Init.Color.A = A;
-				}
+				if (const TSharedPtr<FJsonObject>* V; (*InitObj)->TryGetObjectField(TEXT("velocityMin"), V))
+					Emitter.Init.VelocityMin = ParseJsonVector(*V);
+				if (const TSharedPtr<FJsonObject>* V; (*InitObj)->TryGetObjectField(TEXT("velocityMax"), V))
+					Emitter.Init.VelocityMax = ParseJsonVector(*V);
+				if (const TSharedPtr<FJsonObject>* C; (*InitObj)->TryGetObjectField(TEXT("color"), C))
+					Emitter.Init.Color = ParseJsonColor(*C);
 			}
 
 			// Update
-			if (const TSharedPtr<FJsonObject>* UpdateObj; EmObj->TryGetObjectField(TEXT("update"), UpdateObj))
+			if (const TSharedPtr<FJsonObject>* UpdObj; EmObj->TryGetObjectField(TEXT("update"), UpdObj))
 			{
-				if (const TSharedPtr<FJsonObject>* GravObj; (*UpdateObj)->TryGetObjectField(TEXT("gravity"), GravObj))
-				{
-					Emitter.Update.Gravity.X = (*GravObj)->GetNumberField(TEXT("x"));
-					Emitter.Update.Gravity.Y = (*GravObj)->GetNumberField(TEXT("y"));
-					Emitter.Update.Gravity.Z = (*GravObj)->GetNumberField(TEXT("z"));
-				}
-				(*UpdateObj)->TryGetNumberField(TEXT("drag"), Emitter.Update.Drag);
+				if (const TSharedPtr<FJsonObject>* G; (*UpdObj)->TryGetObjectField(TEXT("gravity"), G))
+					Emitter.Update.Gravity = ParseJsonVector(*G);
+				(*UpdObj)->TryGetNumberField(TEXT("drag"), Emitter.Update.Drag);
+				(*UpdObj)->TryGetNumberField(TEXT("rotationRateMin"), Emitter.Update.RotationRateMin);
+				(*UpdObj)->TryGetNumberField(TEXT("rotationRateMax"), Emitter.Update.RotationRateMax);
+				(*UpdObj)->TryGetNumberField(TEXT("sizeScaleStart"), Emitter.Update.SizeScaleStart);
+				(*UpdObj)->TryGetNumberField(TEXT("sizeScaleEnd"), Emitter.Update.SizeScaleEnd);
+				(*UpdObj)->TryGetNumberField(TEXT("opacityStart"), Emitter.Update.OpacityStart);
+				(*UpdObj)->TryGetNumberField(TEXT("opacityEnd"), Emitter.Update.OpacityEnd);
+				(*UpdObj)->TryGetBoolField(TEXT("useColorOverLife"), Emitter.Update.bUseColorOverLife);
+				if (const TSharedPtr<FJsonObject>* C; (*UpdObj)->TryGetObjectField(TEXT("colorEnd"), C))
+					Emitter.Update.ColorEnd = ParseJsonColor(*C);
+				(*UpdObj)->TryGetNumberField(TEXT("noiseStrength"), Emitter.Update.NoiseStrength);
+				(*UpdObj)->TryGetNumberField(TEXT("noiseFrequency"), Emitter.Update.NoiseFrequency);
+				(*UpdObj)->TryGetNumberField(TEXT("attractionStrength"), Emitter.Update.AttractionStrength);
+				(*UpdObj)->TryGetNumberField(TEXT("attractionRadius"), Emitter.Update.AttractionRadius);
+				if (const TSharedPtr<FJsonObject>* P; (*UpdObj)->TryGetObjectField(TEXT("attractionPosition"), P))
+					Emitter.Update.AttractionPosition = ParseJsonVector(*P);
+				(*UpdObj)->TryGetNumberField(TEXT("vortexStrength"), Emitter.Update.VortexStrength);
+				(*UpdObj)->TryGetNumberField(TEXT("vortexRadius"), Emitter.Update.VortexRadius);
 			}
 
 			// Render
-			if (const TSharedPtr<FJsonObject>* RenderObj; EmObj->TryGetObjectField(TEXT("render"), RenderObj))
+			if (const TSharedPtr<FJsonObject>* RenObj; EmObj->TryGetObjectField(TEXT("render"), RenObj))
 			{
-				FString RendererType;
-				if ((*RenderObj)->TryGetStringField(TEXT("rendererType"), RendererType))
-				{
-					Emitter.Render.RendererType = RendererType;
-				}
-				FString BlendMode;
-				if ((*RenderObj)->TryGetStringField(TEXT("blendMode"), BlendMode))
-				{
-					Emitter.Render.BlendMode = BlendMode;
-				}
-				int32 SortOrder = 0;
-				if ((*RenderObj)->TryGetNumberField(TEXT("sortOrder"), SortOrder))
-				{
-					Emitter.Render.SortOrder = SortOrder;
-				}
+				(*RenObj)->TryGetStringField(TEXT("rendererType"), Emitter.Render.RendererType);
+				(*RenObj)->TryGetStringField(TEXT("blendMode"), Emitter.Render.BlendMode);
+				int32 SO = 0;
+				if ((*RenObj)->TryGetNumberField(TEXT("sortOrder"), SO))
+					Emitter.Render.SortOrder = SO;
+				(*RenObj)->TryGetStringField(TEXT("alignment"), Emitter.Render.Alignment);
+				(*RenObj)->TryGetNumberField(TEXT("lightRadiusScale"), Emitter.Render.LightRadiusScale);
+				(*RenObj)->TryGetNumberField(TEXT("lightIntensity"), Emitter.Render.LightIntensity);
+				(*RenObj)->TryGetNumberField(TEXT("ribbonWidth"), Emitter.Render.RibbonWidth);
 			}
 
 			OutConfig.Emitters.Add(MoveTemp(Emitter));
@@ -253,74 +350,107 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 	FString ToJson() const
 	{
 		FString Output;
-		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
-		Writer->WriteObjectStart();
-		Writer->WriteValue(TEXT("systemName"), SystemName);
+		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Output);
+		W->WriteObjectStart();
+		W->WriteValue(TEXT("systemName"), SystemName);
+		W->WriteValue(TEXT("warmupTime"), WarmupTime);
+		W->WriteValue(TEXT("looping"), bLooping);
 
-		Writer->WriteArrayStart(TEXT("emitters"));
-		for (const auto& Emitter : Emitters)
+		W->WriteArrayStart(TEXT("emitters"));
+		for (const auto& E : Emitters)
 		{
-			Writer->WriteObjectStart();
-			Writer->WriteValue(TEXT("name"), Emitter.Name);
+			W->WriteObjectStart();
+			W->WriteValue(TEXT("name"), E.Name);
 
 			// Spawn
-			Writer->WriteObjectStart(TEXT("spawn"));
-			Writer->WriteValue(TEXT("mode"), Emitter.Spawn.Mode);
-			Writer->WriteValue(TEXT("rate"), Emitter.Spawn.Rate);
-			Writer->WriteValue(TEXT("burstCount"), Emitter.Spawn.BurstCount);
-			Writer->WriteObjectEnd();
+			W->WriteObjectStart(TEXT("spawn"));
+			W->WriteValue(TEXT("mode"), E.Spawn.Mode);
+			W->WriteValue(TEXT("rate"), E.Spawn.Rate);
+			W->WriteValue(TEXT("burstCount"), E.Spawn.BurstCount);
+			W->WriteValue(TEXT("burstDelay"), E.Spawn.BurstDelay);
+			W->WriteObjectEnd();
 
 			// Init
-			Writer->WriteObjectStart(TEXT("init"));
-			Writer->WriteValue(TEXT("lifetimeMin"), Emitter.Init.LifetimeMin);
-			Writer->WriteValue(TEXT("lifetimeMax"), Emitter.Init.LifetimeMax);
-			Writer->WriteValue(TEXT("sizeMin"), Emitter.Init.SizeMin);
-			Writer->WriteValue(TEXT("sizeMax"), Emitter.Init.SizeMax);
+			W->WriteObjectStart(TEXT("init"));
+			W->WriteValue(TEXT("lifetimeMin"), E.Init.LifetimeMin);
+			W->WriteValue(TEXT("lifetimeMax"), E.Init.LifetimeMax);
+			W->WriteValue(TEXT("sizeMin"), E.Init.SizeMin);
+			W->WriteValue(TEXT("sizeMax"), E.Init.SizeMax);
+			W->WriteValue(TEXT("spriteRotationMin"), E.Init.SpriteRotationMin);
+			W->WriteValue(TEXT("spriteRotationMax"), E.Init.SpriteRotationMax);
+			W->WriteValue(TEXT("massMin"), E.Init.MassMin);
+			W->WriteValue(TEXT("massMax"), E.Init.MassMax);
 
-			Writer->WriteObjectStart(TEXT("velocityMin"));
-			Writer->WriteValue(TEXT("x"), Emitter.Init.VelocityMin.X);
-			Writer->WriteValue(TEXT("y"), Emitter.Init.VelocityMin.Y);
-			Writer->WriteValue(TEXT("z"), Emitter.Init.VelocityMin.Z);
-			Writer->WriteObjectEnd();
+			W->WriteObjectStart(TEXT("velocityMin"));
+			W->WriteValue(TEXT("x"), E.Init.VelocityMin.X);
+			W->WriteValue(TEXT("y"), E.Init.VelocityMin.Y);
+			W->WriteValue(TEXT("z"), E.Init.VelocityMin.Z);
+			W->WriteObjectEnd();
+			W->WriteObjectStart(TEXT("velocityMax"));
+			W->WriteValue(TEXT("x"), E.Init.VelocityMax.X);
+			W->WriteValue(TEXT("y"), E.Init.VelocityMax.Y);
+			W->WriteValue(TEXT("z"), E.Init.VelocityMax.Z);
+			W->WriteObjectEnd();
 
-			Writer->WriteObjectStart(TEXT("velocityMax"));
-			Writer->WriteValue(TEXT("x"), Emitter.Init.VelocityMax.X);
-			Writer->WriteValue(TEXT("y"), Emitter.Init.VelocityMax.Y);
-			Writer->WriteValue(TEXT("z"), Emitter.Init.VelocityMax.Z);
-			Writer->WriteObjectEnd();
-
-			Writer->WriteObjectStart(TEXT("color"));
-			Writer->WriteValue(TEXT("r"), Emitter.Init.Color.R);
-			Writer->WriteValue(TEXT("g"), Emitter.Init.Color.G);
-			Writer->WriteValue(TEXT("b"), Emitter.Init.Color.B);
-			Writer->WriteValue(TEXT("a"), Emitter.Init.Color.A);
-			Writer->WriteObjectEnd();
-
-			Writer->WriteObjectEnd(); // init
+			W->WriteObjectStart(TEXT("color"));
+			W->WriteValue(TEXT("r"), E.Init.Color.R);
+			W->WriteValue(TEXT("g"), E.Init.Color.G);
+			W->WriteValue(TEXT("b"), E.Init.Color.B);
+			W->WriteValue(TEXT("a"), E.Init.Color.A);
+			W->WriteObjectEnd();
+			W->WriteObjectEnd(); // init
 
 			// Update
-			Writer->WriteObjectStart(TEXT("update"));
-			Writer->WriteObjectStart(TEXT("gravity"));
-			Writer->WriteValue(TEXT("x"), Emitter.Update.Gravity.X);
-			Writer->WriteValue(TEXT("y"), Emitter.Update.Gravity.Y);
-			Writer->WriteValue(TEXT("z"), Emitter.Update.Gravity.Z);
-			Writer->WriteObjectEnd();
-			Writer->WriteValue(TEXT("drag"), Emitter.Update.Drag);
-			Writer->WriteObjectEnd();
+			W->WriteObjectStart(TEXT("update"));
+			W->WriteObjectStart(TEXT("gravity"));
+			W->WriteValue(TEXT("x"), E.Update.Gravity.X);
+			W->WriteValue(TEXT("y"), E.Update.Gravity.Y);
+			W->WriteValue(TEXT("z"), E.Update.Gravity.Z);
+			W->WriteObjectEnd();
+			W->WriteValue(TEXT("drag"), E.Update.Drag);
+			W->WriteValue(TEXT("rotationRateMin"), E.Update.RotationRateMin);
+			W->WriteValue(TEXT("rotationRateMax"), E.Update.RotationRateMax);
+			W->WriteValue(TEXT("sizeScaleStart"), E.Update.SizeScaleStart);
+			W->WriteValue(TEXT("sizeScaleEnd"), E.Update.SizeScaleEnd);
+			W->WriteValue(TEXT("opacityStart"), E.Update.OpacityStart);
+			W->WriteValue(TEXT("opacityEnd"), E.Update.OpacityEnd);
+			W->WriteValue(TEXT("useColorOverLife"), E.Update.bUseColorOverLife);
+			W->WriteObjectStart(TEXT("colorEnd"));
+			W->WriteValue(TEXT("r"), E.Update.ColorEnd.R);
+			W->WriteValue(TEXT("g"), E.Update.ColorEnd.G);
+			W->WriteValue(TEXT("b"), E.Update.ColorEnd.B);
+			W->WriteValue(TEXT("a"), E.Update.ColorEnd.A);
+			W->WriteObjectEnd();
+			W->WriteValue(TEXT("noiseStrength"), E.Update.NoiseStrength);
+			W->WriteValue(TEXT("noiseFrequency"), E.Update.NoiseFrequency);
+			W->WriteValue(TEXT("attractionStrength"), E.Update.AttractionStrength);
+			W->WriteValue(TEXT("attractionRadius"), E.Update.AttractionRadius);
+			W->WriteObjectStart(TEXT("attractionPosition"));
+			W->WriteValue(TEXT("x"), E.Update.AttractionPosition.X);
+			W->WriteValue(TEXT("y"), E.Update.AttractionPosition.Y);
+			W->WriteValue(TEXT("z"), E.Update.AttractionPosition.Z);
+			W->WriteObjectEnd();
+			W->WriteValue(TEXT("vortexStrength"), E.Update.VortexStrength);
+			W->WriteValue(TEXT("vortexRadius"), E.Update.VortexRadius);
+			W->WriteObjectEnd(); // update
 
 			// Render
-			Writer->WriteObjectStart(TEXT("render"));
-			Writer->WriteValue(TEXT("rendererType"), Emitter.Render.RendererType);
-			Writer->WriteValue(TEXT("blendMode"), Emitter.Render.BlendMode);
-			Writer->WriteValue(TEXT("sortOrder"), Emitter.Render.SortOrder);
-			Writer->WriteObjectEnd();
+			W->WriteObjectStart(TEXT("render"));
+			W->WriteValue(TEXT("rendererType"), E.Render.RendererType);
+			W->WriteValue(TEXT("blendMode"), E.Render.BlendMode);
+			W->WriteValue(TEXT("sortOrder"), E.Render.SortOrder);
+			W->WriteValue(TEXT("alignment"), E.Render.Alignment);
+			W->WriteValue(TEXT("lightRadiusScale"), E.Render.LightRadiusScale);
+			W->WriteValue(TEXT("lightIntensity"), E.Render.LightIntensity);
+			W->WriteValue(TEXT("ribbonWidth"), E.Render.RibbonWidth);
+			W->WriteObjectEnd();
 
-			Writer->WriteObjectEnd(); // emitter
+			W->WriteObjectEnd(); // emitter
 		}
-		Writer->WriteArrayEnd();
+		W->WriteArrayEnd();
 
-		Writer->WriteObjectEnd();
-		Writer->Close();
+		W->WriteObjectEnd();
+		W->Close();
 		return Output;
 	}
 
@@ -328,32 +458,48 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 	{
 		FString S;
 		S += TEXT("{\n");
-		S += TEXT("  \"systemName\": \"string (asset name, NS_ prefix auto-added)\",\n");
+		S += TEXT("  \"systemName\": \"string\",\n");
+		S += TEXT("  \"warmupTime\": \"float (pre-warm seconds, 0=none)\",\n");
+		S += TEXT("  \"looping\": \"bool (default false)\",\n");
 		S += TEXT("  \"emitters\": [\n");
 		S += TEXT("    {\n");
-		S += TEXT("      \"name\": \"string (emitter name)\",\n");
+		S += TEXT("      \"name\": \"string\",\n");
 		S += TEXT("      \"spawn\": {\n");
 		S += TEXT("        \"mode\": \"burst | rate\",\n");
-		S += TEXT("        \"rate\": \"float (rate mode: particles per second)\",\n");
-		S += TEXT("        \"burstCount\": \"int (burst mode: particles per burst)\"\n");
+		S += TEXT("        \"rate\": \"float (particles/sec)\",\n");
+		S += TEXT("        \"burstCount\": \"int\",\n");
+		S += TEXT("        \"burstDelay\": \"float (delay seconds)\"\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"init\": {\n");
-		S += TEXT("        \"lifetimeMin\": \"float (min lifetime, seconds)\",\n");
-		S += TEXT("        \"lifetimeMax\": \"float (max lifetime, seconds)\",\n");
-		S += TEXT("        \"sizeMin\": \"float (min size, UE units)\",\n");
-		S += TEXT("        \"sizeMax\": \"float (max size, UE units)\",\n");
-		S += TEXT("        \"velocityMin\": { \"x\": \"float\", \"y\": \"float\", \"z\": \"float\" },\n");
-		S += TEXT("        \"velocityMax\": { \"x\": \"float\", \"y\": \"float\", \"z\": \"float\" },\n");
-		S += TEXT("        \"color\": { \"r\": \"float 0-1\", \"g\": \"float 0-1\", \"b\": \"float 0-1\", \"a\": \"float 0-1\" }\n");
+		S += TEXT("        \"lifetimeMin\": \"float\", \"lifetimeMax\": \"float\",\n");
+		S += TEXT("        \"sizeMin\": \"float\", \"sizeMax\": \"float\",\n");
+		S += TEXT("        \"spriteRotationMin\": \"float (degrees)\", \"spriteRotationMax\": \"float\",\n");
+		S += TEXT("        \"massMin\": \"float\", \"massMax\": \"float\",\n");
+		S += TEXT("        \"velocityMin\": {\"x\":0,\"y\":0,\"z\":0},\n");
+		S += TEXT("        \"velocityMax\": {\"x\":0,\"y\":0,\"z\":0},\n");
+		S += TEXT("        \"color\": {\"r\":1,\"g\":1,\"b\":1,\"a\":1}\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"update\": {\n");
-		S += TEXT("        \"gravity\": { \"x\": \"float\", \"y\": \"float\", \"z\": \"float (default -980)\" },\n");
-		S += TEXT("        \"drag\": \"float (0 = none)\"\n");
+		S += TEXT("        \"gravity\": {\"x\":0,\"y\":0,\"z\":-980},\n");
+		S += TEXT("        \"drag\": \"float\",\n");
+		S += TEXT("        \"rotationRateMin\": \"float (deg/sec)\", \"rotationRateMax\": \"float\",\n");
+		S += TEXT("        \"sizeScaleStart\": \"float (1.0=no change)\", \"sizeScaleEnd\": \"float\",\n");
+		S += TEXT("        \"opacityStart\": \"float (0-1)\", \"opacityEnd\": \"float\",\n");
+		S += TEXT("        \"useColorOverLife\": \"bool\",\n");
+		S += TEXT("        \"colorEnd\": {\"r\":0,\"g\":0,\"b\":0,\"a\":1},\n");
+		S += TEXT("        \"noiseStrength\": \"float (0=none)\", \"noiseFrequency\": \"float\",\n");
+		S += TEXT("        \"attractionStrength\": \"float (0=none)\", \"attractionRadius\": \"float\",\n");
+		S += TEXT("        \"attractionPosition\": {\"x\":0,\"y\":0,\"z\":0},\n");
+		S += TEXT("        \"vortexStrength\": \"float (0=none)\", \"vortexRadius\": \"float\"\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"render\": {\n");
 		S += TEXT("        \"rendererType\": \"sprite | ribbon | light | mesh\",\n");
 		S += TEXT("        \"blendMode\": \"additive | translucent\",\n");
-		S += TEXT("        \"sortOrder\": \"int\"\n");
+		S += TEXT("        \"sortOrder\": \"int\",\n");
+		S += TEXT("        \"alignment\": \"unaligned | velocity_aligned\",\n");
+		S += TEXT("        \"lightRadiusScale\": \"float (light only)\",\n");
+		S += TEXT("        \"lightIntensity\": \"float (light only)\",\n");
+		S += TEXT("        \"ribbonWidth\": \"float (ribbon only)\"\n");
 		S += TEXT("      }\n");
 		S += TEXT("    }\n");
 		S += TEXT("  ]\n");

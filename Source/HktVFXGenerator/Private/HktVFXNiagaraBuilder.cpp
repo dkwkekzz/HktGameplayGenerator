@@ -1,5 +1,4 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
-// Config → 실제 UNiagaraSystem 에셋 빌드 (Phase 0)
 
 #include "HktVFXNiagaraBuilder.h"
 #include "HktVFXGeneratorSettings.h"
@@ -14,6 +13,7 @@
 #include "NiagaraLightRendererProperties.h"
 
 #include "NiagaraSystemFactoryNew.h"
+#include "NiagaraEditorUtilities.h"
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -37,7 +37,6 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 		return nullptr;
 	}
 
-	// 패키지 & 시스템 생성 (팩토리를 통해 내부 초기화 보장)
 	FString SystemName = FString::Printf(TEXT("NS_%s"), *Config.SystemName);
 	FString PackagePath = OutputDirectory / SystemName;
 
@@ -58,6 +57,9 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 		return nullptr;
 	}
 
+	// 시스템 레벨 속성
+	SetupSystemProperties(System, Config);
+
 	// 각 에미터 구성
 	for (const FHktVFXEmitterConfig& EmitterConfig : Config.Emitters)
 	{
@@ -67,6 +69,7 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 
 	// 컴파일 & 저장
 	System->RequestCompile(false);
+	System->MarkPackageDirty();
 
 	FString PackageFileName = FPackageName::LongPackageNameToFilename(
 		PackagePath, FPackageName::GetAssetPackageExtension());
@@ -84,13 +87,28 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 }
 
 // ============================================================================
-// 에미터 템플릿 로드 — UHktVFXGeneratorSettings에서 경로 읽기
+// 시스템 레벨 속성
+// ============================================================================
+void FHktVFXNiagaraBuilder::SetupSystemProperties(
+	UNiagaraSystem* System,
+	const FHktVFXNiagaraConfig& Config)
+{
+	if (Config.WarmupTime > 0.f)
+	{
+		System->SetWarmupTime(Config.WarmupTime);
+		System->SetWarmupTickDelta(1.f / 30.f);
+		//System->SetWarmupTickCount(FMath::CeilToInt(Config.WarmupTime * 30.f));
+		System->ResolveWarmupTickCount();
+	}
+}
+
+// ============================================================================
+// 에미터 템플릿 로드
 // ============================================================================
 UNiagaraEmitter* FHktVFXNiagaraBuilder::LoadEmitterTemplate(const FString& RendererType)
 {
 	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
 
-	// Settings 매핑에서 찾기
 	if (const FSoftObjectPath* TemplatePath = Settings->EmitterTemplates.Find(RendererType))
 	{
 		if (TemplatePath->IsValid())
@@ -107,7 +125,6 @@ UNiagaraEmitter* FHktVFXNiagaraBuilder::LoadEmitterTemplate(const FString& Rende
 		}
 	}
 
-	// 폴백
 	if (Settings->FallbackEmitterTemplate.IsValid())
 	{
 		UNiagaraEmitter* Fallback = Cast<UNiagaraEmitter>(Settings->FallbackEmitterTemplate.TryLoad());
@@ -118,7 +135,7 @@ UNiagaraEmitter* FHktVFXNiagaraBuilder::LoadEmitterTemplate(const FString& Rende
 		}
 	}
 
-	UE_LOG(LogHktVFXBuilder, Error, TEXT("No emitter template available for type '%s'. Check Project Settings > Plugins > HKT VFX Generator."), *RendererType);
+	UE_LOG(LogHktVFXBuilder, Error, TEXT("No emitter template for type '%s'"), *RendererType);
 	return nullptr;
 }
 
@@ -135,15 +152,14 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 		return;
 	}
 
-	// 시스템에 에미터 핸들 추가
-	FName EmitterName = FName(*Config.Name);
-	System->AddEmitterHandle(*TemplateEmitter, EmitterName, FGuid());
+	FNiagaraEditorUtilities::AddEmitterToSystem(*System, *TemplateEmitter, FGuid());
 
 	int32 ActualIndex = System->GetEmitterHandles().Num() - 1;
-	UE_LOG(LogHktVFXBuilder, Log, TEXT("Added emitter '%s' (index %d)"),
-		*Config.Name, ActualIndex);
+	FString HandleName = System->GetEmitterHandles()[ActualIndex].GetName().ToString();
 
-	// 모듈별 파라미터 오버라이드
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("Added emitter '%s' as '%s' (index %d)"),
+		*Config.Name, *HandleName, ActualIndex);
+
 	SetupSpawnModule(System, ActualIndex, Config.Spawn);
 	SetupInitializeModule(System, ActualIndex, Config.Init);
 	SetupUpdateModules(System, ActualIndex, Config.Update);
@@ -166,6 +182,12 @@ void FHktVFXNiagaraBuilder::SetupSpawnModule(UNiagaraSystem* System, int32 Emitt
 		SetNiagaraVariableFloat(System, EmitterIndex,
 			TEXT("SpawnBurstInstantaneous"), TEXT("SpawnCount"),
 			static_cast<float>(Config.BurstCount));
+
+		if (Config.BurstDelay > 0.f)
+		{
+			SetNiagaraVariableFloat(System, EmitterIndex,
+				TEXT("SpawnBurstInstantaneous"), TEXT("SpawnTime"), Config.BurstDelay);
+		}
 	}
 }
 
@@ -189,6 +211,24 @@ void FHktVFXNiagaraBuilder::SetupInitializeModule(UNiagaraSystem* System, int32 
 	SetNiagaraVariableVec3(System, EmitterIndex, Module, TEXT("Velocity.Maximum"), Config.VelocityMax);
 
 	SetNiagaraVariableColor(System, EmitterIndex, Module, TEXT("Color"), Config.Color);
+
+	// 초기 회전
+	if (Config.SpriteRotationMax > 0.f || Config.SpriteRotationMin != 0.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex, Module,
+			TEXT("SpriteRotation.Minimum"), Config.SpriteRotationMin);
+		SetNiagaraVariableFloat(System, EmitterIndex, Module,
+			TEXT("SpriteRotation.Maximum"), Config.SpriteRotationMax);
+	}
+
+	// 질량
+	if (Config.MassMin != 1.f || Config.MassMax != 1.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex, Module,
+			TEXT("Mass.Minimum"), Config.MassMin);
+		SetNiagaraVariableFloat(System, EmitterIndex, Module,
+			TEXT("Mass.Maximum"), Config.MassMax);
+	}
 }
 
 // ============================================================================
@@ -197,16 +237,83 @@ void FHktVFXNiagaraBuilder::SetupInitializeModule(UNiagaraSystem* System, int32 
 void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex,
 	const FHktVFXEmitterUpdateConfig& Config)
 {
+	// Gravity
 	if (!Config.Gravity.IsNearlyZero())
 	{
 		SetNiagaraVariableVec3(System, EmitterIndex,
 			TEXT("Gravity Force"), TEXT("Gravity"), Config.Gravity);
 	}
 
+	// Drag
 	if (Config.Drag > 0.f)
 	{
 		SetNiagaraVariableFloat(System, EmitterIndex,
 			TEXT("Drag"), TEXT("Drag"), Config.Drag);
+	}
+
+	// Rotation Rate
+	if (Config.RotationRateMax > 0.f || Config.RotationRateMin != 0.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("SpriteRotationRate"), TEXT("RotationRate.Minimum"), Config.RotationRateMin);
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("SpriteRotationRate"), TEXT("RotationRate.Maximum"), Config.RotationRateMax);
+	}
+
+	// Size Scale Over Life
+	if (Config.SizeScaleStart != 1.f || Config.SizeScaleEnd != 1.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("ScaleSpriteSize"), TEXT("ScaleFactor.Minimum"), Config.SizeScaleStart);
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("ScaleSpriteSize"), TEXT("ScaleFactor.Maximum"), Config.SizeScaleEnd);
+	}
+
+	// Opacity Over Life
+	if (Config.OpacityStart != 1.f || Config.OpacityEnd != 0.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("AlphaScale.Start"), Config.OpacityStart);
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("AlphaScale.End"), Config.OpacityEnd);
+	}
+
+	// Color Over Life
+	if (Config.bUseColorOverLife)
+	{
+		SetNiagaraVariableColor(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("ColorScale.Start"), FLinearColor::White);
+		SetNiagaraVariableColor(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("ColorScale.End"), Config.ColorEnd);
+	}
+
+	// Curl Noise
+	if (Config.NoiseStrength > 0.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("Curl Noise Force"), TEXT("NoisStrength"), Config.NoiseStrength);
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("Curl Noise Force"), TEXT("NoiseFrequency"), Config.NoiseFrequency);
+	}
+
+	// Point Attractor
+	if (Config.AttractionStrength > 0.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("Point Attraction Force"), TEXT("AttractionStrength"), Config.AttractionStrength);
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("Point Attraction Force"), TEXT("AttractionRadius"), Config.AttractionRadius);
+		SetNiagaraVariableVec3(System, EmitterIndex,
+			TEXT("Point Attraction Force"), TEXT("AttractorPosition"), Config.AttractionPosition);
+	}
+
+	// Vortex
+	if (Config.VortexStrength > 0.f)
+	{
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("Vortex Force"), TEXT("VortexStrength"), Config.VortexStrength);
+		SetNiagaraVariableFloat(System, EmitterIndex,
+			TEXT("Vortex Force"), TEXT("VortexRadius"), Config.VortexRadius);
 	}
 }
 
@@ -226,21 +333,49 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 	if (RendererProperties.Num() == 0) return;
 
 	UNiagaraRendererProperties* Renderer = RendererProperties[0];
+	Renderer->SortOrderHint = Config.SortOrder;
 
+	// Sprite
 	if (Config.RendererType == TEXT("sprite"))
 	{
-		if (UNiagaraSpriteRendererProperties* SpriteRenderer =
+		if (UNiagaraSpriteRendererProperties* SR =
 			Cast<UNiagaraSpriteRendererProperties>(Renderer))
 		{
-			SpriteRenderer->SortOrderHint = Config.SortOrder;
+			if (Config.Alignment == TEXT("velocity_aligned"))
+			{
+				SR->Alignment = ENiagaraSpriteAlignment::VelocityAligned;
+			}
+
+			// 머티리얼 적용
+			UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
+			if (Mat)
+			{
+				SR->Material = Mat;
+			}
 		}
 	}
+	// Light
 	else if (Config.RendererType == TEXT("light"))
 	{
-		if (UNiagaraLightRendererProperties* LightRenderer =
+		if (UNiagaraLightRendererProperties* LR =
 			Cast<UNiagaraLightRendererProperties>(Renderer))
 		{
-			LightRenderer->RadiusScale = 2.0f;
+			LR->RadiusScale = Config.LightRadiusScale;
+			LR->ColorAdd = FVector3f(
+				Config.LightIntensity, Config.LightIntensity, Config.LightIntensity);
+		}
+	}
+	// Ribbon
+	else if (Config.RendererType == TEXT("ribbon"))
+	{
+		if (UNiagaraRibbonRendererProperties* RR =
+			Cast<UNiagaraRibbonRendererProperties>(Renderer))
+		{
+			UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
+			if (Mat)
+			{
+				RR->Material = Mat;
+			}
 		}
 	}
 }
