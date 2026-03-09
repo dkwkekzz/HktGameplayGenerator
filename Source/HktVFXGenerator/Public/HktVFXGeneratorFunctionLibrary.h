@@ -69,11 +69,16 @@ public:
 	static FString McpGetVFXExampleConfigs();
 
 	// =========================================================================
-	// 조회
+	// 조회 / 디버그
 	// =========================================================================
 
 	/** 생성된 VFX 에셋 목록 반환. */
 	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
 	static FString McpListGeneratedVFX(
 		const FString& Directory = TEXT(""));
+
+	/** 템플릿 에미터의 실제 RapidIterationParameter 이름 덤프. */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
+	static FString McpDumpTemplateParameters(
+		const FString& RendererType = TEXT("sprite"));
 };

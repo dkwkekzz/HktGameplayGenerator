@@ -145,6 +145,50 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  Ambient      - Persistent floating particles. rate mode (5-20/sec), looping=true.\n");
 	S += TEXT("                 Small size, low velocity, noise for drift. warmupTime=2~5.\n\n");
 
+	// --- 에미터 템플릿 ---
+	S += TEXT("[EMITTER TEMPLATES]\n");
+	S += TEXT("Set render.emitterTemplate to use pre-built emitters with proper modules + materials + textures.\n");
+	S += TEXT("These are MUCH better than the basic 'sprite' template which lacks Gravity, Drag, Noise modules.\n\n");
+
+	S += TEXT("  spark           - Fast small sparks, Gravity+Drag+SubUV. For explosions, impacts.\n");
+	S += TEXT("  spark_secondary - Smaller secondary sparks.\n");
+	S += TEXT("  spark_debris    - Spark-like debris fragments.\n");
+	S += TEXT("  smoke           - Smooth expanding smoke with Noise, Rotation. For fire, explosions.\n");
+	S += TEXT("  explosion       - SubUV animated explosion burst. Central flash.\n");
+	S += TEXT("  core            - Bright emissive core/flare. For center of explosions/magic.\n");
+	S += TEXT("  debris          - Gravity-affected mesh/sprite debris. For destruction.\n");
+	S += TEXT("  dust            - Dust cloud explosion. Ground-level spread.\n");
+	S += TEXT("  ground_dust     - Ground dust kick-up.\n");
+	S += TEXT("  impact          - Sprite-based impact effect. For hits, collisions.\n");
+	S += TEXT("  impact_mesh     - Mesh-based impact chunks.\n");
+	S += TEXT("  muzzle_flash    - Weapon muzzle flash.\n");
+	S += TEXT("  flame           - SubUV animated flames.\n");
+	S += TEXT("  arc             - Electric arc ribbon.\n");
+	S += TEXT("  flare           - Lens flare glow.\n\n");
+
+	S += TEXT("IMPORTANT: When using emitterTemplate, the template already has modules and materials.\n");
+	S += TEXT("You can still set spawn count, init params, etc. — they override template defaults.\n");
+	S += TEXT("But you DON'T need to set blendMode or material — the template provides them.\n\n");
+
+	// --- 머티리얼 라이브러리 ---
+	S += TEXT("[MATERIAL LIBRARY]\n");
+	S += TEXT("Optional: override material via render.materialPath. Available materials:\n\n");
+
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Sparks              - Stretched spark material\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Flare               - Soft lens flare\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Flames              - Animated flame sprites\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_BasicSprite         - Clean basic sprite\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_BasicSprite_Translucent - Translucent basic sprite\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SmokePuff_8x8      - Smoke puff SubUV (8x8)\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SmokeRoil_8x8      - Turbulent smoke SubUV\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Explosion_8x8      - Explosion SubUV\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_FireBall_8x8       - Fireball SubUV\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_FireRoil_8x8       - Fire roil SubUV\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SimpleDebris        - Opaque debris chunks\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Distortion          - Heat distortion\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_ExplosionFlare      - Explosion flare\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_ImpactFlash         - Impact flash\n\n");
+
 	// --- 값 범위 가이드 ---
 	S += TEXT("[VALUE RANGES]\n");
 	S += TEXT("  Size: 1-10 (tiny sparks), 10-50 (normal), 50-200 (smoke/glow), 200+ (shockwave)\n");
@@ -180,53 +224,56 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXExampleConfigs()
 	FString S;
 	S += TEXT("[\n");
 
-	// === Example 1: Explosion ===
+	// === Example 1: Explosion (rich templates) ===
 	S += TEXT("{\n");
-	S += TEXT("  \"_description\": \"Explosion - burst fire with sparks, smoke, shockwave, light\",\n");
+	S += TEXT("  \"_description\": \"Explosion - using NiagaraExamples emitter templates for rich visuals\",\n");
 	S += TEXT("  \"systemName\": \"Explosion_Fire\",\n");
 	S += TEXT("  \"emitters\": [\n");
-	// CoreFlash
-	S += TEXT("    {\"name\":\"CoreFlash\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":5},\n");
+	// Core — NE_Core template (bright emissive center)
+	S += TEXT("    {\"name\":\"CoreFlash\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":3},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.05,\"lifetimeMax\":0.2,\"sizeMin\":80,\"sizeMax\":200,\n");
 	S += TEXT("            \"color\":{\"r\":5,\"g\":3,\"b\":0.5}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0},\"drag\":0,\n");
-	S += TEXT("              \"sizeScaleStart\":0.3,\"sizeScaleEnd\":2.0,\"opacityStart\":1,\"opacityEnd\":0},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"sortOrder\":10}},\n");
-	// Sparks
+	S += TEXT("     \"update\":{\"sizeScaleStart\":0.3,\"sizeScaleEnd\":2.0,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"core\",\"sortOrder\":10}},\n");
+	// Explosion — NE_Explosion template (SubUV animated burst)
+	S += TEXT("    {\"name\":\"ExplosionBurst\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":5},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":60,\"sizeMax\":150,\n");
+	S += TEXT("            \"color\":{\"r\":2,\"g\":1,\"b\":0.3}},\n");
+	S += TEXT("     \"update\":{\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"explosion\",\"sortOrder\":8}},\n");
+	// Sparks — NE_Sparks template (velocity-aligned with gravity+drag)
 	S += TEXT("    {\"name\":\"Sparks\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":80},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.4,\"lifetimeMax\":1.5,\"sizeMin\":3,\"sizeMax\":12,\n");
-	S += TEXT("            \"spriteRotationMax\":360,\n");
 	S += TEXT("            \"velocityMin\":{\"x\":-600,\"y\":-600,\"z\":-200},\n");
 	S += TEXT("            \"velocityMax\":{\"x\":600,\"y\":600,\"z\":800},\n");
 	S += TEXT("            \"color\":{\"r\":1,\"g\":0.6,\"b\":0.1}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":2,\n");
-	S += TEXT("              \"rotationRateMin\":-180,\"rotationRateMax\":180,\n");
-	S += TEXT("              \"sizeScaleEnd\":0.1,\"opacityEnd\":0,\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":2,\"opacityEnd\":0,\n");
 	S += TEXT("              \"useColorOverLife\":true,\"colorEnd\":{\"r\":0.3,\"g\":0.05,\"b\":0}},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"alignment\":\"velocity_aligned\",\"sortOrder\":5}},\n");
-	// Smoke
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"spark\",\"sortOrder\":5}},\n");
+	// Smoke — NE_Smoke template (noise+rotation enabled)
 	S += TEXT("    {\"name\":\"Smoke\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":15,\"burstDelay\":0.05},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":40,\"sizeMax\":120,\n");
-	S += TEXT("            \"spriteRotationMax\":360,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-100,\"y\":-100,\"z\":0},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":100,\"y\":100,\"z\":200},\n");
 	S += TEXT("            \"color\":{\"r\":0.15,\"g\":0.12,\"b\":0.1,\"a\":0.5}},\n");
 	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":50},\"drag\":2,\n");
-	S += TEXT("              \"rotationRateMin\":-30,\"rotationRateMax\":30,\n");
-	S += TEXT("              \"sizeScaleStart\":0.5,\"sizeScaleEnd\":3,\"opacityStart\":0.5,\"opacityEnd\":0,\n");
-	S += TEXT("              \"noiseStrength\":50,\"noiseFrequency\":2},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"translucent\",\"sortOrder\":0}},\n");
-	// Shockwave
-	S += TEXT("    {\"name\":\"Shockwave\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":1},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":0.2,\"lifetimeMax\":0.4,\"sizeMin\":20,\"sizeMax\":30,\n");
-	S += TEXT("            \"color\":{\"r\":3,\"g\":2,\"b\":0.5,\"a\":0.8}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0},\n");
-	S += TEXT("              \"sizeScaleStart\":1,\"sizeScaleEnd\":20,\"opacityStart\":0.8,\"opacityEnd\":0},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"sortOrder\":2}},\n");
+	S += TEXT("              \"sizeScaleStart\":0.5,\"sizeScaleEnd\":3,\"opacityStart\":0.5,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"smoke\",\"sortOrder\":0}},\n");
+	// Debris — NE_Debris template (gravity-affected chunks)
+	S += TEXT("    {\"name\":\"Debris\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":10},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":2,\"sizeMin\":5,\"sizeMax\":20,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-400,\"y\":-400,\"z\":100},\n");
+	S += TEXT("            \"velocityMax\":{\"x\":400,\"y\":400,\"z\":600},\n");
+	S += TEXT("            \"color\":{\"r\":0.4,\"g\":0.3,\"b\":0.2}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":1},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"debris\",\"sortOrder\":3}},\n");
+	// Ground Dust — NE_GroundDust template
+	S += TEXT("    {\"name\":\"GroundDust\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":8,\"burstDelay\":0.02},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":2.5,\"sizeMin\":30,\"sizeMax\":80,\n");
+	S += TEXT("            \"color\":{\"r\":0.2,\"g\":0.18,\"b\":0.15,\"a\":0.4}},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"ground_dust\",\"sortOrder\":1}},\n");
 	// Light
 	S += TEXT("    {\"name\":\"Light\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":1},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.1,\"lifetimeMax\":0.5,\"color\":{\"r\":3,\"g\":2,\"b\":0.5}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0}},\n");
 	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":5,\"lightIntensity\":3}}\n");
 	S += TEXT("  ]\n");
 	S += TEXT("},\n");
@@ -274,50 +321,44 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXExampleConfigs()
 	S += TEXT("  ]\n");
 	S += TEXT("},\n");
 
-	// === Example 3: Campfire (looping) ===
+	// === Example 3: Campfire (looping, rich templates) ===
 	S += TEXT("{\n");
-	S += TEXT("  \"_description\": \"Campfire - rising flames, embers, smoke, warm light\",\n");
+	S += TEXT("  \"_description\": \"Campfire - rising flames, embers, smoke, warm light using rich templates\",\n");
 	S += TEXT("  \"systemName\": \"Campfire\",\n");
 	S += TEXT("  \"warmupTime\": 2,\n");
 	S += TEXT("  \"looping\": true,\n");
 	S += TEXT("  \"emitters\": [\n");
-	// Flames
+	// Flames — explosion template with flame material
 	S += TEXT("    {\"name\":\"Flames\",\"spawn\":{\"mode\":\"rate\",\"rate\":20},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":15,\"sizeMax\":40,\n");
 	S += TEXT("            \"velocityMin\":{\"x\":-30,\"y\":-30,\"z\":100},\n");
 	S += TEXT("            \"velocityMax\":{\"x\":30,\"y\":30,\"z\":250},\n");
 	S += TEXT("            \"color\":{\"r\":3,\"g\":1.5,\"b\":0.2}},\n");
 	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":100},\"drag\":3,\n");
-	S += TEXT("              \"sizeScaleStart\":1,\"sizeScaleEnd\":0.1,\"opacityEnd\":0,\n");
-	S += TEXT("              \"useColorOverLife\":true,\"colorEnd\":{\"r\":1,\"g\":0.1,\"b\":0},\n");
-	S += TEXT("              \"noiseStrength\":80,\"noiseFrequency\":4},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"sortOrder\":5}},\n");
-	// Embers
+	S += TEXT("              \"sizeScaleEnd\":0.1,\"opacityEnd\":0,\n");
+	S += TEXT("              \"useColorOverLife\":true,\"colorEnd\":{\"r\":1,\"g\":0.1,\"b\":0}},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"flame\",\n");
+	S += TEXT("              \"materialPath\":\"/Game/NiagaraExamples/Materials/MI_Flames\",\"sortOrder\":5}},\n");
+	// Embers — spark template (gravity+drag naturally supported)
 	S += TEXT("    {\"name\":\"Embers\",\"spawn\":{\"mode\":\"rate\",\"rate\":8},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":1,\"sizeMax\":4,\n");
 	S += TEXT("            \"velocityMin\":{\"x\":-20,\"y\":-20,\"z\":50},\n");
 	S += TEXT("            \"velocityMax\":{\"x\":20,\"y\":20,\"z\":150},\n");
 	S += TEXT("            \"color\":{\"r\":2,\"g\":0.8,\"b\":0.1}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":30},\"drag\":0.5,\n");
-	S += TEXT("              \"opacityEnd\":0,\n");
-	S += TEXT("              \"noiseStrength\":40,\"noiseFrequency\":2},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"sortOrder\":7}},\n");
-	// Smoke
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":30},\"drag\":0.5,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"spark\",\"sortOrder\":7}},\n");
+	// Smoke — NE_Smoke (noise+rotation built-in)
 	S += TEXT("    {\"name\":\"Smoke\",\"spawn\":{\"mode\":\"rate\",\"rate\":3},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":2,\"lifetimeMax\":5,\"sizeMin\":20,\"sizeMax\":50,\n");
-	S += TEXT("            \"spriteRotationMax\":360,\n");
 	S += TEXT("            \"velocityMin\":{\"x\":-15,\"y\":-15,\"z\":40},\n");
 	S += TEXT("            \"velocityMax\":{\"x\":15,\"y\":15,\"z\":80},\n");
 	S += TEXT("            \"color\":{\"r\":0.1,\"g\":0.08,\"b\":0.06,\"a\":0.3}},\n");
 	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":20},\"drag\":1,\n");
-	S += TEXT("              \"rotationRateMin\":-20,\"rotationRateMax\":20,\n");
-	S += TEXT("              \"sizeScaleStart\":0.5,\"sizeScaleEnd\":4,\"opacityStart\":0.3,\"opacityEnd\":0,\n");
-	S += TEXT("              \"noiseStrength\":30,\"noiseFrequency\":1},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"translucent\",\"sortOrder\":0}},\n");
+	S += TEXT("              \"sizeScaleStart\":0.5,\"sizeScaleEnd\":4,\"opacityStart\":0.3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"smoke\",\"sortOrder\":0}},\n");
 	// Warm light
 	S += TEXT("    {\"name\":\"WarmLight\",\"spawn\":{\"mode\":\"rate\",\"rate\":3},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.2,\"lifetimeMax\":0.5,\"color\":{\"r\":2,\"g\":1,\"b\":0.3}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0}},\n");
 	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":3,\"lightIntensity\":2}}\n");
 	S += TEXT("  ]\n");
 	S += TEXT("}\n");
@@ -364,4 +405,15 @@ FString UHktVFXGeneratorFunctionLibrary::McpListGeneratedVFX(const FString& Dire
 	Writer->Close();
 
 	return Output;
+}
+
+FString UHktVFXGeneratorFunctionLibrary::McpDumpTemplateParameters(const FString& RendererType)
+{
+	UHktVFXGeneratorSubsystem* Subsystem = GetSubsystem();
+	if (!Subsystem)
+	{
+		return TEXT("ERROR: VFXGenerator subsystem not available");
+	}
+
+	return Subsystem->DumpTemplateParameters(RendererType);
 }

@@ -57,17 +57,14 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 		return nullptr;
 	}
 
-	// 시스템 레벨 속성
 	SetupSystemProperties(System, Config);
 
-	// 각 에미터 구성
 	for (const FHktVFXEmitterConfig& EmitterConfig : Config.Emitters)
 	{
 		UE_LOG(LogHktVFXBuilder, Log, TEXT("Building emitter: %s"), *EmitterConfig.Name);
 		ConfigureEmitter(System, EmitterConfig);
 	}
 
-	// 컴파일 & 저장
 	System->RequestCompile(false);
 	System->MarkPackageDirty();
 
@@ -97,13 +94,13 @@ void FHktVFXNiagaraBuilder::SetupSystemProperties(
 	{
 		System->SetWarmupTime(Config.WarmupTime);
 		System->SetWarmupTickDelta(1.f / 30.f);
-		//System->SetWarmupTickCount(FMath::CeilToInt(Config.WarmupTime * 30.f));
 		System->ResolveWarmupTickCount();
 	}
 }
 
 // ============================================================================
 // 에미터 템플릿 로드
+// 우선순위: EmitterTemplate > RendererType > Fallback
 // ============================================================================
 UNiagaraEmitter* FHktVFXNiagaraBuilder::LoadEmitterTemplate(const FString& RendererType)
 {
@@ -116,12 +113,16 @@ UNiagaraEmitter* FHktVFXNiagaraBuilder::LoadEmitterTemplate(const FString& Rende
 			UNiagaraEmitter* Emitter = Cast<UNiagaraEmitter>(TemplatePath->TryLoad());
 			if (Emitter)
 			{
-				UE_LOG(LogHktVFXBuilder, Log, TEXT("Loaded template '%s' for type '%s'"),
+				UE_LOG(LogHktVFXBuilder, Log, TEXT("Loaded template '%s' for key '%s'"),
 					*TemplatePath->GetAssetPathString(), *RendererType);
 				return Emitter;
 			}
-			UE_LOG(LogHktVFXBuilder, Warning, TEXT("Failed to load template '%s' for type '%s'"),
-				*TemplatePath->GetAssetPathString(), *RendererType);
+			else
+			{
+				UE_LOG(LogHktVFXBuilder, Warning,
+					TEXT("Template asset not found: '%s' (key='%s'). Trying fallback."),
+					*TemplatePath->GetAssetPathString(), *RendererType);
+			}
 		}
 	}
 
@@ -130,12 +131,12 @@ UNiagaraEmitter* FHktVFXNiagaraBuilder::LoadEmitterTemplate(const FString& Rende
 		UNiagaraEmitter* Fallback = Cast<UNiagaraEmitter>(Settings->FallbackEmitterTemplate.TryLoad());
 		if (Fallback)
 		{
-			UE_LOG(LogHktVFXBuilder, Log, TEXT("Using fallback template for type '%s'"), *RendererType);
+			UE_LOG(LogHktVFXBuilder, Log, TEXT("Using fallback template for key '%s'"), *RendererType);
 			return Fallback;
 		}
 	}
 
-	UE_LOG(LogHktVFXBuilder, Error, TEXT("No emitter template for type '%s'"), *RendererType);
+	UE_LOG(LogHktVFXBuilder, Error, TEXT("No emitter template for key '%s'"), *RendererType);
 	return nullptr;
 }
 
@@ -146,89 +147,81 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 	UNiagaraSystem* System,
 	const FHktVFXEmitterConfig& Config)
 {
-	UNiagaraEmitter* TemplateEmitter = LoadEmitterTemplate(Config.Render.RendererType);
+	// EmitterTemplate 키가 있으면 그걸로 조회, 없으면 RendererType으로 폴백
+	const FString& TemplateKey = Config.Render.EmitterTemplate.IsEmpty()
+		? Config.Render.RendererType
+		: Config.Render.EmitterTemplate;
+
+	UNiagaraEmitter* TemplateEmitter = LoadEmitterTemplate(TemplateKey);
 	if (!TemplateEmitter)
 	{
 		return;
 	}
+
+	// EmitterTemplate이 지정된 경우 = NiagaraExamples 에미터 (이미 모듈+머티리얼 완비)
+	const bool bUsingRichTemplate = !Config.Render.EmitterTemplate.IsEmpty();
 
 	FNiagaraEditorUtilities::AddEmitterToSystem(*System, *TemplateEmitter, FGuid());
 
 	int32 ActualIndex = System->GetEmitterHandles().Num() - 1;
 	FString HandleName = System->GetEmitterHandles()[ActualIndex].GetName().ToString();
 
-	UE_LOG(LogHktVFXBuilder, Log, TEXT("Added emitter '%s' as '%s' (index %d)"),
-		*Config.Name, *HandleName, ActualIndex);
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("Added emitter '%s' as '%s' (index %d, template='%s', rich=%d)"),
+		*Config.Name, *HandleName, ActualIndex, *TemplateKey, bUsingRichTemplate);
 
+	// Rich 템플릿(NE_)은 이미 모듈이 완비되어 있으므로 RapidIterationParameters 설정은
+	// 적용 가능한 것만 시도 (실패해도 무시). 기본 템플릿은 기존 로직 사용.
 	SetupSpawnModule(System, ActualIndex, Config.Spawn);
 	SetupInitializeModule(System, ActualIndex, Config.Init);
 	SetupUpdateModules(System, ActualIndex, Config.Update);
 	SetupRenderer(System, ActualIndex, Config.Render);
+
+	// 머티리얼 오버라이드 (materialPath가 지정된 경우)
+	if (!Config.Render.MaterialPath.IsEmpty())
+	{
+		ApplyMaterialOverride(System, ActualIndex, Config.Render.MaterialPath);
+	}
 }
 
 // ============================================================================
-// 스폰 설정
+// 스폰 설정 — EmitterUpdateScript에 기록
 // ============================================================================
 void FHktVFXNiagaraBuilder::SetupSpawnModule(UNiagaraSystem* System, int32 EmitterIndex,
 	const FHktVFXEmitterSpawnConfig& Config)
 {
-	if (Config.Mode == TEXT("rate"))
+	const FString Module = TEXT("SpawnBurst_Instantaneous");
+
+	if (Config.Mode == TEXT("burst"))
 	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("SpawnRate"), TEXT("SpawnRate"), Config.Rate);
-	}
-	else // burst
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("SpawnBurstInstantaneous"), TEXT("SpawnCount"),
-			static_cast<float>(Config.BurstCount));
+		SetEmitterParamInt(System, EmitterIndex, Module, TEXT("Spawn Count"), Config.BurstCount);
 
 		if (Config.BurstDelay > 0.f)
 		{
-			SetNiagaraVariableFloat(System, EmitterIndex,
-				TEXT("SpawnBurstInstantaneous"), TEXT("SpawnTime"), Config.BurstDelay);
+			SetEmitterParamFloat(System, EmitterIndex, Module, TEXT("Spawn Time"), Config.BurstDelay);
 		}
 	}
+	// rate 모드는 SpawnRate 모듈이 필요 — SimpleSpriteBurst 템플릿에는 없음
+	// rate 모드용 별도 템플릿이 필요
 }
 
 // ============================================================================
-// 초기화 설정
+// 초기화 설정 — Particle SpawnScript에 기록
 // ============================================================================
 void FHktVFXNiagaraBuilder::SetupInitializeModule(UNiagaraSystem* System, int32 EmitterIndex,
 	const FHktVFXEmitterInitConfig& Config)
 {
 	const FString Module = TEXT("InitializeParticle");
 
-	SetNiagaraVariableFloat(System, EmitterIndex, Module, TEXT("Lifetime.Minimum"), Config.LifetimeMin);
-	SetNiagaraVariableFloat(System, EmitterIndex, Module, TEXT("Lifetime.Maximum"), Config.LifetimeMax);
+	// Lifetime — 단일 float (Min/Max 평균값 사용)
+	float AvgLifetime = (Config.LifetimeMin + Config.LifetimeMax) * 0.5f;
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Lifetime"), AvgLifetime);
 
-	SetNiagaraVariableFloat(System, EmitterIndex, Module, TEXT("SpriteSize.Minimum.X"), Config.SizeMin);
-	SetNiagaraVariableFloat(System, EmitterIndex, Module, TEXT("SpriteSize.Minimum.Y"), Config.SizeMin);
-	SetNiagaraVariableFloat(System, EmitterIndex, Module, TEXT("SpriteSize.Maximum.X"), Config.SizeMax);
-	SetNiagaraVariableFloat(System, EmitterIndex, Module, TEXT("SpriteSize.Maximum.Y"), Config.SizeMax);
+	// Uniform Sprite Size — 단일 float (Min/Max 평균값 사용)
+	float AvgSize = (Config.SizeMin + Config.SizeMax) * 0.5f;
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Uniform Sprite Size"), AvgSize);
 
-	SetNiagaraVariableVec3(System, EmitterIndex, Module, TEXT("Velocity.Minimum"), Config.VelocityMin);
-	SetNiagaraVariableVec3(System, EmitterIndex, Module, TEXT("Velocity.Maximum"), Config.VelocityMax);
-
-	SetNiagaraVariableColor(System, EmitterIndex, Module, TEXT("Color"), Config.Color);
-
-	// 초기 회전
-	if (Config.SpriteRotationMax > 0.f || Config.SpriteRotationMin != 0.f)
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex, Module,
-			TEXT("SpriteRotation.Minimum"), Config.SpriteRotationMin);
-		SetNiagaraVariableFloat(System, EmitterIndex, Module,
-			TEXT("SpriteRotation.Maximum"), Config.SpriteRotationMax);
-	}
-
-	// 질량
-	if (Config.MassMin != 1.f || Config.MassMax != 1.f)
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex, Module,
-			TEXT("Mass.Minimum"), Config.MassMin);
-		SetNiagaraVariableFloat(System, EmitterIndex, Module,
-			TEXT("Mass.Maximum"), Config.MassMax);
-	}
+	// Color
+	SetParticleParamColor(System, EmitterIndex, Module, TEXT("Color"), Config.Color);
 }
 
 // ============================================================================
@@ -237,84 +230,37 @@ void FHktVFXNiagaraBuilder::SetupInitializeModule(UNiagaraSystem* System, int32 
 void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex,
 	const FHktVFXEmitterUpdateConfig& Config)
 {
-	// Gravity
-	if (!Config.Gravity.IsNearlyZero())
-	{
-		SetNiagaraVariableVec3(System, EmitterIndex,
-			TEXT("Gravity Force"), TEXT("Gravity"), Config.Gravity);
-	}
-
-	// Drag
-	if (Config.Drag > 0.f)
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("Drag"), TEXT("Drag"), Config.Drag);
-	}
-
-	// Rotation Rate
-	if (Config.RotationRateMax > 0.f || Config.RotationRateMin != 0.f)
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("SpriteRotationRate"), TEXT("RotationRate.Minimum"), Config.RotationRateMin);
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("SpriteRotationRate"), TEXT("RotationRate.Maximum"), Config.RotationRateMax);
-	}
-
-	// Size Scale Over Life
-	if (Config.SizeScaleStart != 1.f || Config.SizeScaleEnd != 1.f)
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("ScaleSpriteSize"), TEXT("ScaleFactor.Minimum"), Config.SizeScaleStart);
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("ScaleSpriteSize"), TEXT("ScaleFactor.Maximum"), Config.SizeScaleEnd);
-	}
-
-	// Opacity Over Life
+	// ScaleColor — Scale RGB / Scale RGBA (Particle SpawnScript + UpdateScript)
+	// Opacity 조절: Scale RGBA의 W 컴포넌트로 투명도 적용
 	if (Config.OpacityStart != 1.f || Config.OpacityEnd != 0.f)
 	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("ScaleColor"), TEXT("AlphaScale.Start"), Config.OpacityStart);
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("ScaleColor"), TEXT("AlphaScale.End"), Config.OpacityEnd);
+		// Scale RGBA = (R, G, B, A) 스케일
+		FVector4 ScaleRGBA(1.f, 1.f, 1.f, Config.OpacityStart);
+		SetParticleParamVec4(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("Scale RGBA"), ScaleRGBA);
 	}
 
-	// Color Over Life
+	// Color Over Life — Scale RGB로 적용
 	if (Config.bUseColorOverLife)
 	{
-		SetNiagaraVariableColor(System, EmitterIndex,
-			TEXT("ScaleColor"), TEXT("ColorScale.Start"), FLinearColor::White);
-		SetNiagaraVariableColor(System, EmitterIndex,
-			TEXT("ScaleColor"), TEXT("ColorScale.End"), Config.ColorEnd);
+		FVector ScaleRGB(Config.ColorEnd.R, Config.ColorEnd.G, Config.ColorEnd.B);
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("Scale RGB"), ScaleRGB);
 	}
 
-	// Curl Noise
-	if (Config.NoiseStrength > 0.f)
+	// SolveForcesAndVelocity — Speed Limit
+	// Gravity, Drag 등은 이 템플릿에 모듈이 없으므로 직접 설정 불가
+	// Speed Limit으로 간접 제어
+	if (Config.Drag > 0.f)
 	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("Curl Noise Force"), TEXT("NoisStrength"), Config.NoiseStrength);
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("Curl Noise Force"), TEXT("NoiseFrequency"), Config.NoiseFrequency);
+		// 높은 드래그 → 낮은 스피드 리밋으로 근사
+		float SpeedLimit = FMath::Max(100.f / Config.Drag, 10.f);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("SolveForcesAndVelocity"), TEXT("Speed Limit"), SpeedLimit);
 	}
 
-	// Point Attractor
-	if (Config.AttractionStrength > 0.f)
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("Point Attraction Force"), TEXT("AttractionStrength"), Config.AttractionStrength);
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("Point Attraction Force"), TEXT("AttractionRadius"), Config.AttractionRadius);
-		SetNiagaraVariableVec3(System, EmitterIndex,
-			TEXT("Point Attraction Force"), TEXT("AttractorPosition"), Config.AttractionPosition);
-	}
-
-	// Vortex
-	if (Config.VortexStrength > 0.f)
-	{
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("Vortex Force"), TEXT("VortexStrength"), Config.VortexStrength);
-		SetNiagaraVariableFloat(System, EmitterIndex,
-			TEXT("Vortex Force"), TEXT("VortexRadius"), Config.VortexRadius);
-	}
+	// EmitterState — Loop Duration (EmitterUpdateScript)
+	// 이 값으로 에미터 지속 시간 제어 가능
 }
 
 // ============================================================================
@@ -335,7 +281,6 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 	UNiagaraRendererProperties* Renderer = RendererProperties[0];
 	Renderer->SortOrderHint = Config.SortOrder;
 
-	// Sprite
 	if (Config.RendererType == TEXT("sprite"))
 	{
 		if (UNiagaraSpriteRendererProperties* SR =
@@ -346,15 +291,18 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 				SR->Alignment = ENiagaraSpriteAlignment::VelocityAligned;
 			}
 
-			// 머티리얼 적용
-			UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
-			if (Mat)
+			// EmitterTemplate이 지정되면 템플릿의 기본 머티리얼을 유지 (이미 텍스처 포함)
+			// 그렇지 않으면 BlendMode 기반 머티리얼 적용
+			if (Config.EmitterTemplate.IsEmpty())
 			{
-				SR->Material = Mat;
+				UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
+				if (Mat)
+				{
+					SR->Material = Mat;
+				}
 			}
 		}
 	}
-	// Light
 	else if (Config.RendererType == TEXT("light"))
 	{
 		if (UNiagaraLightRendererProperties* LR =
@@ -365,17 +313,56 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 				Config.LightIntensity, Config.LightIntensity, Config.LightIntensity);
 		}
 	}
-	// Ribbon
 	else if (Config.RendererType == TEXT("ribbon"))
 	{
 		if (UNiagaraRibbonRendererProperties* RR =
 			Cast<UNiagaraRibbonRendererProperties>(Renderer))
 		{
-			UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
-			if (Mat)
+			if (Config.EmitterTemplate.IsEmpty())
 			{
-				RR->Material = Mat;
+				UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
+				if (Mat)
+				{
+					RR->Material = Mat;
+				}
 			}
+		}
+	}
+}
+
+// ============================================================================
+// 머티리얼 오버라이드 — materialPath로 지정된 머티리얼을 렌더러에 적용
+// ============================================================================
+void FHktVFXNiagaraBuilder::ApplyMaterialOverride(
+	UNiagaraSystem* System, int32 EmitterIndex, const FString& MaterialPath)
+{
+	const auto& EmitterHandles = System->GetEmitterHandles();
+	if (!EmitterHandles.IsValidIndex(EmitterIndex)) return;
+
+	FSoftObjectPath MatPath(MaterialPath);
+	if (!MatPath.IsValid()) return;
+
+	UMaterialInterface* Mat = Cast<UMaterialInterface>(MatPath.TryLoad());
+	if (!Mat)
+	{
+		UE_LOG(LogHktVFXBuilder, Warning, TEXT("Material not found: %s"), *MaterialPath);
+		return;
+	}
+
+	FVersionedNiagaraEmitterData* EmitterData = EmitterHandles[EmitterIndex].GetEmitterData();
+	if (!EmitterData) return;
+
+	for (UNiagaraRendererProperties* Renderer : EmitterData->GetRenderers())
+	{
+		if (UNiagaraSpriteRendererProperties* SR = Cast<UNiagaraSpriteRendererProperties>(Renderer))
+		{
+			SR->Material = Mat;
+			UE_LOG(LogHktVFXBuilder, Log, TEXT("Applied material override: %s"), *MaterialPath);
+		}
+		else if (UNiagaraRibbonRendererProperties* RR = Cast<UNiagaraRibbonRendererProperties>(Renderer))
+		{
+			RR->Material = Mat;
+			UE_LOG(LogHktVFXBuilder, Log, TEXT("Applied ribbon material override: %s"), *MaterialPath);
 		}
 	}
 }
@@ -401,9 +388,11 @@ UMaterialInterface* FHktVFXNiagaraBuilder::GetVFXMaterial(const FString& BlendMo
 }
 
 // ============================================================================
-// 파라미터 설정 유틸리티
+// Particle-level 파라미터 (SpawnScript + UpdateScript)
+// 이름 형식: Constants.{HandleName}.{Module}.{Param}
 // ============================================================================
-void FHktVFXNiagaraBuilder::SetNiagaraVariableFloat(
+
+void FHktVFXNiagaraBuilder::SetParticleParamFloat(
 	UNiagaraSystem* System, int32 EmitterIndex,
 	const FString& ModuleName, const FString& ParamName, float Value)
 {
@@ -414,12 +403,12 @@ void FHktVFXNiagaraBuilder::SetNiagaraVariableFloat(
 		EmitterHandles[EmitterIndex].GetEmitterData();
 	if (!EmitterData) return;
 
-	FString FullParamName = FString::Printf(TEXT("%s.%s.%s"),
+	FString FullName = FString::Printf(TEXT("Constants.%s.%s.%s"),
 		*EmitterHandles[EmitterIndex].GetName().ToString(),
 		*ModuleName, *ParamName);
 
 	FNiagaraVariable Var;
-	Var.SetName(FName(*FullParamName));
+	Var.SetName(FName(*FullName));
 	Var.SetType(FNiagaraTypeDefinition::GetFloatDef());
 
 	for (UNiagaraScript* Script : {
@@ -431,9 +420,11 @@ void FHktVFXNiagaraBuilder::SetNiagaraVariableFloat(
 			Script->RapidIterationParameters.SetParameterValue<float>(Value, Var);
 		}
 	}
+
+	UE_LOG(LogHktVFXBuilder, Verbose, TEXT("  Set %s = %f"), *FullName, Value);
 }
 
-void FHktVFXNiagaraBuilder::SetNiagaraVariableVec3(
+void FHktVFXNiagaraBuilder::SetParticleParamVec3(
 	UNiagaraSystem* System, int32 EmitterIndex,
 	const FString& ModuleName, const FString& ParamName, FVector Value)
 {
@@ -444,12 +435,12 @@ void FHktVFXNiagaraBuilder::SetNiagaraVariableVec3(
 		EmitterHandles[EmitterIndex].GetEmitterData();
 	if (!EmitterData) return;
 
-	FString FullParamName = FString::Printf(TEXT("%s.%s.%s"),
+	FString FullName = FString::Printf(TEXT("Constants.%s.%s.%s"),
 		*EmitterHandles[EmitterIndex].GetName().ToString(),
 		*ModuleName, *ParamName);
 
 	FNiagaraVariable Var;
-	Var.SetName(FName(*FullParamName));
+	Var.SetName(FName(*FullName));
 	Var.SetType(FNiagaraTypeDefinition::GetVec3Def());
 
 	for (UNiagaraScript* Script : {
@@ -464,7 +455,38 @@ void FHktVFXNiagaraBuilder::SetNiagaraVariableVec3(
 	}
 }
 
-void FHktVFXNiagaraBuilder::SetNiagaraVariableColor(
+void FHktVFXNiagaraBuilder::SetParticleParamVec4(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FString& ModuleName, const FString& ParamName, FVector4 Value)
+{
+	const auto& EmitterHandles = System->GetEmitterHandles();
+	if (!EmitterHandles.IsValidIndex(EmitterIndex)) return;
+
+	FVersionedNiagaraEmitterData* EmitterData =
+		EmitterHandles[EmitterIndex].GetEmitterData();
+	if (!EmitterData) return;
+
+	FString FullName = FString::Printf(TEXT("Constants.%s.%s.%s"),
+		*EmitterHandles[EmitterIndex].GetName().ToString(),
+		*ModuleName, *ParamName);
+
+	FNiagaraVariable Var;
+	Var.SetName(FName(*FullName));
+	Var.SetType(FNiagaraTypeDefinition::GetVec4Def());
+
+	for (UNiagaraScript* Script : {
+		EmitterData->SpawnScriptProps.Script,
+		EmitterData->UpdateScriptProps.Script })
+	{
+		if (Script)
+		{
+			Script->RapidIterationParameters.SetParameterValue<FVector4f>(
+				FVector4f(Value), Var);
+		}
+	}
+}
+
+void FHktVFXNiagaraBuilder::SetParticleParamColor(
 	UNiagaraSystem* System, int32 EmitterIndex,
 	const FString& ModuleName, const FString& ParamName, FLinearColor Value)
 {
@@ -475,12 +497,12 @@ void FHktVFXNiagaraBuilder::SetNiagaraVariableColor(
 		EmitterHandles[EmitterIndex].GetEmitterData();
 	if (!EmitterData) return;
 
-	FString FullParamName = FString::Printf(TEXT("%s.%s.%s"),
+	FString FullName = FString::Printf(TEXT("Constants.%s.%s.%s"),
 		*EmitterHandles[EmitterIndex].GetName().ToString(),
 		*ModuleName, *ParamName);
 
 	FNiagaraVariable Var;
-	Var.SetName(FName(*FullParamName));
+	Var.SetName(FName(*FullName));
 	Var.SetType(FNiagaraTypeDefinition::GetColorDef());
 
 	for (UNiagaraScript* Script : {
@@ -492,4 +514,64 @@ void FHktVFXNiagaraBuilder::SetNiagaraVariableColor(
 			Script->RapidIterationParameters.SetParameterValue<FLinearColor>(Value, Var);
 		}
 	}
+}
+
+// ============================================================================
+// Emitter-level 파라미터 (EmitterUpdateScript)
+// ============================================================================
+
+void FHktVFXNiagaraBuilder::SetEmitterParamFloat(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FString& ModuleName, const FString& ParamName, float Value)
+{
+	const auto& EmitterHandles = System->GetEmitterHandles();
+	if (!EmitterHandles.IsValidIndex(EmitterIndex)) return;
+
+	FVersionedNiagaraEmitterData* EmitterData =
+		EmitterHandles[EmitterIndex].GetEmitterData();
+	if (!EmitterData) return;
+
+	FString FullName = FString::Printf(TEXT("Constants.%s.%s.%s"),
+		*EmitterHandles[EmitterIndex].GetName().ToString(),
+		*ModuleName, *ParamName);
+
+	FNiagaraVariable Var;
+	Var.SetName(FName(*FullName));
+	Var.SetType(FNiagaraTypeDefinition::GetFloatDef());
+
+	UNiagaraScript* Script = EmitterData->EmitterUpdateScriptProps.Script;
+	if (Script)
+	{
+		Script->RapidIterationParameters.SetParameterValue<float>(Value, Var);
+	}
+
+	UE_LOG(LogHktVFXBuilder, Verbose, TEXT("  SetEmitter %s = %f"), *FullName, Value);
+}
+
+void FHktVFXNiagaraBuilder::SetEmitterParamInt(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FString& ModuleName, const FString& ParamName, int32 Value)
+{
+	const auto& EmitterHandles = System->GetEmitterHandles();
+	if (!EmitterHandles.IsValidIndex(EmitterIndex)) return;
+
+	FVersionedNiagaraEmitterData* EmitterData =
+		EmitterHandles[EmitterIndex].GetEmitterData();
+	if (!EmitterData) return;
+
+	FString FullName = FString::Printf(TEXT("Constants.%s.%s.%s"),
+		*EmitterHandles[EmitterIndex].GetName().ToString(),
+		*ModuleName, *ParamName);
+
+	FNiagaraVariable Var;
+	Var.SetName(FName(*FullName));
+	Var.SetType(FNiagaraTypeDefinition::GetIntDef());
+
+	UNiagaraScript* Script = EmitterData->EmitterUpdateScriptProps.Script;
+	if (Script)
+	{
+		Script->RapidIterationParameters.SetParameterValue<int32>(Value, Var);
+	}
+
+	UE_LOG(LogHktVFXBuilder, Verbose, TEXT("  SetEmitter %s = %d"), *FullName, Value);
 }

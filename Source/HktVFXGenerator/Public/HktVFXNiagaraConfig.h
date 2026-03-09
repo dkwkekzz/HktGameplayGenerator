@@ -149,6 +149,24 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterRenderConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	FString RendererType = TEXT("sprite");
 
+	/**
+	 * 에미터 템플릿 키 (Settings의 EmitterTemplates 맵에서 조회).
+	 * 예: "spark", "smoke", "explosion", "debris", "impact", "flame", "flare", "arc"
+	 * 비어있으면 RendererType으로 폴백.
+	 * NiagaraExamples의 NE_ 에미터들이 이미 적절한 모듈(Gravity, Drag, Noise 등)과
+	 * 머티리얼/텍스처를 갖고 있으므로 이걸 쓰면 훨씬 풍부한 결과를 얻음.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString EmitterTemplate;
+
+	/**
+	 * 머티리얼 에셋 경로 오버라이드.
+	 * 예: "/Game/NiagaraExamples/Materials/MI_Sparks"
+	 * 비어있으면 템플릿의 기본 머티리얼 사용.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString MaterialPath;
+
 	// "additive", "translucent"
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	FString BlendMode = TEXT("additive");
@@ -331,6 +349,8 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			if (const TSharedPtr<FJsonObject>* RenObj; EmObj->TryGetObjectField(TEXT("render"), RenObj))
 			{
 				(*RenObj)->TryGetStringField(TEXT("rendererType"), Emitter.Render.RendererType);
+				(*RenObj)->TryGetStringField(TEXT("emitterTemplate"), Emitter.Render.EmitterTemplate);
+				(*RenObj)->TryGetStringField(TEXT("materialPath"), Emitter.Render.MaterialPath);
 				(*RenObj)->TryGetStringField(TEXT("blendMode"), Emitter.Render.BlendMode);
 				int32 SO = 0;
 				if ((*RenObj)->TryGetNumberField(TEXT("sortOrder"), SO))
@@ -437,6 +457,10 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			// Render
 			W->WriteObjectStart(TEXT("render"));
 			W->WriteValue(TEXT("rendererType"), E.Render.RendererType);
+			if (!E.Render.EmitterTemplate.IsEmpty())
+				W->WriteValue(TEXT("emitterTemplate"), E.Render.EmitterTemplate);
+			if (!E.Render.MaterialPath.IsEmpty())
+				W->WriteValue(TEXT("materialPath"), E.Render.MaterialPath);
 			W->WriteValue(TEXT("blendMode"), E.Render.BlendMode);
 			W->WriteValue(TEXT("sortOrder"), E.Render.SortOrder);
 			W->WriteValue(TEXT("alignment"), E.Render.Alignment);
@@ -494,6 +518,8 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("      },\n");
 		S += TEXT("      \"render\": {\n");
 		S += TEXT("        \"rendererType\": \"sprite | ribbon | light | mesh\",\n");
+		S += TEXT("        \"emitterTemplate\": \"spark | smoke | explosion | debris | impact | flame | flare | arc | dust | muzzle_flash (optional, overrides rendererType template)\",\n");
+		S += TEXT("        \"materialPath\": \"/Game/NiagaraExamples/Materials/MI_xxx (optional, overrides default material)\",\n");
 		S += TEXT("        \"blendMode\": \"additive | translucent\",\n");
 		S += TEXT("        \"sortOrder\": \"int\",\n");
 		S += TEXT("        \"alignment\": \"unaligned | velocity_aligned\",\n");

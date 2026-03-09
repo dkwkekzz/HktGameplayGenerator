@@ -50,6 +50,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator")
 	FString GetConfigSchemaJson() const;
 
+	/** 템플릿 에미터의 실제 RapidIterationParameter 이름 덤프 (디버그용). */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator")
+	FString DumpTemplateParameters(const FString& RendererType = TEXT("sprite"));
+
 private:
 	FString ResolveOutputDir(const FString& OutputDir) const;
 
