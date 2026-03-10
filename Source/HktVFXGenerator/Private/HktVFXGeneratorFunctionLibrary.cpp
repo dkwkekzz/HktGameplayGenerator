@@ -109,109 +109,183 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 {
 	FString S;
 
-	// --- 개요 ---
-	S += TEXT("=== HKT VFX Generator - Config Design Guide ===\n\n");
+	S += TEXT("=== HKT VFX Generator - Config Design Guide (Phase 2) ===\n\n");
 
+	// ===================================================================
 	S += TEXT("[OVERVIEW]\n");
 	S += TEXT("Generate Niagara VFX by composing a JSON config with multiple emitter layers.\n");
-	S += TEXT("Each emitter is a particle group with its own spawn/init/update/render settings.\n");
-	S += TEXT("Rich VFX = 3~6 emitters with different roles layered together.\n\n");
+	S += TEXT("Each emitter uses a TEMPLATE that determines available physics modules.\n");
+	S += TEXT("Rich VFX = 3~6 emitters with different templates layered together.\n\n");
 
-	// --- 에미터 레이어 패턴 ---
-	S += TEXT("[EMITTER LAYER PATTERNS]\n");
-	S += TEXT("Compose these roles to build visually rich effects:\n\n");
+	// ===================================================================
+	S += TEXT("[TEMPLATE REFERENCE]\n");
+	S += TEXT("Set render.emitterTemplate to select template. This determines available modules.\n");
+	S += TEXT("Config params for missing modules are silently ignored — safe to always set them.\n\n");
 
-	S += TEXT("  CoreGlow     - Central bright flash. Few particles, large size, short life, high color intensity (r/g/b > 2.0).\n");
-	S += TEXT("                 sizeScaleStart=0.3, sizeScaleEnd=2.0, opacityEnd=0, additive blend.\n\n");
+	// --- 14 Built-in Templates ---
+	S += TEXT("=== BUILT-IN TEMPLATES (always available) ===\n\n");
 
-	S += TEXT("  Sparks       - Fast small particles flying outward. Many particles, small size, velocity_aligned.\n");
-	S += TEXT("                 High velocity (300-1000), gravity, drag, colorOverLife (bright->dark), opacityEnd=0.\n\n");
+	S += TEXT("  simple_sprite_burst  [BURST, Sprite]\n");
+	S += TEXT("    Modules: InitializeParticle, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Basic sprite burst. NO gravity/drag/noise.\n");
+	S += TEXT("    Best for: Simple flashes, shockwaves, basic one-shot effects\n\n");
 
-	S += TEXT("  Smoke/Cloud  - Slow expanding translucent particles. Large final size via sizeScaleEnd=2~4.\n");
-	S += TEXT("                 Low velocity, upward gravity(+Z), noise for organic motion. translucent blend.\n\n");
+	S += TEXT("  omnidirectional_burst  [BURST, Sprite]\n");
+	S += TEXT("    Modules: InitializeParticle, GravityForce, Drag, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: All-direction explosion with physics. HAS gravity+drag.\n");
+	S += TEXT("    Best for: Explosions, sparks, debris bursts\n\n");
 
-	S += TEXT("  Shockwave    - Single particle expanding rapidly. 1 burstCount, sizeScaleEnd=10~30.\n");
-	S += TEXT("                 Short life (0.2-0.5s), opacityEnd=0, additive blend.\n\n");
+	S += TEXT("  directional_burst  [BURST, Sprite]\n");
+	S += TEXT("    Modules: InitializeParticle, GravityForce, Drag, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Cone-shaped directional burst with physics.\n");
+	S += TEXT("    Best for: Muzzle sparks, directional impacts, water splashes\n\n");
 
-	S += TEXT("  Trail/Ribbon - Continuous particles for trails. rate mode, ribbon renderer.\n");
-	S += TEXT("                 ribbonWidth for thickness. Works with movement.\n\n");
+	S += TEXT("  confetti_burst  [BURST, Sprite]\n");
+	S += TEXT("    Modules: InitializeParticle, GravityForce, Drag, SpriteRotationRate, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Tumbling particles with rotation. HAS gravity+drag+rotation.\n");
+	S += TEXT("    Best for: Confetti, leaf fall, debris with spin\n\n");
 
-	S += TEXT("  Light        - Dynamic lighting. light renderer, 1 particle.\n");
-	S += TEXT("                 lightRadiusScale=2~10, lightIntensity=1~5. Short life for flash, long for ambient.\n\n");
+	S += TEXT("  fountain  [RATE, Sprite]\n");
+	S += TEXT("    Modules: SpawnRate, InitializeParticle, GravityForce, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Continuous upward spray. spawn.mode='rate'. HAS gravity.\n");
+	S += TEXT("    Best for: Fountains, fire columns, continuous sparks, rain\n\n");
 
-	S += TEXT("  Debris       - Gravity-affected chunks. Medium count, random rotation (spriteRotationMax=360),\n");
-	S += TEXT("                 high rotationRate, strong gravity (-980), drag=1~3.\n\n");
+	S += TEXT("  blowing_particles  [RATE, Sprite]\n");
+	S += TEXT("    Modules: SpawnRate, InitializeParticle, CurlNoiseForce, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Wind-blown particles with noise. spawn.mode='rate'. HAS curl noise.\n");
+	S += TEXT("    Best for: Dust, snow, leaves in wind, atmospheric particles\n\n");
 
-	S += TEXT("  Ambient      - Persistent floating particles. rate mode (5-20/sec), looping=true.\n");
-	S += TEXT("                 Small size, low velocity, noise for drift. warmupTime=2~5.\n\n");
+	S += TEXT("  hanging_particulates  [RATE, Sprite]\n");
+	S += TEXT("    Modules: SpawnRate, InitializeParticle, CurlNoiseForce, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Floating particles with gentle drift. spawn.mode='rate'. HAS curl noise.\n");
+	S += TEXT("    Best for: Dust motes, fireflies, ambient magic sparkles\n\n");
 
-	// --- 에미터 템플릿 ---
-	S += TEXT("[EMITTER TEMPLATES]\n");
-	S += TEXT("Set render.emitterTemplate to use pre-built emitters with proper modules + materials + textures.\n");
-	S += TEXT("These are MUCH better than the basic 'sprite' template which lacks Gravity, Drag, Noise modules.\n\n");
+	S += TEXT("  upward_mesh_burst  [BURST, Mesh]\n");
+	S += TEXT("    Modules: InitializeParticle, GravityForce, ScaleMeshSize, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Mesh-based burst with gravity. Mesh renderer.\n");
+	S += TEXT("    Best for: Rock debris, shell casings, 3D chunk ejection\n\n");
 
-	S += TEXT("  spark           - Fast small sparks, Gravity+Drag+SubUV. For explosions, impacts.\n");
+	S += TEXT("  single_looping_particle  [BURST(1), Sprite]\n");
+	S += TEXT("    Modules: InitializeParticle, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Single particle that loops forever. burstCount=1.\n");
+	S += TEXT("    Best for: Auras, status indicators, persistent glow markers\n\n");
+
+	S += TEXT("  ribbon  [RATE, Ribbon]\n");
+	S += TEXT("    Modules: SpawnRate, InitializeParticle, ScaleColor, SolveForcesAndVelocity\n");
+	S += TEXT("    Use: Location-based ribbon trail. spawn.mode='rate'. Ribbon renderer.\n");
+	S += TEXT("    Best for: Sword trails, projectile trails, energy beams, motion trails\n\n");
+
+	S += TEXT("  dynamic_beam  [RATE, Ribbon]\n");
+	S += TEXT("    Modules: Beam modules, Ribbon renderer\n");
+	S += TEXT("    Use: Dynamic beam between two points.\n");
+	S += TEXT("    Best for: Lightning, laser beams, tether effects\n\n");
+
+	S += TEXT("  static_beam  [RATE, Ribbon]\n");
+	S += TEXT("    Modules: Beam modules, Ribbon renderer\n");
+	S += TEXT("    Use: Static beam effect.\n");
+	S += TEXT("    Best for: Persistent beams, shield connections\n\n");
+
+	S += TEXT("  minimal  [BURST, Sprite]\n");
+	S += TEXT("    Modules: SolveForcesAndVelocity only\n");
+	S += TEXT("    Use: Bare minimum. Good base for light renderer.\n");
+	S += TEXT("    Best for: Dynamic lights, simple point effects\n\n");
+
+	S += TEXT("  recycle_particles  [RATE, Sprite]\n");
+	S += TEXT("    Modules: Camera-aware recycling, CurlNoiseForce\n");
+	S += TEXT("    Use: Particles recycled to stay in camera view.\n");
+	S += TEXT("    Best for: Environment particles that follow camera (fog, dust)\n\n");
+
+	// --- NiagaraExamples Templates ---
+	S += TEXT("=== RICH TEMPLATES (NiagaraExamples, pre-configured with materials+textures) ===\n\n");
+
+	S += TEXT("  spark           - Stretched spark with SubUV. Gravity+Drag built-in.\n");
 	S += TEXT("  spark_secondary - Smaller secondary sparks.\n");
 	S += TEXT("  spark_debris    - Spark-like debris fragments.\n");
-	S += TEXT("  smoke           - Smooth expanding smoke with Noise, Rotation. For fire, explosions.\n");
-	S += TEXT("  explosion       - SubUV animated explosion burst. Central flash.\n");
-	S += TEXT("  core            - Bright emissive core/flare. For center of explosions/magic.\n");
-	S += TEXT("  debris          - Gravity-affected mesh/sprite debris. For destruction.\n");
-	S += TEXT("  dust            - Dust cloud explosion. Ground-level spread.\n");
-	S += TEXT("  ground_dust     - Ground dust kick-up.\n");
-	S += TEXT("  impact          - Sprite-based impact effect. For hits, collisions.\n");
+	S += TEXT("  smoke           - SubUV smoke with Noise+Rotation. Translucent.\n");
+	S += TEXT("  explosion       - SubUV animated explosion burst.\n");
+	S += TEXT("  core            - Bright emissive core/flare.\n");
+	S += TEXT("  debris          - Gravity-affected debris chunks.\n");
+	S += TEXT("  dust            - Dust cloud explosion.\n");
+	S += TEXT("  ground_dust     - Ground-level dust ring.\n");
+	S += TEXT("  impact          - Sprite impact effect.\n");
 	S += TEXT("  impact_mesh     - Mesh-based impact chunks.\n");
 	S += TEXT("  muzzle_flash    - Weapon muzzle flash.\n");
-	S += TEXT("  flame           - SubUV animated flames.\n");
-	S += TEXT("  arc             - Electric arc ribbon.\n");
-	S += TEXT("  flare           - Lens flare glow.\n\n");
+	S += TEXT("  arc             - Electric arc ribbon.\n\n");
 
-	S += TEXT("IMPORTANT: When using emitterTemplate, the template already has modules and materials.\n");
-	S += TEXT("You can still set spawn count, init params, etc. — they override template defaults.\n");
-	S += TEXT("But you DON'T need to set blendMode or material — the template provides them.\n\n");
+	// ===================================================================
+	S += TEXT("[MODULE-PARAMETER MAP]\n");
+	S += TEXT("Which config fields apply to which modules:\n\n");
 
-	// --- 머티리얼 라이브러리 ---
+	S += TEXT("  spawn.mode='burst'  → SpawnBurst_Instantaneous (burstCount, burstDelay)\n");
+	S += TEXT("  spawn.mode='rate'   → SpawnRate (rate) — requires rate-capable template\n\n");
+
+	S += TEXT("  init.*              → InitializeParticle (Lifetime, Uniform Sprite Size, Color)\n\n");
+
+	S += TEXT("  update.gravity      → Gravity Force module (omnidirectional_burst, fountain, confetti_burst, etc.)\n");
+	S += TEXT("  update.drag         → Drag module (omnidirectional_burst, directional_burst, confetti_burst)\n");
+	S += TEXT("  update.noiseStrength→ Curl Noise Force module (blowing_particles, hanging_particulates)\n");
+	S += TEXT("  update.rotationRate → Sprite Rotation Rate module (confetti_burst)\n");
+	S += TEXT("  update.sizeScale*   → Scale Sprite Size / Scale Mesh Size module\n");
+	S += TEXT("  update.opacity/color→ ScaleColor module (Scale RGBA, Scale RGB)\n");
+	S += TEXT("  update.attraction*  → Point Attraction Force module\n");
+	S += TEXT("  update.vortex*      → Vortex Velocity module\n\n");
+
+	// ===================================================================
+	S += TEXT("[TEMPLATE SELECTION GUIDE]\n");
+	S += TEXT("Match your effect type to the right template:\n\n");
+
+	S += TEXT("  Need gravity+drag?      → omnidirectional_burst, directional_burst, confetti_burst, fountain\n");
+	S += TEXT("  Need curl noise/wind?    → blowing_particles, hanging_particulates\n");
+	S += TEXT("  Need rotation?           → confetti_burst\n");
+	S += TEXT("  Need continuous spawn?   → fountain, blowing_particles, hanging_particulates\n");
+	S += TEXT("  Need ribbon trail?       → ribbon\n");
+	S += TEXT("  Need mesh debris?        → upward_mesh_burst\n");
+	S += TEXT("  Need light?              → minimal (rendererType='light')\n");
+	S += TEXT("  Need rich visuals?       → spark, smoke, explosion, core, debris (NiagaraExamples)\n\n");
+
+	// ===================================================================
 	S += TEXT("[MATERIAL LIBRARY]\n");
-	S += TEXT("Optional: override material via render.materialPath. Available materials:\n\n");
+	S += TEXT("Override material via render.materialPath (optional):\n\n");
 
-	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Sparks              - Stretched spark material\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Sparks              - Stretched spark\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Flare               - Soft lens flare\n");
-	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Flames              - Animated flame sprites\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Flames              - Animated flame SubUV\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_BasicSprite         - Clean basic sprite\n");
-	S += TEXT("  /Game/NiagaraExamples/Materials/MI_BasicSprite_Translucent - Translucent basic sprite\n");
-	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SmokePuff_8x8      - Smoke puff SubUV (8x8)\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_BasicSprite_Translucent - Translucent sprite\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SmokePuff_8x8      - Smoke puff SubUV\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SmokeRoil_8x8      - Turbulent smoke SubUV\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Explosion_8x8      - Explosion SubUV\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_FireBall_8x8       - Fireball SubUV\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_FireRoil_8x8       - Fire roil SubUV\n");
-	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SimpleDebris        - Opaque debris chunks\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_SimpleDebris        - Opaque debris\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Distortion          - Heat distortion\n");
-	S += TEXT("  /Game/NiagaraExamples/Materials/MI_ExplosionFlare      - Explosion flare\n");
+	S += TEXT("  /Game/NiagaraExamples/Materials/MI_Fireworks           - Firework sparks\n");
 	S += TEXT("  /Game/NiagaraExamples/Materials/MI_ImpactFlash         - Impact flash\n\n");
 
-	// --- 값 범위 가이드 ---
+	// ===================================================================
 	S += TEXT("[VALUE RANGES]\n");
 	S += TEXT("  Size: 1-10 (tiny sparks), 10-50 (normal), 50-200 (smoke/glow), 200+ (shockwave)\n");
 	S += TEXT("  Velocity: 50-200 (slow drift), 200-500 (normal), 500-1500 (fast burst)\n");
 	S += TEXT("  Lifetime: 0.05-0.3 (flash), 0.3-1.0 (sparks), 1.0-4.0 (smoke), 4.0+ (ambient)\n");
-	S += TEXT("  Color RGB: 0-1 (normal), 1-5 (bright/emissive), 5-10+ (intense glow, additive only)\n");
-	S += TEXT("  Gravity Z: -980 (earth), -490 (half), 0 (zero-g), +50~200 (rising smoke/fire)\n");
+	S += TEXT("  Color RGB: 0-1 (normal), 1-5 (bright/emissive), 5-10+ (intense glow)\n");
+	S += TEXT("  Gravity Z: -980 (earth), -490 (half), 0 (zero-g), +50~200 (rising)\n");
 	S += TEXT("  Drag: 0 (none), 0.5-2 (light), 2-5 (heavy), 5+ (stops quickly)\n");
 	S += TEXT("  NoiseStrength: 10-50 (subtle), 50-200 (turbulent), 200+ (chaotic)\n");
 	S += TEXT("  SortOrder: higher = renders on top. Light=15, Glow=10, Sparks=5, Smoke=0\n\n");
 
-	// --- 디자인 팁 ---
+	// ===================================================================
 	S += TEXT("[DESIGN TIPS]\n");
-	S += TEXT("  - Use additive blend for glowing/fire/energy. translucent for smoke/dust/clouds.\n");
+	S += TEXT("  - ALWAYS prefer templates with the modules you need (see Template Selection Guide).\n");
+	S += TEXT("  - Layer 3-6 emitters with different roles for rich effects.\n");
 	S += TEXT("  - velocity_aligned alignment makes sparks/debris look like streaks.\n");
-	S += TEXT("  - burstDelay staggers layers (e.g., smoke 0.05s after explosion).\n");
-	S += TEXT("  - colorOverLife: fire = orange->red->black. magic = blue->purple->transparent.\n");
-	S += TEXT("  - sizeScaleStart < 1 + sizeScaleEnd > 1 = particle grows. Reverse = shrinks.\n");
-	S += TEXT("  - Combine vortex + attraction for swirling effects (tornado, portal).\n");
-	S += TEXT("  - For looping effects, use rate mode + set system looping=true + warmupTime.\n");
-	S += TEXT("  - Only set non-default values. Omitted fields use sensible defaults.\n\n");
+	S += TEXT("  - burstDelay staggers layers (smoke 0.05s after explosion).\n");
+	S += TEXT("  - colorOverLife: fire=orange->dark, magic=blue->purple->transparent.\n");
+	S += TEXT("  - sizeScaleEnd>1 = particle grows. sizeScaleEnd<1 = shrinks.\n");
+	S += TEXT("  - For looping: spawn.mode='rate' + looping=true + warmupTime.\n");
+	S += TEXT("  - Only set non-default values. Omitted fields use sensible defaults.\n");
+	S += TEXT("  - Use McpDumpAllTemplateParameters() to see actual module params at runtime.\n\n");
 
-	// --- 스키마 ---
+	// ===================================================================
 	S += TEXT("[JSON SCHEMA]\n");
 	S += FHktVFXNiagaraConfig::GetSchemaJson();
 	S += TEXT("\n");
@@ -224,139 +298,194 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXExampleConfigs()
 	FString S;
 	S += TEXT("[\n");
 
-	// === Example 1: Explosion (rich templates) ===
+	// ===================================================================
+	// Example 1: Explosion (rich templates - NiagaraExamples)
+	// ===================================================================
 	S += TEXT("{\n");
-	S += TEXT("  \"_description\": \"Explosion - using NiagaraExamples emitter templates for rich visuals\",\n");
+	S += TEXT("  \"_description\": \"Explosion - rich templates with SubUV materials and textures\",\n");
+	S += TEXT("  \"_templates_used\": \"core, explosion, spark, smoke, debris, ground_dust, minimal(light)\",\n");
 	S += TEXT("  \"systemName\": \"Explosion_Fire\",\n");
 	S += TEXT("  \"emitters\": [\n");
-	// Core — NE_Core template (bright emissive center)
 	S += TEXT("    {\"name\":\"CoreFlash\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":3},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":0.05,\"lifetimeMax\":0.2,\"sizeMin\":80,\"sizeMax\":200,\n");
-	S += TEXT("            \"color\":{\"r\":5,\"g\":3,\"b\":0.5}},\n");
-	S += TEXT("     \"update\":{\"sizeScaleStart\":0.3,\"sizeScaleEnd\":2.0,\"opacityEnd\":0},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.05,\"lifetimeMax\":0.2,\"sizeMin\":80,\"sizeMax\":200,\"color\":{\"r\":5,\"g\":3,\"b\":0.5}},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":2.0,\"opacityEnd\":0},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"core\",\"sortOrder\":10}},\n");
-	// Explosion — NE_Explosion template (SubUV animated burst)
-	S += TEXT("    {\"name\":\"ExplosionBurst\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":5},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":60,\"sizeMax\":150,\n");
-	S += TEXT("            \"color\":{\"r\":2,\"g\":1,\"b\":0.3}},\n");
+	S += TEXT("    {\"name\":\"Burst\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":5},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":60,\"sizeMax\":150,\"color\":{\"r\":2,\"g\":1,\"b\":0.3}},\n");
 	S += TEXT("     \"update\":{\"opacityEnd\":0},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"explosion\",\"sortOrder\":8}},\n");
-	// Sparks — NE_Sparks template (velocity-aligned with gravity+drag)
 	S += TEXT("    {\"name\":\"Sparks\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":80},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.4,\"lifetimeMax\":1.5,\"sizeMin\":3,\"sizeMax\":12,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-600,\"y\":-600,\"z\":-200},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":600,\"y\":600,\"z\":800},\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-600,\"y\":-600,\"z\":-200},\"velocityMax\":{\"x\":600,\"y\":600,\"z\":800},\n");
 	S += TEXT("            \"color\":{\"r\":1,\"g\":0.6,\"b\":0.1}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":2,\"opacityEnd\":0,\n");
-	S += TEXT("              \"useColorOverLife\":true,\"colorEnd\":{\"r\":0.3,\"g\":0.05,\"b\":0}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":2,\"opacityEnd\":0},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"spark\",\"sortOrder\":5}},\n");
-	// Smoke — NE_Smoke template (noise+rotation enabled)
 	S += TEXT("    {\"name\":\"Smoke\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":15,\"burstDelay\":0.05},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":40,\"sizeMax\":120,\n");
-	S += TEXT("            \"color\":{\"r\":0.15,\"g\":0.12,\"b\":0.1,\"a\":0.5}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":50},\"drag\":2,\n");
-	S += TEXT("              \"sizeScaleStart\":0.5,\"sizeScaleEnd\":3,\"opacityStart\":0.5,\"opacityEnd\":0},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":40,\"sizeMax\":120,\"color\":{\"r\":0.15,\"g\":0.12,\"b\":0.1,\"a\":0.5}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":50},\"drag\":2,\"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"smoke\",\"sortOrder\":0}},\n");
-	// Debris — NE_Debris template (gravity-affected chunks)
 	S += TEXT("    {\"name\":\"Debris\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":10},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":2,\"sizeMin\":5,\"sizeMax\":20,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-400,\"y\":-400,\"z\":100},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":400,\"y\":400,\"z\":600},\n");
-	S += TEXT("            \"color\":{\"r\":0.4,\"g\":0.3,\"b\":0.2}},\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-400,\"y\":-400,\"z\":100},\"velocityMax\":{\"x\":400,\"y\":400,\"z\":600}},\n");
 	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":1},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"debris\",\"sortOrder\":3}},\n");
-	// Ground Dust — NE_GroundDust template
-	S += TEXT("    {\"name\":\"GroundDust\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":8,\"burstDelay\":0.02},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":2.5,\"sizeMin\":30,\"sizeMax\":80,\n");
-	S += TEXT("            \"color\":{\"r\":0.2,\"g\":0.18,\"b\":0.15,\"a\":0.4}},\n");
-	S += TEXT("     \"update\":{\"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
-	S += TEXT("     \"render\":{\"emitterTemplate\":\"ground_dust\",\"sortOrder\":1}},\n");
-	// Light
 	S += TEXT("    {\"name\":\"Light\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":1},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.1,\"lifetimeMax\":0.5,\"color\":{\"r\":3,\"g\":2,\"b\":0.5}},\n");
 	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":5,\"lightIntensity\":3}}\n");
 	S += TEXT("  ]\n");
 	S += TEXT("},\n");
 
-	// === Example 2: Magic Portal (looping) ===
+	// ===================================================================
+	// Example 2: Water Fountain (built-in fountain template)
+	// ===================================================================
 	S += TEXT("{\n");
-	S += TEXT("  \"_description\": \"Magic Portal - looping swirl with ambient particles and glow\",\n");
-	S += TEXT("  \"systemName\": \"MagicPortal\",\n");
-	S += TEXT("  \"warmupTime\": 3,\n");
+	S += TEXT("  \"_description\": \"Water Fountain - continuous spray using fountain template (has SpawnRate+Gravity)\",\n");
+	S += TEXT("  \"_templates_used\": \"fountain (built-in, has GravityForce)\",\n");
+	S += TEXT("  \"systemName\": \"WaterFountain\",\n");
 	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"warmupTime\": 1,\n");
 	S += TEXT("  \"emitters\": [\n");
-	// Swirl particles
-	S += TEXT("    {\"name\":\"SwirlParticles\",\"spawn\":{\"mode\":\"rate\",\"rate\":30},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":2,\"sizeMin\":5,\"sizeMax\":15,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-50,\"y\":-50,\"z\":-20},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":50,\"y\":50,\"z\":20},\n");
-	S += TEXT("            \"color\":{\"r\":0.3,\"g\":0.5,\"b\":3}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0},\"drag\":1,\n");
-	S += TEXT("              \"opacityEnd\":0,\"sizeScaleEnd\":0.3,\n");
-	S += TEXT("              \"vortexStrength\":200,\"vortexRadius\":80,\n");
-	S += TEXT("              \"attractionStrength\":50,\"attractionRadius\":150},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"sortOrder\":5}},\n");
-	// Core glow
-	S += TEXT("    {\"name\":\"CoreGlow\",\"spawn\":{\"mode\":\"rate\",\"rate\":5},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":1,\"sizeMin\":30,\"sizeMax\":60,\n");
-	S += TEXT("            \"color\":{\"r\":0.5,\"g\":0.8,\"b\":5}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0},\n");
-	S += TEXT("              \"sizeScaleStart\":0.5,\"sizeScaleEnd\":1.5,\"opacityEnd\":0,\n");
-	S += TEXT("              \"noiseStrength\":20,\"noiseFrequency\":3},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"sortOrder\":8}},\n");
-	// Ambient sparkles
-	S += TEXT("    {\"name\":\"Sparkles\",\"spawn\":{\"mode\":\"rate\",\"rate\":10},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":2,\"sizeMax\":6,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-30,\"y\":-30,\"z\":-30},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":30,\"y\":30,\"z\":30},\n");
-	S += TEXT("            \"color\":{\"r\":1,\"g\":1,\"b\":3}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0},\n");
-	S += TEXT("              \"opacityEnd\":0,\"noiseStrength\":30,\"noiseFrequency\":5},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"sprite\",\"blendMode\":\"additive\",\"sortOrder\":3}},\n");
-	// Light
-	S += TEXT("    {\"name\":\"PortalLight\",\"spawn\":{\"mode\":\"rate\",\"rate\":2},\n");
-	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.6,\"color\":{\"r\":0.5,\"g\":0.7,\"b\":3}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":0}},\n");
-	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":4,\"lightIntensity\":2}}\n");
+	S += TEXT("    {\"name\":\"WaterDrops\",\"spawn\":{\"mode\":\"rate\",\"rate\":50},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":2,\"sizeMin\":3,\"sizeMax\":8,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-50,\"y\":-50,\"z\":400},\"velocityMax\":{\"x\":50,\"y\":50,\"z\":600},\n");
+	S += TEXT("            \"color\":{\"r\":0.6,\"g\":0.8,\"b\":1.5,\"a\":0.7}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"fountain\",\"blendMode\":\"translucent\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"Mist\",\"spawn\":{\"mode\":\"rate\",\"rate\":10},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":20,\"sizeMax\":50,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-30,\"y\":-30,\"z\":10},\"velocityMax\":{\"x\":30,\"y\":30,\"z\":50},\n");
+	S += TEXT("            \"color\":{\"r\":0.8,\"g\":0.9,\"b\":1,\"a\":0.2}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":10},\"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"fountain\",\"blendMode\":\"translucent\",\"sortOrder\":0}}\n");
 	S += TEXT("  ]\n");
 	S += TEXT("},\n");
 
-	// === Example 3: Campfire (looping, rich templates) ===
+	// ===================================================================
+	// Example 3: Confetti Celebration (confetti_burst template)
+	// ===================================================================
 	S += TEXT("{\n");
-	S += TEXT("  \"_description\": \"Campfire - rising flames, embers, smoke, warm light using rich templates\",\n");
-	S += TEXT("  \"systemName\": \"Campfire\",\n");
-	S += TEXT("  \"warmupTime\": 2,\n");
-	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"_description\": \"Confetti - tumbling colored pieces using confetti_burst (has Gravity+Drag+Rotation)\",\n");
+	S += TEXT("  \"_templates_used\": \"confetti_burst (built-in, has GravityForce+Drag+SpriteRotationRate)\",\n");
+	S += TEXT("  \"systemName\": \"ConfettiCelebration\",\n");
 	S += TEXT("  \"emitters\": [\n");
-	// Flames — explosion template with flame material
+	S += TEXT("    {\"name\":\"Confetti\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":200},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":2,\"lifetimeMax\":5,\"sizeMin\":5,\"sizeMax\":15,\n");
+	S += TEXT("            \"spriteRotationMax\":360,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-300,\"y\":-300,\"z\":200},\"velocityMax\":{\"x\":300,\"y\":300,\"z\":800},\n");
+	S += TEXT("            \"color\":{\"r\":1,\"g\":0.8,\"b\":0.2}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-400},\"drag\":2,\n");
+	S += TEXT("              \"rotationRateMin\":-360,\"rotationRateMax\":360,\"opacityEnd\":0.5},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"confetti_burst\",\"sortOrder\":5}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 4: Dust Storm (blowing_particles template - has CurlNoise)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Dust Storm - wind-blown particles using blowing_particles (has CurlNoiseForce)\",\n");
+	S += TEXT("  \"_templates_used\": \"blowing_particles (built-in, has CurlNoiseForce)\",\n");
+	S += TEXT("  \"systemName\": \"DustStorm\",\n");
+	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"warmupTime\": 3,\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"DustParticles\",\"spawn\":{\"mode\":\"rate\",\"rate\":30},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":2,\"lifetimeMax\":5,\"sizeMin\":5,\"sizeMax\":20,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":100,\"y\":-50,\"z\":-10},\"velocityMax\":{\"x\":300,\"y\":50,\"z\":30},\n");
+	S += TEXT("            \"color\":{\"r\":0.6,\"g\":0.5,\"b\":0.3,\"a\":0.4}},\n");
+	S += TEXT("     \"update\":{\"noiseStrength\":100,\"noiseFrequency\":2,\"opacityEnd\":0,\"sizeScaleEnd\":2},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"blowing_particles\",\"blendMode\":\"translucent\",\"sortOrder\":3}},\n");
+	S += TEXT("    {\"name\":\"FineParticles\",\"spawn\":{\"mode\":\"rate\",\"rate\":15},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":3,\"lifetimeMax\":7,\"sizeMin\":1,\"sizeMax\":5,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":50,\"y\":-30,\"z\":-5},\"velocityMax\":{\"x\":200,\"y\":30,\"z\":20},\n");
+	S += TEXT("            \"color\":{\"r\":0.7,\"g\":0.6,\"b\":0.4,\"a\":0.6}},\n");
+	S += TEXT("     \"update\":{\"noiseStrength\":60,\"noiseFrequency\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"blowing_particles\",\"blendMode\":\"translucent\",\"sortOrder\":5}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 5: Firefly Ambiance (hanging_particulates - ambient noise)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Fireflies - floating light particles using hanging_particulates (has CurlNoiseForce)\",\n");
+	S += TEXT("  \"_templates_used\": \"hanging_particulates (built-in, has CurlNoiseForce), minimal (light)\",\n");
+	S += TEXT("  \"systemName\": \"FireflyAmbiance\",\n");
+	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"warmupTime\": 5,\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"Fireflies\",\"spawn\":{\"mode\":\"rate\",\"rate\":5},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":3,\"lifetimeMax\":8,\"sizeMin\":2,\"sizeMax\":5,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-10,\"y\":-10,\"z\":-5},\"velocityMax\":{\"x\":10,\"y\":10,\"z\":5},\n");
+	S += TEXT("            \"color\":{\"r\":1.5,\"g\":2,\"b\":0.3}},\n");
+	S += TEXT("     \"update\":{\"noiseStrength\":30,\"noiseFrequency\":1,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"hanging_particulates\",\"blendMode\":\"additive\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"GlowLight\",\"spawn\":{\"mode\":\"rate\",\"rate\":3},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"color\":{\"r\":0.8,\"g\":1,\"b\":0.2}},\n");
+	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":2,\"lightIntensity\":1}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 6: Gunshot Impact (omnidirectional_burst + directional_burst)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Gunshot Impact - omnidirectional sparks + directional debris (built-in physics templates)\",\n");
+	S += TEXT("  \"_templates_used\": \"omnidirectional_burst, directional_burst (both have GravityForce+Drag)\",\n");
+	S += TEXT("  \"systemName\": \"GunImpact_Concrete\",\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"ImpactSparks\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":30},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.2,\"lifetimeMax\":0.8,\"sizeMin\":1,\"sizeMax\":4,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-300,\"y\":-300,\"z\":0},\"velocityMax\":{\"x\":300,\"y\":300,\"z\":500},\n");
+	S += TEXT("            \"color\":{\"r\":2,\"g\":1.5,\"b\":0.5}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"omnidirectional_burst\",\"blendMode\":\"additive\",\n");
+	S += TEXT("              \"alignment\":\"velocity_aligned\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"ChipDebris\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":8},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":1.5,\"sizeMin\":2,\"sizeMax\":8,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-150,\"y\":-150,\"z\":100},\"velocityMax\":{\"x\":150,\"y\":150,\"z\":400},\n");
+	S += TEXT("            \"color\":{\"r\":0.5,\"g\":0.5,\"b\":0.4}},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":1},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"directional_burst\",\"blendMode\":\"translucent\",\"sortOrder\":3}},\n");
+	S += TEXT("    {\"name\":\"DustPuff\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":5},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":1.5,\"sizeMin\":10,\"sizeMax\":30,\n");
+	S += TEXT("            \"color\":{\"r\":0.4,\"g\":0.35,\"b\":0.3,\"a\":0.4}},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"simple_sprite_burst\",\"blendMode\":\"translucent\",\"sortOrder\":0}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 7: Campfire (rich templates + material override)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Campfire - flames+embers+smoke using rich templates with material overrides\",\n");
+	S += TEXT("  \"_templates_used\": \"fountain (gravity), spark (gravity+drag), smoke, minimal (light)\",\n");
+	S += TEXT("  \"systemName\": \"Campfire\",\n");
+	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"warmupTime\": 2,\n");
+	S += TEXT("  \"emitters\": [\n");
 	S += TEXT("    {\"name\":\"Flames\",\"spawn\":{\"mode\":\"rate\",\"rate\":20},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":15,\"sizeMax\":40,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-30,\"y\":-30,\"z\":100},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":30,\"y\":30,\"z\":250},\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-30,\"y\":-30,\"z\":100},\"velocityMax\":{\"x\":30,\"y\":30,\"z\":250},\n");
 	S += TEXT("            \"color\":{\"r\":3,\"g\":1.5,\"b\":0.2}},\n");
-	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":100},\"drag\":3,\n");
-	S += TEXT("              \"sizeScaleEnd\":0.1,\"opacityEnd\":0,\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":100},\"sizeScaleEnd\":0.1,\"opacityEnd\":0,\n");
 	S += TEXT("              \"useColorOverLife\":true,\"colorEnd\":{\"r\":1,\"g\":0.1,\"b\":0}},\n");
-	S += TEXT("     \"render\":{\"emitterTemplate\":\"flame\",\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"fountain\",\n");
 	S += TEXT("              \"materialPath\":\"/Game/NiagaraExamples/Materials/MI_Flames\",\"sortOrder\":5}},\n");
-	// Embers — spark template (gravity+drag naturally supported)
 	S += TEXT("    {\"name\":\"Embers\",\"spawn\":{\"mode\":\"rate\",\"rate\":8},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":1,\"sizeMax\":4,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-20,\"y\":-20,\"z\":50},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":20,\"y\":20,\"z\":150},\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-20,\"y\":-20,\"z\":50},\"velocityMax\":{\"x\":20,\"y\":20,\"z\":150},\n");
 	S += TEXT("            \"color\":{\"r\":2,\"g\":0.8,\"b\":0.1}},\n");
 	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":30},\"drag\":0.5,\"opacityEnd\":0},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"spark\",\"sortOrder\":7}},\n");
-	// Smoke — NE_Smoke (noise+rotation built-in)
 	S += TEXT("    {\"name\":\"Smoke\",\"spawn\":{\"mode\":\"rate\",\"rate\":3},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":2,\"lifetimeMax\":5,\"sizeMin\":20,\"sizeMax\":50,\n");
-	S += TEXT("            \"velocityMin\":{\"x\":-15,\"y\":-15,\"z\":40},\n");
-	S += TEXT("            \"velocityMax\":{\"x\":15,\"y\":15,\"z\":80},\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-15,\"y\":-15,\"z\":40},\"velocityMax\":{\"x\":15,\"y\":15,\"z\":80},\n");
 	S += TEXT("            \"color\":{\"r\":0.1,\"g\":0.08,\"b\":0.06,\"a\":0.3}},\n");
 	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":20},\"drag\":1,\n");
-	S += TEXT("              \"sizeScaleStart\":0.5,\"sizeScaleEnd\":4,\"opacityStart\":0.3,\"opacityEnd\":0},\n");
+	S += TEXT("              \"sizeScaleEnd\":4,\"opacityEnd\":0},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"smoke\",\"sortOrder\":0}},\n");
-	// Warm light
 	S += TEXT("    {\"name\":\"WarmLight\",\"spawn\":{\"mode\":\"rate\",\"rate\":3},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.2,\"lifetimeMax\":0.5,\"color\":{\"r\":2,\"g\":1,\"b\":0.3}},\n");
 	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":3,\"lightIntensity\":2}}\n");
@@ -416,4 +545,15 @@ FString UHktVFXGeneratorFunctionLibrary::McpDumpTemplateParameters(const FString
 	}
 
 	return Subsystem->DumpTemplateParameters(RendererType);
+}
+
+FString UHktVFXGeneratorFunctionLibrary::McpDumpAllTemplateParameters()
+{
+	UHktVFXGeneratorSubsystem* Subsystem = GetSubsystem();
+	if (!Subsystem)
+	{
+		return TEXT("ERROR: VFXGenerator subsystem not available");
+	}
+
+	return Subsystem->DumpAllTemplateParameters();
 }

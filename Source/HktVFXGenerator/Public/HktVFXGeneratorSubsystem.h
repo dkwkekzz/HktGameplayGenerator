@@ -54,6 +54,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator")
 	FString DumpTemplateParameters(const FString& RendererType = TEXT("sprite"));
 
+	/** 모든 템플릿 에미터의 RapidIterationParameter 덤프 (Phase 2 문서화용). */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator")
+	FString DumpAllTemplateParameters();
+
 private:
 	FString ResolveOutputDir(const FString& OutputDir) const;
 

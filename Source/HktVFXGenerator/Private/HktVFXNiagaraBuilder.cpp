@@ -11,6 +11,7 @@
 #include "NiagaraSpriteRendererProperties.h"
 #include "NiagaraRibbonRendererProperties.h"
 #include "NiagaraLightRendererProperties.h"
+#include "NiagaraMeshRendererProperties.h"
 
 #include "NiagaraSystemFactoryNew.h"
 #include "NiagaraEditorUtilities.h"
@@ -185,23 +186,30 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 
 // ============================================================================
 // 스폰 설정 — EmitterUpdateScript에 기록
+// 템플릿에 따라 SpawnBurst_Instantaneous 또는 SpawnRate 모듈이 존재.
+// 양쪽 다 설정 시도 — 해당 모듈이 있는 쪽만 적용됨.
 // ============================================================================
 void FHktVFXNiagaraBuilder::SetupSpawnModule(UNiagaraSystem* System, int32 EmitterIndex,
 	const FHktVFXEmitterSpawnConfig& Config)
 {
-	const FString Module = TEXT("SpawnBurst_Instantaneous");
-
 	if (Config.Mode == TEXT("burst"))
 	{
-		SetEmitterParamInt(System, EmitterIndex, Module, TEXT("Spawn Count"), Config.BurstCount);
+		// SpawnBurst_Instantaneous 모듈 (burst 템플릿)
+		SetEmitterParamInt(System, EmitterIndex,
+			TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Count"), Config.BurstCount);
 
 		if (Config.BurstDelay > 0.f)
 		{
-			SetEmitterParamFloat(System, EmitterIndex, Module, TEXT("Spawn Time"), Config.BurstDelay);
+			SetEmitterParamFloat(System, EmitterIndex,
+				TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Time"), Config.BurstDelay);
 		}
 	}
-	// rate 모드는 SpawnRate 모듈이 필요 — SimpleSpriteBurst 템플릿에는 없음
-	// rate 모드용 별도 템플릿이 필요
+	else if (Config.Mode == TEXT("rate"))
+	{
+		// SpawnRate 모듈 (rate 템플릿: fountain, blowing_particles, hanging_particulates 등)
+		SetEmitterParamFloat(System, EmitterIndex,
+			TEXT("SpawnRate"), TEXT("SpawnRate"), Config.Rate);
+	}
 }
 
 // ============================================================================
@@ -226,21 +234,31 @@ void FHktVFXNiagaraBuilder::SetupInitializeModule(UNiagaraSystem* System, int32 
 
 // ============================================================================
 // 업데이트 모듈 설정
+// 모든 가능한 모듈 파라미터를 시도 — 해당 모듈이 있는 템플릿에만 적용.
+//
+// 모듈별 존재 여부 (템플릿):
+//   ScaleColor            — 대부분 (SimpleSpriteBurst, Fountain, OmniBurst 등)
+//   SolveForcesAndVelocity — 대부분
+//   GravityForce          — Fountain, OmniBurst, DirectionalBurst, ConfettiBurst, UpwardMeshBurst
+//   Drag                  — OmniBurst, DirectionalBurst, ConfettiBurst
+//   CurlNoiseForce        — BlowingParticles, HangingParticulates
+//   SpriteRotationRate    — ConfettiBurst
+//   ScaleSpriteSize       — 일부 템플릿
+//   ScaleMeshSize         — UpwardMeshBurst
 // ============================================================================
 void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex,
 	const FHktVFXEmitterUpdateConfig& Config)
 {
-	// ScaleColor — Scale RGB / Scale RGBA (Particle SpawnScript + UpdateScript)
-	// Opacity 조절: Scale RGBA의 W 컴포넌트로 투명도 적용
+	// --- ScaleColor 모듈 ---
+	// Opacity → Scale RGBA
 	if (Config.OpacityStart != 1.f || Config.OpacityEnd != 0.f)
 	{
-		// Scale RGBA = (R, G, B, A) 스케일
 		FVector4 ScaleRGBA(1.f, 1.f, 1.f, Config.OpacityStart);
 		SetParticleParamVec4(System, EmitterIndex,
 			TEXT("ScaleColor"), TEXT("Scale RGBA"), ScaleRGBA);
 	}
 
-	// Color Over Life — Scale RGB로 적용
+	// Color Over Life → Scale RGB
 	if (Config.bUseColorOverLife)
 	{
 		FVector ScaleRGB(Config.ColorEnd.R, Config.ColorEnd.G, Config.ColorEnd.B);
@@ -248,23 +266,91 @@ void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 Emi
 			TEXT("ScaleColor"), TEXT("Scale RGB"), ScaleRGB);
 	}
 
-	// SolveForcesAndVelocity — Speed Limit
-	// Gravity, Drag 등은 이 템플릿에 모듈이 없으므로 직접 설정 불가
-	// Speed Limit으로 간접 제어
+	// --- GravityForce 모듈 ---
+	// Fountain, OmniBurst, DirectionalBurst, ConfettiBurst, UpwardMeshBurst에 존재
+	if (!Config.Gravity.IsNearlyZero(1.f))
+	{
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Gravity Force"), TEXT("Gravity"), Config.Gravity);
+	}
+
+	// --- Drag 모듈 ---
+	// OmniBurst, DirectionalBurst, ConfettiBurst에 존재
 	if (Config.Drag > 0.f)
 	{
-		// 높은 드래그 → 낮은 스피드 리밋으로 근사
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Drag"), TEXT("Drag"), Config.Drag);
+	}
+
+	// --- CurlNoiseForce 모듈 ---
+	// BlowingParticles, HangingParticulates에 존재
+	if (Config.NoiseStrength > 0.f)
+	{
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Curl Noise Force"), TEXT("Noise Strength"), Config.NoiseStrength);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Curl Noise Force"), TEXT("Noise Frequency"), Config.NoiseFrequency);
+	}
+
+	// --- SpriteRotationRate 모듈 ---
+	// ConfettiBurst에 존재
+	if (Config.RotationRateMin != 0.f || Config.RotationRateMax != 0.f)
+	{
+		float AvgRate = (Config.RotationRateMin + Config.RotationRateMax) * 0.5f;
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Sprite Rotation Rate"), TEXT("Rotation Rate"), AvgRate);
+	}
+
+	// --- ScaleSpriteSize / ScaleMeshSize 모듈 ---
+	// Size over life
+	if (Config.SizeScaleStart != 1.f || Config.SizeScaleEnd != 1.f)
+	{
+		// ScaleSpriteSize.Scale Factor (Vec2)
+		// ScaleMeshSize.Scale Factor (Vec3) — 메시 버전
+		// 여기서는 둘 다 시도
+		FVector SizeScale(Config.SizeScaleEnd, Config.SizeScaleEnd, Config.SizeScaleEnd);
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Scale Sprite Size"), TEXT("Scale Factor"), FVector(Config.SizeScaleEnd, Config.SizeScaleEnd, 0.f));
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Scale Mesh Size"), TEXT("Scale Factor"), SizeScale);
+	}
+
+	// --- SolveForcesAndVelocity 모듈 ---
+	// Speed Limit — 거의 모든 템플릿에 존재
+	// Drag 모듈이 없는 SimpleSpriteBurst에서 Speed Limit으로 간접 감속
+	if (Config.Drag > 0.f)
+	{
 		float SpeedLimit = FMath::Max(100.f / Config.Drag, 10.f);
 		SetParticleParamFloat(System, EmitterIndex,
 			TEXT("SolveForcesAndVelocity"), TEXT("Speed Limit"), SpeedLimit);
 	}
 
-	// EmitterState — Loop Duration (EmitterUpdateScript)
-	// 이 값으로 에미터 지속 시간 제어 가능
+	// --- Point Attraction 모듈 ---
+	// 일부 커스텀 템플릿에 존재 가능
+	if (Config.AttractionStrength > 0.f)
+	{
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Point Attraction Force"), TEXT("Attraction Strength"), Config.AttractionStrength);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Point Attraction Force"), TEXT("Attraction Radius"), Config.AttractionRadius);
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Point Attraction Force"), TEXT("Attraction Position Offset"),
+			Config.AttractionPosition);
+	}
+
+	// --- Vortex Velocity 모듈 ---
+	if (Config.VortexStrength > 0.f)
+	{
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Vortex Velocity"), TEXT("Vortex Strength"), Config.VortexStrength);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Vortex Velocity"), TEXT("Vortex Radius"), Config.VortexRadius);
+	}
 }
 
 // ============================================================================
 // 렌더러 설정
+// 렌더러 타입은 Config가 아닌 실제 템플릿의 렌더러를 기반으로 감지.
 // ============================================================================
 void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterIndex,
 	const FHktVFXEmitterRenderConfig& Config)
@@ -275,24 +361,20 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 	FVersionedNiagaraEmitterData* EmitterData = EmitterHandles[EmitterIndex].GetEmitterData();
 	if (!EmitterData) return;
 
-	const auto& RendererProperties = EmitterData->GetRenderers();
-	if (RendererProperties.Num() == 0) return;
-
-	UNiagaraRendererProperties* Renderer = RendererProperties[0];
-	Renderer->SortOrderHint = Config.SortOrder;
-
-	if (Config.RendererType == TEXT("sprite"))
+	// 모든 렌더러에 SortOrder 설정
+	for (UNiagaraRendererProperties* Renderer : EmitterData->GetRenderers())
 	{
-		if (UNiagaraSpriteRendererProperties* SR =
-			Cast<UNiagaraSpriteRendererProperties>(Renderer))
+		Renderer->SortOrderHint = Config.SortOrder;
+
+		// --- Sprite 렌더러 ---
+		if (UNiagaraSpriteRendererProperties* SR = Cast<UNiagaraSpriteRendererProperties>(Renderer))
 		{
 			if (Config.Alignment == TEXT("velocity_aligned"))
 			{
 				SR->Alignment = ENiagaraSpriteAlignment::VelocityAligned;
 			}
 
-			// EmitterTemplate이 지정되면 템플릿의 기본 머티리얼을 유지 (이미 텍스처 포함)
-			// 그렇지 않으면 BlendMode 기반 머티리얼 적용
+			// EmitterTemplate이 지정되면 템플릿 머티리얼 유지 (텍스처 포함)
 			if (Config.EmitterTemplate.IsEmpty())
 			{
 				UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
@@ -302,21 +384,15 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 				}
 			}
 		}
-	}
-	else if (Config.RendererType == TEXT("light"))
-	{
-		if (UNiagaraLightRendererProperties* LR =
-			Cast<UNiagaraLightRendererProperties>(Renderer))
+		// --- Light 렌더러 ---
+		else if (UNiagaraLightRendererProperties* LR = Cast<UNiagaraLightRendererProperties>(Renderer))
 		{
 			LR->RadiusScale = Config.LightRadiusScale;
 			LR->ColorAdd = FVector3f(
 				Config.LightIntensity, Config.LightIntensity, Config.LightIntensity);
 		}
-	}
-	else if (Config.RendererType == TEXT("ribbon"))
-	{
-		if (UNiagaraRibbonRendererProperties* RR =
-			Cast<UNiagaraRibbonRendererProperties>(Renderer))
+		// --- Ribbon 렌더러 ---
+		else if (UNiagaraRibbonRendererProperties* RR = Cast<UNiagaraRibbonRendererProperties>(Renderer))
 		{
 			if (Config.EmitterTemplate.IsEmpty())
 			{
@@ -326,6 +402,12 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 					RR->Material = Mat;
 				}
 			}
+		}
+		// --- Mesh 렌더러 ---
+		else if (UNiagaraMeshRendererProperties* MR = Cast<UNiagaraMeshRendererProperties>(Renderer))
+		{
+			// Mesh 렌더러는 템플릿의 기본 메시/머티리얼 유지
+			// materialPath로 오버라이드 가능
 		}
 	}
 }

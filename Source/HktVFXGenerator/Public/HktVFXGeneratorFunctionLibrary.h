@@ -81,4 +81,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
 	static FString McpDumpTemplateParameters(
 		const FString& RendererType = TEXT("sprite"));
+
+	/** 모든 템플릿 에미터의 모듈/파라미터 덤프 (Phase 2 문서화용). */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
+	static FString McpDumpAllTemplateParameters();
 };

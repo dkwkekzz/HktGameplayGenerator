@@ -6,6 +6,7 @@
 #include "NiagaraEmitter.h"
 #include "NiagaraScript.h"
 #include "NiagaraParameterStore.h"
+#include "NiagaraRendererProperties.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktVFXGenerator, Log, All);
 
@@ -343,6 +344,75 @@ FString UHktVFXGeneratorSubsystem::DumpTemplateParameters(const FString& Rendere
 	// EmitterSpawn/Update 스크립트도 확인
 	DumpScript(TEXT("EmitterSpawnScript"), EmitterData->EmitterSpawnScriptProps.Script);
 	DumpScript(TEXT("EmitterUpdateScript"), EmitterData->EmitterUpdateScriptProps.Script);
+
+	return Result;
+}
+
+FString UHktVFXGeneratorSubsystem::DumpAllTemplateParameters()
+{
+	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+	FString Result;
+
+	Result += TEXT("=== All Template Emitter Parameters ===\n\n");
+
+	for (const auto& Pair : Settings->EmitterTemplates)
+	{
+		const FString& Key = Pair.Key;
+		const FSoftObjectPath& Path = Pair.Value;
+
+		Result += FString::Printf(TEXT("### Template: '%s' ###\n"), *Key);
+		Result += FString::Printf(TEXT("Path: %s\n"), *Path.GetAssetPathString());
+
+		if (!Path.IsValid())
+		{
+			Result += TEXT("  (invalid path)\n\n");
+			continue;
+		}
+
+		UNiagaraEmitter* Emitter = Cast<UNiagaraEmitter>(Path.TryLoad());
+		if (!Emitter)
+		{
+			Result += TEXT("  (asset not found)\n\n");
+			continue;
+		}
+
+		FVersionedNiagaraEmitterData* EmitterData = Emitter->GetLatestEmitterData();
+		if (!EmitterData)
+		{
+			Result += TEXT("  (no emitter data)\n\n");
+			continue;
+		}
+
+		auto DumpScript = [&](const TCHAR* ScriptName, UNiagaraScript* Script)
+		{
+			if (!Script) return;
+
+			TArray<FNiagaraVariable> Params;
+			Script->RapidIterationParameters.GetParameters(Params);
+
+			if (Params.Num() == 0) return;
+
+			Result += FString::Printf(TEXT("  [%s]\n"), ScriptName);
+			for (const FNiagaraVariable& Param : Params)
+			{
+				Result += FString::Printf(TEXT("    %s : %s\n"),
+					*Param.GetName().ToString(), *Param.GetType().GetName());
+			}
+		};
+
+		DumpScript(TEXT("SpawnScript"), EmitterData->SpawnScriptProps.Script);
+		DumpScript(TEXT("UpdateScript"), EmitterData->UpdateScriptProps.Script);
+		DumpScript(TEXT("EmitterSpawnScript"), EmitterData->EmitterSpawnScriptProps.Script);
+		DumpScript(TEXT("EmitterUpdateScript"), EmitterData->EmitterUpdateScriptProps.Script);
+
+		// Renderer 정보
+		for (UNiagaraRendererProperties* Renderer : EmitterData->GetRenderers())
+		{
+			Result += FString::Printf(TEXT("  [Renderer] %s\n"), *Renderer->GetClass()->GetName());
+		}
+
+		Result += TEXT("\n");
+	}
 
 	return Result;
 }
