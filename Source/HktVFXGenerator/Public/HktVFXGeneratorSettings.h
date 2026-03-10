@@ -50,6 +50,16 @@ public:
 	FSoftObjectPath TranslucentMaterial;
 
 	// ============================================================================
+	// 동적 모듈 주입용 스크립트 경로
+	// 템플릿에 없는 모듈을 Config 요구에 따라 동적으로 추가할 때 사용.
+	// key: 모듈 이름, value: NiagaraScript 에셋 경로
+	// ============================================================================
+
+	UPROPERTY(Config, EditAnywhere, Category = "Modules",
+		meta = (AllowedClasses = "/Script/Niagara.NiagaraScript"))
+	TMap<FString, FSoftObjectPath> ModuleScriptPaths;
+
+	// ============================================================================
 	// 출력
 	// ============================================================================
 

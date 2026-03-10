@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "HktVFXNiagaraConfig.h"
+#include "NiagaraCommon.h"
 
 class UNiagaraSystem;
 class UNiagaraEmitter;
@@ -38,6 +39,12 @@ private:
 
 	UMaterialInterface* GetVFXMaterial(const FString& BlendMode);
 	void ApplyMaterialOverride(UNiagaraSystem* System, int32 EmitterIndex, const FString& MaterialPath);
+
+	// 동적 모듈 주입 — 템플릿에 없는 모듈을 Config 요구에 따라 그래프에 추가
+	bool AddModuleToEmitter(UNiagaraSystem* System, int32 EmitterIndex,
+		ENiagaraScriptUsage ScriptUsage, const FString& ModuleScriptPath);
+	void EnsureRequiredModules(UNiagaraSystem* System, int32 EmitterIndex,
+		const FHktVFXEmitterUpdateConfig& Config);
 
 	// Particle-level 파라미터 (SpawnScript + UpdateScript)
 	void SetParticleParamFloat(UNiagaraSystem* System, int32 EmitterIndex,

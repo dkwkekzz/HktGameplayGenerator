@@ -118,6 +118,40 @@ UHktVFXGeneratorSettings::UHktVFXGeneratorSettings()
 	FallbackEmitterTemplate =
 		FSoftObjectPath(TEXT("/Niagara/DefaultAssets/Templates/Emitters/SimpleSpriteBurst.SimpleSpriteBurst"));
 
+	// =========================================================================
+	// 동적 모듈 주입용 스크립트 경로
+	// 템플릿에 해당 모듈이 없을 때, Config 요구에 따라 그래프에 동적 추가.
+	// 경로: /Niagara/Modules/{ModuleName}.{ModuleName}
+	// =========================================================================
+
+	// 힘/물리 모듈
+	ModuleScriptPaths.Add(TEXT("GravityForce"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/GravityForce.GravityForce")));
+	ModuleScriptPaths.Add(TEXT("Drag"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/Drag.Drag")));
+	ModuleScriptPaths.Add(TEXT("CurlNoiseForce"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/CurlNoiseForce.CurlNoiseForce")));
+	ModuleScriptPaths.Add(TEXT("VortexVelocity"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/VortexVelocity.VortexVelocity")));
+	ModuleScriptPaths.Add(TEXT("PointAttractionForce"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/PointAttractionForce.PointAttractionForce")));
+	ModuleScriptPaths.Add(TEXT("WindForce"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/WindForce.WindForce")));
+	ModuleScriptPaths.Add(TEXT("AccelerationForce"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/AccelerationForce.AccelerationForce")));
+
+	// 크기/회전 모듈
+	ModuleScriptPaths.Add(TEXT("ScaleSpriteSize"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/ScaleSpriteSize.ScaleSpriteSize")));
+	ModuleScriptPaths.Add(TEXT("ScaleMeshSize"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/ScaleMeshSize.ScaleMeshSize")));
+	ModuleScriptPaths.Add(TEXT("SpriteRotationRate"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/SpriteRotationRate.SpriteRotationRate")));
+	ModuleScriptPaths.Add(TEXT("ScaleColor"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/ScaleColor.ScaleColor")));
+	ModuleScriptPaths.Add(TEXT("SolveForcesAndVelocity"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/SolveForcesAndVelocity.SolveForcesAndVelocity")));
+
 	// === 기본 머티리얼 (NiagaraExamples) ===
 	AdditiveMaterial =
 		FSoftObjectPath(TEXT("/Game/NiagaraExamples/Materials/MasterMaterials/M_SimpleAdditive.M_SimpleAdditive"));

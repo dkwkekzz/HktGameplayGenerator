@@ -9,7 +9,7 @@ public class HktVFXGenerator : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// HktVFX Public 헤더 접근
+		// HktVFX Public ?�더 ?�근
 		PublicIncludePaths.AddRange(
 			new string[] {
 				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktVFX", "Public"),

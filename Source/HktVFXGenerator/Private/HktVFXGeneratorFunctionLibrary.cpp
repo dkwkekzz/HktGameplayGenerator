@@ -64,7 +64,48 @@ FString UHktVFXGeneratorFunctionLibrary::McpBuildNiagaraSystem(
 	}
 
 	UE_LOG(LogHktVFXMcp, Log, TEXT("MCP: Built Niagara system: %s"), *Result->GetPathName());
-	return MakeSuccessResponse(Result->GetPathName());
+
+	// Config를 파싱하여 텍스처 생성 요청 수집
+	FHktVFXNiagaraConfig ParsedConfig;
+	FHktVFXNiagaraConfig::FromJson(JsonConfig, ParsedConfig);
+
+	FString Output;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	Writer->WriteObjectStart();
+	Writer->WriteValue(TEXT("success"), true);
+	Writer->WriteValue(TEXT("assetPath"), Result->GetPathName());
+
+	// 텍스처 생성 요청이 있으면 포함
+	bool bHasTextureRequests = false;
+	for (const auto& E : ParsedConfig.Emitters)
+	{
+		if (!E.Render.TexturePrompt.IsEmpty())
+		{
+			bHasTextureRequests = true;
+			break;
+		}
+	}
+	if (bHasTextureRequests)
+	{
+		Writer->WriteArrayStart(TEXT("textureRequests"));
+		for (const auto& E : ParsedConfig.Emitters)
+		{
+			if (E.Render.TexturePrompt.IsEmpty()) continue;
+			Writer->WriteObjectStart();
+			Writer->WriteValue(TEXT("emitterName"), E.Name);
+			Writer->WriteValue(TEXT("prompt"), E.Render.TexturePrompt);
+			if (!E.Render.TextureNegativePrompt.IsEmpty())
+				Writer->WriteValue(TEXT("negativePrompt"), E.Render.TextureNegativePrompt);
+			Writer->WriteValue(TEXT("type"), E.Render.TextureType.IsEmpty() ? TEXT("particle_sprite") : E.Render.TextureType);
+			Writer->WriteValue(TEXT("resolution"), E.Render.TextureResolution > 0 ? E.Render.TextureResolution : 256);
+			Writer->WriteObjectEnd();
+		}
+		Writer->WriteArrayEnd();
+	}
+
+	Writer->WriteObjectEnd();
+	Writer->Close();
+	return Output;
 }
 
 FString UHktVFXGeneratorFunctionLibrary::McpBuildPresetExplosion(
@@ -213,22 +254,32 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  arc             - Electric arc ribbon.\n\n");
 
 	// ===================================================================
+	S += TEXT("[DYNAMIC MODULE INJECTION]\n");
+	S += TEXT("The builder automatically injects missing modules into the emitter graph.\n");
+	S += TEXT("If a template does NOT have a module you need, the builder adds it dynamically.\n");
+	S += TEXT("This means ANY template can use ANY module combination — no limitations!\n");
+	S += TEXT("Example: fountain template + vortexStrength → VortexVelocity module is auto-injected.\n\n");
+
 	S += TEXT("[MODULE-PARAMETER MAP]\n");
 	S += TEXT("Which config fields apply to which modules:\n\n");
 
 	S += TEXT("  spawn.mode='burst'  → SpawnBurst_Instantaneous (burstCount, burstDelay)\n");
-	S += TEXT("  spawn.mode='rate'   → SpawnRate (rate) — requires rate-capable template\n\n");
+	S += TEXT("  spawn.mode='rate'   → SpawnRate (rate)\n\n");
 
 	S += TEXT("  init.*              → InitializeParticle (Lifetime, Uniform Sprite Size, Color)\n\n");
 
-	S += TEXT("  update.gravity      → Gravity Force module (omnidirectional_burst, fountain, confetti_burst, etc.)\n");
-	S += TEXT("  update.drag         → Drag module (omnidirectional_burst, directional_burst, confetti_burst)\n");
-	S += TEXT("  update.noiseStrength→ Curl Noise Force module (blowing_particles, hanging_particulates)\n");
-	S += TEXT("  update.rotationRate → Sprite Rotation Rate module (confetti_burst)\n");
+	S += TEXT("  update.gravity      → Gravity Force module (auto-injected if missing)\n");
+	S += TEXT("  update.drag         → Drag module (auto-injected if missing)\n");
+	S += TEXT("  update.noiseStrength→ Curl Noise Force module (auto-injected if missing)\n");
+	S += TEXT("  update.rotationRate → Sprite Rotation Rate module (auto-injected if missing)\n");
 	S += TEXT("  update.sizeScale*   → Scale Sprite Size / Scale Mesh Size module\n");
 	S += TEXT("  update.opacity/color→ ScaleColor module (Scale RGBA, Scale RGB)\n");
-	S += TEXT("  update.attraction*  → Point Attraction Force module\n");
-	S += TEXT("  update.vortex*      → Vortex Velocity module\n\n");
+	S += TEXT("  update.attraction*  → Point Attraction Force module (auto-injected if missing)\n");
+	S += TEXT("  update.vortex*      → Vortex Velocity module (auto-injected if missing)\n");
+	S += TEXT("  update.vortexAxis   → Vortex Velocity rotation axis (default Z-up)\n");
+	S += TEXT("  update.windForce    → Wind Force module (auto-injected if missing)\n");
+	S += TEXT("  update.accelerationForce → Acceleration Force module (constant accel, auto-injected)\n");
+	S += TEXT("  update.speedLimit   → SolveForcesAndVelocity Speed Limit\n\n");
 
 	// ===================================================================
 	S += TEXT("[TEMPLATE SELECTION GUIDE]\n");
@@ -240,6 +291,9 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  Need continuous spawn?   → fountain, blowing_particles, hanging_particulates\n");
 	S += TEXT("  Need ribbon trail?       → ribbon\n");
 	S += TEXT("  Need mesh debris?        → upward_mesh_burst\n");
+	S += TEXT("  Need vortex/swirl?       → ANY template + vortexStrength (auto-injected)\n");
+	S += TEXT("  Need point attraction?   → ANY template + attractionStrength (auto-injected)\n");
+	S += TEXT("  Need constant accel?     → ANY template + accelerationForce (auto-injected)\n");
 	S += TEXT("  Need light?              → minimal (rendererType='light')\n");
 	S += TEXT("  Need rich visuals?       → spark, smoke, explosion, core, debris (NiagaraExamples)\n\n");
 
@@ -271,6 +325,11 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  Gravity Z: -980 (earth), -490 (half), 0 (zero-g), +50~200 (rising)\n");
 	S += TEXT("  Drag: 0 (none), 0.5-2 (light), 2-5 (heavy), 5+ (stops quickly)\n");
 	S += TEXT("  NoiseStrength: 10-50 (subtle), 50-200 (turbulent), 200+ (chaotic)\n");
+	S += TEXT("  VortexStrength: 50-200 (gentle swirl), 200-500 (tornado), 500+ (violent)\n");
+	S += TEXT("  VortexRadius: 50-100 (tight), 100-300 (medium), 300+ (wide orbit)\n");
+	S += TEXT("  AttractionStrength: 50-200 (gentle pull), 200-1000 (strong implosion)\n");
+	S += TEXT("  AccelerationForce: like gravity but any direction. 100-500 (mild), 500+ (strong)\n");
+	S += TEXT("  WindForce: 50-200 (breeze), 200-500 (gusty), 500+ (storm)\n");
 	S += TEXT("  SortOrder: higher = renders on top. Light=15, Glow=10, Sparks=5, Smoke=0\n\n");
 
 	// ===================================================================
@@ -283,7 +342,29 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  - sizeScaleEnd>1 = particle grows. sizeScaleEnd<1 = shrinks.\n");
 	S += TEXT("  - For looping: spawn.mode='rate' + looping=true + warmupTime.\n");
 	S += TEXT("  - Only set non-default values. Omitted fields use sensible defaults.\n");
-	S += TEXT("  - Use McpDumpAllTemplateParameters() to see actual module params at runtime.\n\n");
+	S += TEXT("  - Use McpDumpAllTemplateParameters() to see actual module params at runtime.\n");
+	S += TEXT("  - Combine vortex+attraction for spiral implosion (portals, black holes).\n");
+	S += TEXT("  - accelerationForce for constant thrust (missiles, jets, ascending spirits).\n");
+	S += TEXT("  - vortexAxis: default (0,0,1)=Z. Set (1,0,0) for horizontal tornado.\n\n");
+
+	// ===================================================================
+	S += TEXT("[TEXTURE GENERATION]\n");
+	S += TEXT("When a VFX needs a custom texture (not available in NiagaraExamples), add:\n");
+	S += TEXT("  render.texturePrompt = SD prompt for texture generation\n");
+	S += TEXT("  render.textureNegativePrompt = negative prompt (optional)\n");
+	S += TEXT("  render.textureType = particle_sprite | flipbook_4x4 | flipbook_8x8 | noise | gradient\n");
+	S += TEXT("  render.textureResolution = 256 | 512 | 1024\n\n");
+
+	S += TEXT("The builder returns textureRequests[] in the response. External tool generates them.\n");
+	S += TEXT("SD Prompt tips by textureType:\n");
+	S += TEXT("  particle_sprite: 'centered soft circle, alpha gradient edge, black background, VFX sprite'\n");
+	S += TEXT("  flipbook_4x4: '4x4 grid animation, explosion sequence, black background, sprite sheet'\n");
+	S += TEXT("  flipbook_8x8: '8x8 grid animation, smoke sequence, black background, sprite sheet'\n");
+	S += TEXT("  noise: 'tileable perlin noise, seamless, grayscale'\n");
+	S += TEXT("  gradient: 'horizontal gradient ramp, left white right black, smooth falloff'\n\n");
+
+	S += TEXT("Negative prompt base: 'text, watermark, frame, border, realistic photo, face'\n");
+	S += TEXT("Always add to negative: type-specific (e.g., 'grid lines' for flipbooks).\n\n");
 
 	// ===================================================================
 	S += TEXT("[JSON SCHEMA]\n");
@@ -489,6 +570,123 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXExampleConfigs()
 	S += TEXT("    {\"name\":\"WarmLight\",\"spawn\":{\"mode\":\"rate\",\"rate\":3},\n");
 	S += TEXT("     \"init\":{\"lifetimeMin\":0.2,\"lifetimeMax\":0.5,\"color\":{\"r\":2,\"g\":1,\"b\":0.3}},\n");
 	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":3,\"lightIntensity\":2}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 8: Magic Portal (Vortex + Point Attraction + Curl Noise)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Magic Portal - swirling particles pulled inward with vortex + attraction\",\n");
+	S += TEXT("  \"_templates_used\": \"hanging_particulates (all modules auto-injected), core, minimal(light)\",\n");
+	S += TEXT("  \"systemName\": \"MagicPortal_Arcane\",\n");
+	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"warmupTime\": 3,\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"VortexRing\",\"spawn\":{\"mode\":\"rate\",\"rate\":40},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":3,\"sizeMax\":8,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-100,\"y\":-100,\"z\":-20},\"velocityMax\":{\"x\":100,\"y\":100,\"z\":20},\n");
+	S += TEXT("            \"color\":{\"r\":0.5,\"g\":0.2,\"b\":3}},\n");
+	S += TEXT("     \"update\":{\"vortexStrength\":300,\"vortexRadius\":150,\n");
+	S += TEXT("              \"attractionStrength\":200,\"attractionRadius\":250,\n");
+	S += TEXT("              \"noiseStrength\":30,\"noiseFrequency\":2,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"hanging_particulates\",\"blendMode\":\"additive\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"CoreGlow\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":2},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":1,\"sizeMin\":50,\"sizeMax\":100,\"color\":{\"r\":2,\"g\":0.5,\"b\":5}},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":1.5,\"opacityEnd\":0.5},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"core\",\"sortOrder\":10}},\n");
+	S += TEXT("    {\"name\":\"PortalLight\",\"spawn\":{\"mode\":\"rate\",\"rate\":2},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"color\":{\"r\":0.5,\"g\":0.2,\"b\":3}},\n");
+	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":4,\"lightIntensity\":2}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 9: Tornado (Vortex + Wind + Acceleration)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Tornado - strong vortex with upward acceleration and wind-blown debris\",\n");
+	S += TEXT("  \"_templates_used\": \"fountain (all force modules auto-injected)\",\n");
+	S += TEXT("  \"systemName\": \"Tornado_Dust\",\n");
+	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"warmupTime\": 3,\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"MainFunnel\",\"spawn\":{\"mode\":\"rate\",\"rate\":80},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":2,\"lifetimeMax\":5,\"sizeMin\":5,\"sizeMax\":25,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-50,\"y\":-50,\"z\":20},\"velocityMax\":{\"x\":50,\"y\":50,\"z\":80},\n");
+	S += TEXT("            \"color\":{\"r\":0.5,\"g\":0.4,\"b\":0.3,\"a\":0.6}},\n");
+	S += TEXT("     \"update\":{\"vortexStrength\":500,\"vortexRadius\":200,\n");
+	S += TEXT("              \"accelerationForce\":{\"x\":0,\"y\":0,\"z\":150},\n");
+	S += TEXT("              \"drag\":0.5,\"sizeScaleEnd\":2,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"fountain\",\"blendMode\":\"translucent\",\"sortOrder\":3}},\n");
+	S += TEXT("    {\"name\":\"FlyingDebris\",\"spawn\":{\"mode\":\"rate\",\"rate\":10},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":3,\"sizeMax\":15,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-200,\"y\":-200,\"z\":0},\"velocityMax\":{\"x\":200,\"y\":200,\"z\":100},\n");
+	S += TEXT("            \"color\":{\"r\":0.4,\"g\":0.35,\"b\":0.25}},\n");
+	S += TEXT("     \"update\":{\"vortexStrength\":400,\"vortexRadius\":250,\n");
+	S += TEXT("              \"gravity\":{\"x\":0,\"y\":0,\"z\":-300},\"drag\":1},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"fountain\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"DustCloud\",\"spawn\":{\"mode\":\"rate\",\"rate\":15},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":2,\"lifetimeMax\":6,\"sizeMin\":30,\"sizeMax\":80,\n");
+	S += TEXT("            \"color\":{\"r\":0.4,\"g\":0.35,\"b\":0.25,\"a\":0.3}},\n");
+	S += TEXT("     \"update\":{\"windForce\":{\"x\":100,\"y\":50,\"z\":0},\"noiseStrength\":80,\"noiseFrequency\":1,\n");
+	S += TEXT("              \"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"fountain\",\"blendMode\":\"translucent\",\"sortOrder\":0}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 10: Energy Implosion (Attraction + Vortex → Burst)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Energy Implosion - particles gather inward then burst outward\",\n");
+	S += TEXT("  \"_templates_used\": \"hanging_particulates (gather phase), omnidirectional_burst (burst phase), core\",\n");
+	S += TEXT("  \"systemName\": \"EnergyImplosion_Holy\",\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"GatherPhase\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":60},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.8,\"lifetimeMax\":1.5,\"sizeMin\":2,\"sizeMax\":6,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-300,\"y\":-300,\"z\":-300},\"velocityMax\":{\"x\":300,\"y\":300,\"z\":300},\n");
+	S += TEXT("            \"color\":{\"r\":2,\"g\":2,\"b\":0.5}},\n");
+	S += TEXT("     \"update\":{\"attractionStrength\":800,\"attractionRadius\":300,\n");
+	S += TEXT("              \"vortexStrength\":150,\"vortexRadius\":100,\n");
+	S += TEXT("              \"drag\":2,\"opacityEnd\":0.3},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"hanging_particulates\",\"blendMode\":\"additive\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"BurstPhase\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":40,\"burstDelay\":1.0},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":1,\"sizeMin\":3,\"sizeMax\":10,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-600,\"y\":-600,\"z\":-600},\"velocityMax\":{\"x\":600,\"y\":600,\"z\":600},\n");
+	S += TEXT("            \"color\":{\"r\":5,\"g\":4,\"b\":1}},\n");
+	S += TEXT("     \"update\":{\"drag\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"omnidirectional_burst\",\"blendMode\":\"additive\",\"sortOrder\":7}},\n");
+	S += TEXT("    {\"name\":\"FlashCore\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":2,\"burstDelay\":0.9},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.1,\"lifetimeMax\":0.4,\"sizeMin\":100,\"sizeMax\":200,\n");
+	S += TEXT("            \"color\":{\"r\":8,\"g\":6,\"b\":2}},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"core\",\"sortOrder\":10}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 11: Custom Texture VFX (SD texture generation request)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Custom magic rune effect with SD-generated texture\",\n");
+	S += TEXT("  \"_templates_used\": \"simple_sprite_burst, core. Includes texturePrompt for SD generation.\",\n");
+	S += TEXT("  \"systemName\": \"MagicRune_Custom\",\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"RuneSymbol\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":1},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":2,\"sizeMin\":80,\"sizeMax\":120,\n");
+	S += TEXT("            \"color\":{\"r\":1,\"g\":0.3,\"b\":2}},\n");
+	S += TEXT("     \"update\":{\"sizeScaleStart\":0.5,\"sizeScaleEnd\":1.5,\"opacityEnd\":0,\n");
+	S += TEXT("              \"rotationRateMin\":30,\"rotationRateMax\":60},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"simple_sprite_burst\",\"blendMode\":\"additive\",\"sortOrder\":8,\n");
+	S += TEXT("              \"texturePrompt\":\"magical runic circle, glowing arcane symbols, circular mandala pattern, centered, black background, VFX game sprite, high contrast\",\n");
+	S += TEXT("              \"textureNegativePrompt\":\"text, watermark, realistic, photo, frame, blurry\",\n");
+	S += TEXT("              \"textureType\":\"particle_sprite\",\"textureResolution\":512}},\n");
+	S += TEXT("    {\"name\":\"RuneGlow\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":3},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.1,\"lifetimeMax\":0.5,\"sizeMin\":60,\"sizeMax\":150,\n");
+	S += TEXT("            \"color\":{\"r\":3,\"g\":0.5,\"b\":5}},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":2,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"core\",\"sortOrder\":10}}\n");
 	S += TEXT("  ]\n");
 	S += TEXT("}\n");
 

@@ -15,6 +15,11 @@
 
 #include "NiagaraSystemFactoryNew.h"
 #include "NiagaraEditorUtilities.h"
+#include "NiagaraScriptSource.h"
+#include "NiagaraGraph.h"
+#include "NiagaraNodeFunctionCall.h"
+#include "NiagaraNodeOutput.h"
+#include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
 
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -170,8 +175,10 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 	UE_LOG(LogHktVFXBuilder, Log, TEXT("Added emitter '%s' as '%s' (index %d, template='%s', rich=%d)"),
 		*Config.Name, *HandleName, ActualIndex, *TemplateKey, bUsingRichTemplate);
 
-	// Rich 템플릿(NE_)은 이미 모듈이 완비되어 있으므로 RapidIterationParameters 설정은
-	// 적용 가능한 것만 시도 (실패해도 무시). 기본 템플릿은 기존 로직 사용.
+	// 템플릿에 없는 모듈을 Config 요구에 따라 동적 주입
+	EnsureRequiredModules(System, ActualIndex, Config.Update);
+
+	// RapidIterationParameters 설정 (모듈이 없으면 무시됨)
 	SetupSpawnModule(System, ActualIndex, Config.Spawn);
 	SetupInitializeModule(System, ActualIndex, Config.Init);
 	SetupUpdateModules(System, ActualIndex, Config.Update);
@@ -315,14 +322,26 @@ void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 Emi
 			TEXT("Scale Mesh Size"), TEXT("Scale Factor"), SizeScale);
 	}
 
+	// --- Wind Force 모듈 ---
+	if (!Config.WindForce.IsNearlyZero(1.f))
+	{
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Wind Force"), TEXT("Wind Velocity"), Config.WindForce);
+	}
+
 	// --- SolveForcesAndVelocity 모듈 ---
 	// Speed Limit — 거의 모든 템플릿에 존재
-	// Drag 모듈이 없는 SimpleSpriteBurst에서 Speed Limit으로 간접 감속
-	if (Config.Drag > 0.f)
+	if (Config.SpeedLimit > 0.f)
 	{
-		float SpeedLimit = FMath::Max(100.f / Config.Drag, 10.f);
 		SetParticleParamFloat(System, EmitterIndex,
-			TEXT("SolveForcesAndVelocity"), TEXT("Speed Limit"), SpeedLimit);
+			TEXT("SolveForcesAndVelocity"), TEXT("Speed Limit"), Config.SpeedLimit);
+	}
+	else if (Config.Drag > 0.f)
+	{
+		// Drag 기반 간접 속도 제한 (Speed Limit으로 폴백)
+		float DerivedLimit = FMath::Max(100.f / Config.Drag, 10.f);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("SolveForcesAndVelocity"), TEXT("Speed Limit"), DerivedLimit);
 	}
 
 	// --- Point Attraction 모듈 ---
@@ -345,6 +364,21 @@ void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 Emi
 			TEXT("Vortex Velocity"), TEXT("Vortex Strength"), Config.VortexStrength);
 		SetParticleParamFloat(System, EmitterIndex,
 			TEXT("Vortex Velocity"), TEXT("Vortex Radius"), Config.VortexRadius);
+
+		// Vortex 회전축 (기본 Z축이 아닌 경우)
+		if (!(Config.VortexAxis - FVector(0, 0, 1)).IsNearlyZero(0.01f))
+		{
+			SetParticleParamVec3(System, EmitterIndex,
+				TEXT("Vortex Velocity"), TEXT("Vortex Axis"), Config.VortexAxis);
+		}
+	}
+
+	// --- Acceleration Force 모듈 ---
+	// Gravity와 독립적인 일정 가속도 (예: 방사형 가속, 미사일 추진 등)
+	if (!Config.AccelerationForce.IsNearlyZero(1.f))
+	{
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Acceleration Force"), TEXT("Acceleration"), Config.AccelerationForce);
 	}
 }
 
@@ -372,6 +406,12 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 			if (Config.Alignment == TEXT("velocity_aligned"))
 			{
 				SR->Alignment = ENiagaraSpriteAlignment::VelocityAligned;
+			}
+
+			// SubUV 플립북 설정
+			if (Config.SubImageRows > 0 && Config.SubImageColumns > 0)
+			{
+				SR->SubImageSize = FVector2D(Config.SubImageColumns, Config.SubImageRows);
 			}
 
 			// EmitterTemplate이 지정되면 템플릿 머티리얼 유지 (텍스처 포함)
@@ -656,4 +696,132 @@ void FHktVFXNiagaraBuilder::SetEmitterParamInt(
 	}
 
 	UE_LOG(LogHktVFXBuilder, Verbose, TEXT("  SetEmitter %s = %d"), *FullName, Value);
+}
+
+// ============================================================================
+// 동적 모듈 주입
+// 템플릿에 없는 모듈을 Config 요구에 따라 에미터 그래프에 추가.
+// 이미 존재하는 모듈은 중복 추가하지 않음.
+// ============================================================================
+
+bool FHktVFXNiagaraBuilder::AddModuleToEmitter(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	ENiagaraScriptUsage ScriptUsage, const FString& ModuleScriptPath)
+{
+	const auto& Handles = System->GetEmitterHandles();
+	if (!Handles.IsValidIndex(EmitterIndex)) return false;
+
+	FVersionedNiagaraEmitterData* EmitterData = Handles[EmitterIndex].GetEmitterData();
+	if (!EmitterData) return false;
+
+	// 모듈 스크립트 로드
+	UNiagaraScript* ModuleScript = LoadObject<UNiagaraScript>(nullptr, *ModuleScriptPath);
+	if (!ModuleScript)
+	{
+		UE_LOG(LogHktVFXBuilder, Verbose,
+			TEXT("Module script not found (will rely on template): %s"), *ModuleScriptPath);
+		return false;
+	}
+
+	// 대상 스크립트 선택
+	UNiagaraScript* TargetScript = nullptr;
+	switch (ScriptUsage)
+	{
+	case ENiagaraScriptUsage::ParticleUpdateScript:
+		TargetScript = EmitterData->UpdateScriptProps.Script;
+		break;
+	case ENiagaraScriptUsage::ParticleSpawnScript:
+		TargetScript = EmitterData->SpawnScriptProps.Script;
+		break;
+	case ENiagaraScriptUsage::EmitterUpdateScript:
+		TargetScript = EmitterData->EmitterUpdateScriptProps.Script;
+		break;
+	default:
+		return false;
+	}
+	if (!TargetScript) return false;
+
+	// 공개 API로 Output 노드 획득
+	UNiagaraNodeOutput* OutputNode = FNiagaraEditorUtilities::GetScriptOutputNode(*TargetScript);
+	if (!OutputNode)
+	{
+		UE_LOG(LogHktVFXBuilder, Warning,
+			TEXT("No output node for script usage %d: %s"), (int32)ScriptUsage, *ModuleScriptPath);
+		return false;
+	}
+
+	// 이미 같은 모듈이 있는지 확인 (그래프 노드 순회)
+	UNiagaraScriptSource* ScriptSource = Cast<UNiagaraScriptSource>(TargetScript->GetLatestSource());
+	if (ScriptSource && ScriptSource->NodeGraph)
+	{
+		for (UEdGraphNode* Node : ScriptSource->NodeGraph->Nodes)
+		{
+			if (UNiagaraNodeFunctionCall* FuncNode = Cast<UNiagaraNodeFunctionCall>(Node))
+			{
+				if (FuncNode->FunctionScript == ModuleScript)
+				{
+					UE_LOG(LogHktVFXBuilder, Verbose,
+						TEXT("Module already exists: %s"), *ModuleScriptPath);
+					return true;
+				}
+			}
+		}
+	}
+
+	// 공개 API로 모듈을 스택 끝에 추가
+	UNiagaraNodeFunctionCall* NewNode = FNiagaraStackGraphUtilities::AddScriptModuleToStack(
+		ModuleScript, *OutputNode, INDEX_NONE);
+
+	if (!NewNode)
+	{
+		UE_LOG(LogHktVFXBuilder, Warning,
+			TEXT("Failed to inject module via StackGraphUtilities: %s"), *ModuleScriptPath);
+		return false;
+	}
+
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("Injected module '%s' into emitter %d"),
+		*ModuleScriptPath, EmitterIndex);
+	return true;
+}
+
+// ============================================================================
+// Config 요구사항에 따라 누락된 모듈 주입
+// ============================================================================
+
+void FHktVFXNiagaraBuilder::EnsureRequiredModules(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FHktVFXEmitterUpdateConfig& Config)
+{
+	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+
+	auto TryInject = [&](const FString& ModuleKey, bool bNeeded)
+	{
+		if (!bNeeded) return;
+		if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(ModuleKey))
+		{
+			if (Path->IsValid())
+			{
+				AddModuleToEmitter(System, EmitterIndex,
+					ENiagaraScriptUsage::ParticleUpdateScript,
+					Path->GetAssetPathString());
+			}
+		}
+	};
+
+	// 힘/물리 모듈
+	TryInject(TEXT("GravityForce"), !Config.Gravity.IsNearlyZero(1.f));
+	TryInject(TEXT("Drag"), Config.Drag > 0.f);
+	TryInject(TEXT("CurlNoiseForce"), Config.NoiseStrength > 0.f);
+	TryInject(TEXT("VortexVelocity"), Config.VortexStrength > 0.f);
+	TryInject(TEXT("PointAttractionForce"), Config.AttractionStrength > 0.f);
+	TryInject(TEXT("WindForce"), !Config.WindForce.IsNearlyZero(1.f));
+	TryInject(TEXT("AccelerationForce"), !Config.AccelerationForce.IsNearlyZero(1.f));
+
+	// 크기/회전 모듈 (비기본값일 때)
+	TryInject(TEXT("SpriteRotationRate"),
+		Config.RotationRateMin != 0.f || Config.RotationRateMax != 0.f);
+	TryInject(TEXT("ScaleSpriteSize"),
+		Config.SizeScaleStart != 1.f || Config.SizeScaleEnd != 1.f);
+	TryInject(TEXT("ScaleColor"),
+		Config.OpacityStart != 1.f || Config.OpacityEnd != 0.f || Config.bUseColorOverLife);
 }

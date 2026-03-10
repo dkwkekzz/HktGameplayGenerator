@@ -134,6 +134,22 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterUpdateConfig
 	float VortexStrength = 0.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float VortexRadius = 100.f;
+
+	// 방향성 바람 (0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector WindForce = FVector::ZeroVector;
+
+	// 일정 가속도 (Gravity와 독립, 0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector AccelerationForce = FVector::ZeroVector;
+
+	// Vortex 축 벡터 (기본 Z축, 0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector VortexAxis = FVector(0.f, 0.f, 1.f);
+
+	// 속도 제한 (0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SpeedLimit = 0.f;
 };
 
 // ============================================================================
@@ -187,6 +203,41 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterRenderConfig
 	// Ribbon renderer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float RibbonWidth = 10.f;
+
+	// SubUV 플립북 (0이면 사용 안함)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	int32 SubImageRows = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	int32 SubImageColumns = 0;
+
+	// =========================================================================
+	// 텍스처 생성 요청 (외부 SD/이미지 생성 도구용)
+	// LLM이 커스텀 텍스처가 필요하다고 판단하면 SD 프롬프트를 포함.
+	// Builder는 이 정보를 응답에 포함시키고, 외부 도구가 실제 생성 수행.
+	// =========================================================================
+
+	/** Stable Diffusion 텍스처 생성 프롬프트 (비어있으면 생성 안함) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString TexturePrompt;
+
+	/** SD 네거티브 프롬프트 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString TextureNegativePrompt;
+
+	/**
+	 * 텍스처 타입:
+	 * "particle_sprite" — 단일 파티클 스프라이트 (원형, 별, 불꽃 등)
+	 * "flipbook_4x4"   — 4x4 SubUV 시퀀스 (폭발, 연기 애니메이션 등)
+	 * "flipbook_8x8"   — 8x8 SubUV 시퀀스
+	 * "noise"          — 타일 가능한 노이즈 텍스처
+	 * "gradient"       — 그라디언트 램프 텍스처
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString TextureType;
+
+	/** 텍스처 해상도 (0=생성 안함, 128/256/512/1024) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	int32 TextureResolution = 0;
 };
 
 // ============================================================================
@@ -343,6 +394,13 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 					Emitter.Update.AttractionPosition = ParseJsonVector(*P);
 				(*UpdObj)->TryGetNumberField(TEXT("vortexStrength"), Emitter.Update.VortexStrength);
 				(*UpdObj)->TryGetNumberField(TEXT("vortexRadius"), Emitter.Update.VortexRadius);
+				if (const TSharedPtr<FJsonObject>* W; (*UpdObj)->TryGetObjectField(TEXT("windForce"), W))
+					Emitter.Update.WindForce = ParseJsonVector(*W);
+				if (const TSharedPtr<FJsonObject>* A; (*UpdObj)->TryGetObjectField(TEXT("accelerationForce"), A))
+					Emitter.Update.AccelerationForce = ParseJsonVector(*A);
+				if (const TSharedPtr<FJsonObject>* VA; (*UpdObj)->TryGetObjectField(TEXT("vortexAxis"), VA))
+					Emitter.Update.VortexAxis = ParseJsonVector(*VA);
+				(*UpdObj)->TryGetNumberField(TEXT("speedLimit"), Emitter.Update.SpeedLimit);
 			}
 
 			// Render
@@ -359,6 +417,18 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				(*RenObj)->TryGetNumberField(TEXT("lightRadiusScale"), Emitter.Render.LightRadiusScale);
 				(*RenObj)->TryGetNumberField(TEXT("lightIntensity"), Emitter.Render.LightIntensity);
 				(*RenObj)->TryGetNumberField(TEXT("ribbonWidth"), Emitter.Render.RibbonWidth);
+				int32 SubRows = 0, SubCols = 0;
+				if ((*RenObj)->TryGetNumberField(TEXT("subImageRows"), SubRows))
+					Emitter.Render.SubImageRows = SubRows;
+				if ((*RenObj)->TryGetNumberField(TEXT("subImageColumns"), SubCols))
+					Emitter.Render.SubImageColumns = SubCols;
+				// Texture generation
+				(*RenObj)->TryGetStringField(TEXT("texturePrompt"), Emitter.Render.TexturePrompt);
+				(*RenObj)->TryGetStringField(TEXT("textureNegativePrompt"), Emitter.Render.TextureNegativePrompt);
+				(*RenObj)->TryGetStringField(TEXT("textureType"), Emitter.Render.TextureType);
+				int32 TexRes = 0;
+				if ((*RenObj)->TryGetNumberField(TEXT("textureResolution"), TexRes))
+					Emitter.Render.TextureResolution = TexRes;
 			}
 
 			OutConfig.Emitters.Add(MoveTemp(Emitter));
@@ -450,8 +520,30 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("y"), E.Update.AttractionPosition.Y);
 			W->WriteValue(TEXT("z"), E.Update.AttractionPosition.Z);
 			W->WriteObjectEnd();
+			W->WriteObjectStart(TEXT("windForce"));
+			W->WriteValue(TEXT("x"), E.Update.WindForce.X);
+			W->WriteValue(TEXT("y"), E.Update.WindForce.Y);
+			W->WriteValue(TEXT("z"), E.Update.WindForce.Z);
+			W->WriteObjectEnd();
+			if (!E.Update.AccelerationForce.IsNearlyZero(1.f))
+			{
+				W->WriteObjectStart(TEXT("accelerationForce"));
+				W->WriteValue(TEXT("x"), E.Update.AccelerationForce.X);
+				W->WriteValue(TEXT("y"), E.Update.AccelerationForce.Y);
+				W->WriteValue(TEXT("z"), E.Update.AccelerationForce.Z);
+				W->WriteObjectEnd();
+			}
 			W->WriteValue(TEXT("vortexStrength"), E.Update.VortexStrength);
 			W->WriteValue(TEXT("vortexRadius"), E.Update.VortexRadius);
+			if (!(E.Update.VortexAxis - FVector(0,0,1)).IsNearlyZero(0.01f))
+			{
+				W->WriteObjectStart(TEXT("vortexAxis"));
+				W->WriteValue(TEXT("x"), E.Update.VortexAxis.X);
+				W->WriteValue(TEXT("y"), E.Update.VortexAxis.Y);
+				W->WriteValue(TEXT("z"), E.Update.VortexAxis.Z);
+				W->WriteObjectEnd();
+			}
+			W->WriteValue(TEXT("speedLimit"), E.Update.SpeedLimit);
 			W->WriteObjectEnd(); // update
 
 			// Render
@@ -467,6 +559,18 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("lightRadiusScale"), E.Render.LightRadiusScale);
 			W->WriteValue(TEXT("lightIntensity"), E.Render.LightIntensity);
 			W->WriteValue(TEXT("ribbonWidth"), E.Render.RibbonWidth);
+			if (E.Render.SubImageRows > 0)
+				W->WriteValue(TEXT("subImageRows"), E.Render.SubImageRows);
+			if (E.Render.SubImageColumns > 0)
+				W->WriteValue(TEXT("subImageColumns"), E.Render.SubImageColumns);
+			if (!E.Render.TexturePrompt.IsEmpty())
+			{
+				W->WriteValue(TEXT("texturePrompt"), E.Render.TexturePrompt);
+				if (!E.Render.TextureNegativePrompt.IsEmpty())
+					W->WriteValue(TEXT("textureNegativePrompt"), E.Render.TextureNegativePrompt);
+				W->WriteValue(TEXT("textureType"), E.Render.TextureType);
+				W->WriteValue(TEXT("textureResolution"), E.Render.TextureResolution);
+			}
 			W->WriteObjectEnd();
 
 			W->WriteObjectEnd(); // emitter
@@ -514,7 +618,11 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"noiseStrength\": \"float (0=none)\", \"noiseFrequency\": \"float\",\n");
 		S += TEXT("        \"attractionStrength\": \"float (0=none)\", \"attractionRadius\": \"float\",\n");
 		S += TEXT("        \"attractionPosition\": {\"x\":0,\"y\":0,\"z\":0},\n");
-		S += TEXT("        \"vortexStrength\": \"float (0=none)\", \"vortexRadius\": \"float\"\n");
+		S += TEXT("        \"vortexStrength\": \"float (0=none)\", \"vortexRadius\": \"float\",\n");
+		S += TEXT("        \"vortexAxis\": {\"x\":0,\"y\":0,\"z\":1} (rotation axis, default Z-up),\n");
+		S += TEXT("        \"windForce\": {\"x\":0,\"y\":0,\"z\":0},\n");
+		S += TEXT("        \"accelerationForce\": {\"x\":0,\"y\":0,\"z\":0} (constant accel, independent from gravity),\n");
+		S += TEXT("        \"speedLimit\": \"float (0=no limit)\"\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"render\": {\n");
 		S += TEXT("        \"rendererType\": \"sprite | ribbon | light | mesh\",\n");
@@ -525,7 +633,13 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"alignment\": \"unaligned | velocity_aligned\",\n");
 		S += TEXT("        \"lightRadiusScale\": \"float (light only)\",\n");
 		S += TEXT("        \"lightIntensity\": \"float (light only)\",\n");
-		S += TEXT("        \"ribbonWidth\": \"float (ribbon only)\"\n");
+		S += TEXT("        \"ribbonWidth\": \"float (ribbon only)\",\n");
+		S += TEXT("        \"subImageRows\": \"int (flipbook rows, 0=none)\",\n");
+		S += TEXT("        \"subImageColumns\": \"int (flipbook cols, 0=none)\",\n");
+		S += TEXT("        \"texturePrompt\": \"string (SD prompt for custom texture, optional)\",\n");
+		S += TEXT("        \"textureNegativePrompt\": \"string (SD negative prompt, optional)\",\n");
+		S += TEXT("        \"textureType\": \"particle_sprite | flipbook_4x4 | flipbook_8x8 | noise | gradient\",\n");
+		S += TEXT("        \"textureResolution\": \"int (0=none, 128/256/512/1024)\"\n");
 		S += TEXT("      }\n");
 		S += TEXT("    }\n");
 		S += TEXT("  ]\n");
