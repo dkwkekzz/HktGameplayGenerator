@@ -11,6 +11,45 @@
 #include "HktVFXNiagaraConfig.generated.h"
 
 // ============================================================================
+// 데이터 인터페이스 바인딩 설정
+// Niagara User Parameter로 노출되어 런타임에 외부 객체(스켈레톤 등)를 주입.
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXDataInterfaceBinding
+{
+	GENERATED_BODY()
+
+	/**
+	 * 데이터 인터페이스 타입:
+	 * "skeletal_mesh" — UNiagaraDataInterfaceSkeletalMesh
+	 * "static_mesh"  — UNiagaraDataInterfaceStaticMesh
+	 * "spline"       — UNiagaraDataInterfaceSpline
+	 * "audio"        — UNiagaraDataInterfaceAudioSpectrum
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString Type;
+
+	/** User Parameter 이름 (에미터/모듈에서 참조하는 이름) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString ParameterName;
+
+	/**
+	 * 스폰 소스 모드 (skeletal_mesh 전용):
+	 * "surface"  — 메시 표면에서 파티클 스폰
+	 * "vertex"   — 버텍스 위치에서 스폰
+	 * "bone"     — 본 위치에서 스폰
+	 * "socket"   — 소켓 위치에서 스폰
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString SpawnSource = TEXT("surface");
+
+	/** 특정 본/소켓 필터 (비어있으면 전체) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<FString> FilterNames;
+};
+
+// ============================================================================
 // 에미터 Spawn 설정
 // ============================================================================
 
@@ -263,6 +302,10 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	FHktVFXEmitterRenderConfig Render;
+
+	/** 이 에미터가 사용하는 데이터 인터페이스 바인딩 목록 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<FHktVFXDataInterfaceBinding> DataInterfaces;
 };
 
 // ============================================================================
@@ -431,6 +474,33 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 					Emitter.Render.TextureResolution = TexRes;
 			}
 
+			// DataInterfaces
+			const TArray<TSharedPtr<FJsonValue>>* DIArray;
+			if (EmObj->TryGetArrayField(TEXT("dataInterfaces"), DIArray))
+			{
+				for (const auto& DIVal : *DIArray)
+				{
+					const TSharedPtr<FJsonObject>& DIObj = DIVal->AsObject();
+					if (!DIObj.IsValid()) continue;
+
+					FHktVFXDataInterfaceBinding DI;
+					DIObj->TryGetStringField(TEXT("type"), DI.Type);
+					DIObj->TryGetStringField(TEXT("parameterName"), DI.ParameterName);
+					DIObj->TryGetStringField(TEXT("spawnSource"), DI.SpawnSource);
+
+					const TArray<TSharedPtr<FJsonValue>>* FilterArray;
+					if (DIObj->TryGetArrayField(TEXT("filterNames"), FilterArray))
+					{
+						for (const auto& F : *FilterArray)
+						{
+							DI.FilterNames.Add(F->AsString());
+						}
+					}
+
+					Emitter.DataInterfaces.Add(MoveTemp(DI));
+				}
+			}
+
 			OutConfig.Emitters.Add(MoveTemp(Emitter));
 		}
 
@@ -573,6 +643,30 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			}
 			W->WriteObjectEnd();
 
+			// DataInterfaces
+			if (E.DataInterfaces.Num() > 0)
+			{
+				W->WriteArrayStart(TEXT("dataInterfaces"));
+				for (const auto& DI : E.DataInterfaces)
+				{
+					W->WriteObjectStart();
+					W->WriteValue(TEXT("type"), DI.Type);
+					W->WriteValue(TEXT("parameterName"), DI.ParameterName);
+					W->WriteValue(TEXT("spawnSource"), DI.SpawnSource);
+					if (DI.FilterNames.Num() > 0)
+					{
+						W->WriteArrayStart(TEXT("filterNames"));
+						for (const auto& F : DI.FilterNames)
+						{
+							W->WriteValue(F);
+						}
+						W->WriteArrayEnd();
+					}
+					W->WriteObjectEnd();
+				}
+				W->WriteArrayEnd();
+			}
+
 			W->WriteObjectEnd(); // emitter
 		}
 		W->WriteArrayEnd();
@@ -640,7 +734,15 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"textureNegativePrompt\": \"string (SD negative prompt, optional)\",\n");
 		S += TEXT("        \"textureType\": \"particle_sprite | flipbook_4x4 | flipbook_8x8 | noise | gradient\",\n");
 		S += TEXT("        \"textureResolution\": \"int (0=none, 128/256/512/1024)\"\n");
-		S += TEXT("      }\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"dataInterfaces\": [\n");
+		S += TEXT("        {\n");
+		S += TEXT("          \"type\": \"skeletal_mesh | static_mesh | spline\",\n");
+		S += TEXT("          \"parameterName\": \"string (User Parameter name for runtime binding)\",\n");
+		S += TEXT("          \"spawnSource\": \"surface | vertex | bone | socket (skeletal_mesh only)\",\n");
+		S += TEXT("          \"filterNames\": [\"bone1\", \"bone2\"] (optional bone/socket filter)\n");
+		S += TEXT("        }\n");
+		S += TEXT("      ]\n");
 		S += TEXT("    }\n");
 		S += TEXT("  ]\n");
 		S += TEXT("}");
