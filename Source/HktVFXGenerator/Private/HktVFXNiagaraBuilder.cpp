@@ -102,6 +102,13 @@ void FHktVFXNiagaraBuilder::SetupSystemProperties(
 		System->SetWarmupTickDelta(1.f / 30.f);
 		System->ResolveWarmupTickCount();
 	}
+
+	// 루프 설정 — 각 에미터의 LoopBehavior를 제어
+	// UNiagaraSystem 자체에는 루프 플래그가 없고,
+	// 각 에미터의 EmitterState 모듈에서 Loop Behavior를 설정해야 함.
+	// 이 설정은 ConfigureEmitter에서 에미터별로 처리.
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("System properties: WarmupTime=%.2f, Looping=%d"),
+		Config.WarmupTime, Config.bLooping);
 }
 
 // ============================================================================
@@ -175,6 +182,9 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 	UE_LOG(LogHktVFXBuilder, Log, TEXT("Added emitter '%s' as '%s' (index %d, template='%s', rich=%d)"),
 		*Config.Name, *HandleName, ActualIndex, *TemplateKey, bUsingRichTemplate);
 
+	// 기존 RapidIterationParameters 로그 (디버그용)
+	LogExistingParameters(System, ActualIndex);
+
 	// 템플릿에 없는 모듈을 Config 요구에 따라 동적 주입
 	EnsureRequiredModules(System, ActualIndex, Config.Update);
 
@@ -237,6 +247,27 @@ void FHktVFXNiagaraBuilder::SetupInitializeModule(UNiagaraSystem* System, int32 
 
 	// Color
 	SetParticleParamColor(System, EmitterIndex, Module, TEXT("Color"), Config.Color);
+
+	// Velocity — Min/Max 평균 벡터 사용
+	FVector AvgVelocity = (Config.VelocityMin + Config.VelocityMax) * 0.5f;
+	if (!AvgVelocity.IsNearlyZero(1.f))
+	{
+		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Velocity"), AvgVelocity);
+	}
+
+	// Sprite Rotation — Min/Max 평균값 사용 (도 단위)
+	float AvgRotation = (Config.SpriteRotationMin + Config.SpriteRotationMax) * 0.5f;
+	if (AvgRotation != 0.f)
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Sprite Rotation Angle"), AvgRotation);
+	}
+
+	// Mass — Min/Max 평균값 사용
+	float AvgMass = (Config.MassMin + Config.MassMax) * 0.5f;
+	if (AvgMass != 1.f)
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Mass"), AvgMass);
+	}
 }
 
 // ============================================================================
@@ -543,7 +574,7 @@ void FHktVFXNiagaraBuilder::SetParticleParamFloat(
 		}
 	}
 
-	UE_LOG(LogHktVFXBuilder, Verbose, TEXT("  Set %s = %f"), *FullName, Value);
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("  Set %s = %f"), *FullName, Value);
 }
 
 void FHktVFXNiagaraBuilder::SetParticleParamVec3(
@@ -667,7 +698,7 @@ void FHktVFXNiagaraBuilder::SetEmitterParamFloat(
 		Script->RapidIterationParameters.SetParameterValue<float>(Value, Var);
 	}
 
-	UE_LOG(LogHktVFXBuilder, Verbose, TEXT("  SetEmitter %s = %f"), *FullName, Value);
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("  SetEmitter %s = %f"), *FullName, Value);
 }
 
 void FHktVFXNiagaraBuilder::SetEmitterParamInt(
@@ -695,7 +726,7 @@ void FHktVFXNiagaraBuilder::SetEmitterParamInt(
 		Script->RapidIterationParameters.SetParameterValue<int32>(Value, Var);
 	}
 
-	UE_LOG(LogHktVFXBuilder, Verbose, TEXT("  SetEmitter %s = %d"), *FullName, Value);
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("  SetEmitter %s = %d"), *FullName, Value);
 }
 
 // ============================================================================
@@ -718,7 +749,7 @@ bool FHktVFXNiagaraBuilder::AddModuleToEmitter(
 	UNiagaraScript* ModuleScript = LoadObject<UNiagaraScript>(nullptr, *ModuleScriptPath);
 	if (!ModuleScript)
 	{
-		UE_LOG(LogHktVFXBuilder, Verbose,
+		UE_LOG(LogHktVFXBuilder, Warning,
 			TEXT("Module script not found (will rely on template): %s"), *ModuleScriptPath);
 		return false;
 	}
@@ -760,7 +791,7 @@ bool FHktVFXNiagaraBuilder::AddModuleToEmitter(
 			{
 				if (FuncNode->FunctionScript == ModuleScript)
 				{
-					UE_LOG(LogHktVFXBuilder, Verbose,
+					UE_LOG(LogHktVFXBuilder, Log,
 						TEXT("Module already exists: %s"), *ModuleScriptPath);
 					return true;
 				}
@@ -824,4 +855,48 @@ void FHktVFXNiagaraBuilder::EnsureRequiredModules(
 		Config.SizeScaleStart != 1.f || Config.SizeScaleEnd != 1.f);
 	TryInject(TEXT("ScaleColor"),
 		Config.OpacityStart != 1.f || Config.OpacityEnd != 0.f || Config.bUseColorOverLife);
+}
+
+// ============================================================================
+// 디버그: 에미터의 기존 RapidIterationParameter 이름을 모두 출력
+// 템플릿이 실제로 어떤 파라미터 이름을 사용하는지 확인용.
+// ============================================================================
+
+void FHktVFXNiagaraBuilder::LogExistingParameters(
+	UNiagaraSystem* System, int32 EmitterIndex)
+{
+	const auto& EmitterHandles = System->GetEmitterHandles();
+	if (!EmitterHandles.IsValidIndex(EmitterIndex)) return;
+
+	FVersionedNiagaraEmitterData* EmitterData = EmitterHandles[EmitterIndex].GetEmitterData();
+	if (!EmitterData) return;
+
+	FString HandleName = EmitterHandles[EmitterIndex].GetName().ToString();
+
+	auto LogParams = [&](const TCHAR* ScriptLabel, UNiagaraScript* Script)
+	{
+		if (!Script) return;
+
+		TArray<FNiagaraVariable> Params;
+		Script->RapidIterationParameters.GetParameters(Params);
+
+		if (Params.Num() == 0)
+		{
+			UE_LOG(LogHktVFXBuilder, Log, TEXT("  [%s] %s: (no RI parameters)"),
+				*HandleName, ScriptLabel);
+			return;
+		}
+
+		UE_LOG(LogHktVFXBuilder, Log, TEXT("  [%s] %s: %d RI parameters"),
+			*HandleName, ScriptLabel, Params.Num());
+		for (const FNiagaraVariable& Param : Params)
+		{
+			UE_LOG(LogHktVFXBuilder, Log, TEXT("    - [%s] %s"),
+				*Param.GetType().GetName(), *Param.GetName().ToString());
+		}
+	};
+
+	LogParams(TEXT("SpawnScript"), EmitterData->SpawnScriptProps.Script);
+	LogParams(TEXT("UpdateScript"), EmitterData->UpdateScriptProps.Script);
+	LogParams(TEXT("EmitterUpdateScript"), EmitterData->EmitterUpdateScriptProps.Script);
 }

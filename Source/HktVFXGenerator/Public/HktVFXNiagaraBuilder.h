@@ -61,4 +61,7 @@ private:
 		const FString& ModuleName, const FString& ParamName, float Value);
 	void SetEmitterParamInt(UNiagaraSystem* System, int32 EmitterIndex,
 		const FString& ModuleName, const FString& ParamName, int32 Value);
+
+	// 디버그: 에미터의 기존 RapidIterationParameter 이름을 모두 로그 출력
+	void LogExistingParameters(UNiagaraSystem* System, int32 EmitterIndex);
 };
