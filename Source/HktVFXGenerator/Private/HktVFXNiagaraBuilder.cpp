@@ -12,6 +12,9 @@
 #include "NiagaraRibbonRendererProperties.h"
 #include "NiagaraLightRendererProperties.h"
 #include "NiagaraMeshRendererProperties.h"
+#include "NiagaraDataInterfaceSkeletalMesh.h"
+#include "NiagaraDataInterfaceStaticMesh.h"
+#include "NiagaraDataInterfaceSpline.h"
 
 #include "NiagaraSystemFactoryNew.h"
 #include "NiagaraEditorUtilities.h"
@@ -193,6 +196,12 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 	SetupInitializeModule(System, ActualIndex, Config.Init);
 	SetupUpdateModules(System, ActualIndex, Config.Update);
 	SetupRenderer(System, ActualIndex, Config.Render);
+
+	// 데이터 인터페이스 바인딩 (스켈레톤, 스태틱 메시, 스플라인 등)
+	if (Config.DataInterfaces.Num() > 0)
+	{
+		SetupDataInterfaces(System, ActualIndex, Config.DataInterfaces);
+	}
 
 	// 머티리얼 오버라이드 (materialPath가 지정된 경우)
 	if (!Config.Render.MaterialPath.IsEmpty())
@@ -855,6 +864,105 @@ void FHktVFXNiagaraBuilder::EnsureRequiredModules(
 		Config.SizeScaleStart != 1.f || Config.SizeScaleEnd != 1.f);
 	TryInject(TEXT("ScaleColor"),
 		Config.OpacityStart != 1.f || Config.OpacityEnd != 0.f || Config.bUseColorOverLife);
+}
+
+// ============================================================================
+// 데이터 인터페이스 설정
+// System-level User Parameter로 DI를 등록하여 런타임에 바인딩 가능하게 함.
+// 에미터 모듈(SampleSkeletalMesh 등)이 이 User Parameter를 참조.
+// ============================================================================
+
+void FHktVFXNiagaraBuilder::SetupDataInterfaces(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const TArray<FHktVFXDataInterfaceBinding>& DataInterfaces)
+{
+	for (const FHktVFXDataInterfaceBinding& DI : DataInterfaces)
+	{
+		if (DI.Type.IsEmpty() || DI.ParameterName.IsEmpty())
+		{
+			UE_LOG(LogHktVFXBuilder, Warning, TEXT("DataInterface binding missing type or parameterName"));
+			continue;
+		}
+
+		// DI 타입에 따라 적절한 UNiagaraDataInterface 서브클래스 생성
+		UNiagaraDataInterface* NewDI = nullptr;
+		FNiagaraTypeDefinition TypeDef;
+
+		if (DI.Type == TEXT("skeletal_mesh"))
+		{
+			UNiagaraDataInterfaceSkeletalMesh* SkelDI =
+				NewObject<UNiagaraDataInterfaceSkeletalMesh>(System);
+			// FilteredBones / FilteredSockets 설정
+			for (const FString& FilterName : DI.FilterNames)
+			{
+				SkelDI->FilteredBones.Add(FName(*FilterName));
+			}
+			NewDI = SkelDI;
+			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceSkeletalMesh::StaticClass());
+		}
+		else if (DI.Type == TEXT("static_mesh"))
+		{
+			NewDI = NewObject<UNiagaraDataInterfaceStaticMesh>(System);
+			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceStaticMesh::StaticClass());
+		}
+		else if (DI.Type == TEXT("spline"))
+		{
+			NewDI = NewObject<UNiagaraDataInterfaceSpline>(System);
+			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceSpline::StaticClass());
+		}
+		else
+		{
+			UE_LOG(LogHktVFXBuilder, Warning, TEXT("Unknown DataInterface type: %s"), *DI.Type);
+			continue;
+		}
+
+		if (!NewDI)
+		{
+			continue;
+		}
+
+		// System의 ExposedParameters(User Parameter)에 DI를 등록
+		// 이름 형식: "User.{ParameterName}"
+		FString UserParamName = FString::Printf(TEXT("User.%s"), *DI.ParameterName);
+		FNiagaraVariable UserVar(TypeDef, FName(*UserParamName));
+
+		System->GetExposedParameters().AddParameter(UserVar, true);
+		System->GetExposedParameters().SetDataInterface(NewDI, UserVar);
+
+		UE_LOG(LogHktVFXBuilder, Log,
+			TEXT("Added DataInterface User Parameter: %s (type=%s, spawnSource=%s)"),
+			*UserParamName, *DI.Type, *DI.SpawnSource);
+
+		// skeletal_mesh의 경우 SampleSkeletalMesh / InitializeMeshReproduction 등의 모듈 주입이 필요.
+		// 이 모듈들은 EnsureRequiredModules와 동일한 방식으로 TryInject 가능.
+		// 단, 이 모듈들은 Spawn 스크립트에 추가되어야 하므로 별도 처리.
+		if (DI.Type == TEXT("skeletal_mesh"))
+		{
+			const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+
+			// Initialize Mesh Reproduction Sprite — 메시 표면에서 파티클 위치 초기화
+			if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("InitializeMeshReproductionSprite")))
+			{
+				if (Path->IsValid())
+				{
+					AddModuleToEmitter(System, EmitterIndex,
+						ENiagaraScriptUsage::ParticleSpawnScript,
+						Path->GetAssetPathString());
+				}
+			}
+
+			// Sample Skeletal Mesh — 업데이트 시 메시 위치 추적
+			if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("SampleSkeletalMesh")))
+			{
+				if (Path->IsValid())
+				{
+					AddModuleToEmitter(System, EmitterIndex,
+						ENiagaraScriptUsage::ParticleUpdateScript,
+						Path->GetAssetPathString());
+				}
+			}
+		}
+	}
 }
 
 // ============================================================================

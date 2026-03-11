@@ -152,6 +152,14 @@ UHktVFXGeneratorSettings::UHktVFXGeneratorSettings()
 	ModuleScriptPaths.Add(TEXT("SolveForcesAndVelocity"),
 		FSoftObjectPath(TEXT("/Niagara/Modules/SolveForcesAndVelocity.SolveForcesAndVelocity")));
 
+	// 데이터 인터페이스 관련 모듈 (스켈레톤 메시 표면 스폰 등)
+	ModuleScriptPaths.Add(TEXT("InitializeMeshReproductionSprite"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/InitializeMeshReproductionSprite.InitializeMeshReproductionSprite")));
+	ModuleScriptPaths.Add(TEXT("SampleSkeletalMesh"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/SampleSkeletalMesh.SampleSkeletalMesh")));
+	ModuleScriptPaths.Add(TEXT("UpdateMeshReproductionSprite"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/UpdateMeshReproductionSprite.UpdateMeshReproductionSprite")));
+
 	// === 기본 머티리얼 (NiagaraExamples) ===
 	AdditiveMaterial =
 		FSoftObjectPath(TEXT("/Game/NiagaraExamples/Materials/MasterMaterials/M_SimpleAdditive.M_SimpleAdditive"));

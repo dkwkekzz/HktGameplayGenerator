@@ -9,6 +9,7 @@
 class UNiagaraSystem;
 class UNiagaraEmitter;
 class UMaterialInterface;
+struct FHktVFXDataInterfaceBinding;
 
 /**
  * FHktVFXNiagaraConfig로 UNiagaraSystem .uasset을 생성.
@@ -45,6 +46,10 @@ private:
 		ENiagaraScriptUsage ScriptUsage, const FString& ModuleScriptPath);
 	void EnsureRequiredModules(UNiagaraSystem* System, int32 EmitterIndex,
 		const FHktVFXEmitterUpdateConfig& Config);
+
+	// 데이터 인터페이스 — User Parameter로 DI를 시스템에 추가하고 모듈에 바인딩
+	void SetupDataInterfaces(UNiagaraSystem* System, int32 EmitterIndex,
+		const TArray<FHktVFXDataInterfaceBinding>& DataInterfaces);
 
 	// Particle-level 파라미터 (SpawnScript + UpdateScript)
 	void SetParticleParamFloat(UNiagaraSystem* System, int32 EmitterIndex,
