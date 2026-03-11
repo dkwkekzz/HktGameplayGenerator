@@ -13,6 +13,7 @@
 #include "NiagaraLightRendererProperties.h"
 #include "NiagaraMeshRendererProperties.h"
 #include "NiagaraDataInterfaceSkeletalMesh.h"
+#include "NiagaraDataInterfaceSpline.h"
 
 #include "NiagaraSystemFactoryNew.h"
 #include "NiagaraEditorUtilities.h"
@@ -869,26 +870,7 @@ void FHktVFXNiagaraBuilder::EnsureRequiredModules(
 // System-level User Parameter로 DI를 등록하여 런타임에 바인딩 가능하게 함.
 // 에미터 모듈(SampleSkeletalMesh 등)이 이 User Parameter를 참조.
 //
-// skeletal_mesh: 직접 헤더 사용 (FilteredBones 등 프로퍼티 접근 필요)
-// spline 등:    UClass 이름으로 런타임 검색 (헤더 의존성 회피)
 // ============================================================================
-
-// UClass 이름으로 DI 인스턴스를 생성하는 헬퍼
-static UNiagaraDataInterface* CreateDIByClassName(UObject* Outer, const TCHAR* ClassName)
-{
-	UClass* DIClass = FindObject<UClass>(ANY_PACKAGE, ClassName);
-	if (!DIClass)
-	{
-		// 엔진 모듈이 아직 로드되지 않았을 수 있으므로 LoadClass 시도
-		DIClass = LoadClass<UNiagaraDataInterface>(nullptr,
-			*FString::Printf(TEXT("/Script/Niagara.%s"), ClassName));
-	}
-	if (DIClass && DIClass->IsChildOf(UNiagaraDataInterface::StaticClass()))
-	{
-		return NewObject<UNiagaraDataInterface>(Outer, DIClass);
-	}
-	return nullptr;
-}
 
 void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 	UNiagaraSystem* System, int32 EmitterIndex,
@@ -919,11 +901,8 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 		}
 		else if (DI.Type == TEXT("spline"))
 		{
-			NewDI = CreateDIByClassName(System, TEXT("NiagaraDataInterfaceSpline"));
-			if (NewDI)
-			{
-				TypeDef = FNiagaraTypeDefinition(NewDI->GetClass());
-			}
+			NewDI = NewObject<UNiagaraDataInterfaceSpline>(System);
+			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceSpline::StaticClass());
 		}
 		else
 		{
