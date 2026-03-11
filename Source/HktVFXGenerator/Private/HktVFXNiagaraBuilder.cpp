@@ -13,7 +13,6 @@
 #include "NiagaraLightRendererProperties.h"
 #include "NiagaraMeshRendererProperties.h"
 #include "NiagaraDataInterfaceSkeletalMesh.h"
-#include "NiagaraDataInterfaceStaticMesh.h"
 #include "NiagaraDataInterfaceSpline.h"
 
 #include "NiagaraSystemFactoryNew.h"
@@ -900,11 +899,6 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 			NewDI = SkelDI;
 			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceSkeletalMesh::StaticClass());
 		}
-		else if (DI.Type == TEXT("static_mesh"))
-		{
-			NewDI = NewObject<UNiagaraDataInterfaceStaticMesh>(System);
-			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceStaticMesh::StaticClass());
-		}
 		else if (DI.Type == TEXT("spline"))
 		{
 			NewDI = NewObject<UNiagaraDataInterfaceSpline>(System);
@@ -918,6 +912,8 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 
 		if (!NewDI)
 		{
+			UE_LOG(LogHktVFXBuilder, Warning,
+				TEXT("Failed to create DataInterface for type: %s"), *DI.Type);
 			continue;
 		}
 
@@ -930,16 +926,17 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 		System->GetExposedParameters().SetDataInterface(NewDI, UserVar);
 
 		UE_LOG(LogHktVFXBuilder, Log,
-			TEXT("Added DataInterface User Parameter: %s (type=%s, spawnSource=%s)"),
-			*UserParamName, *DI.Type, *DI.SpawnSource);
+			TEXT("Added DataInterface User Parameter: %s (type=%s)"),
+			*UserParamName, *DI.Type);
+
+		// 타입별 모듈 자동 주입
+		const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
 
 		// skeletal_mesh의 경우 SampleSkeletalMesh / InitializeMeshReproduction 등의 모듈 주입이 필요.
 		// 이 모듈들은 EnsureRequiredModules와 동일한 방식으로 TryInject 가능.
 		// 단, 이 모듈들은 Spawn 스크립트에 추가되어야 하므로 별도 처리.
 		if (DI.Type == TEXT("skeletal_mesh"))
 		{
-			const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
-
 			// Initialize Mesh Reproduction Sprite — 메시 표면에서 파티클 위치 초기화
 			if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("InitializeMeshReproductionSprite")))
 			{
@@ -958,6 +955,19 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 				{
 					AddModuleToEmitter(System, EmitterIndex,
 						ENiagaraScriptUsage::ParticleUpdateScript,
+						Path->GetAssetPathString());
+				}
+			}
+		}
+		else if (DI.Type == TEXT("spline"))
+		{
+			// SampleSpline — 스플라인 위의 위치를 샘플링하여 파티클 배치
+			if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("SampleSpline")))
+			{
+				if (Path->IsValid())
+				{
+					AddModuleToEmitter(System, EmitterIndex,
+						ENiagaraScriptUsage::ParticleSpawnScript,
 						Path->GetAssetPathString());
 				}
 			}
