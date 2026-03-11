@@ -23,6 +23,7 @@ struct HKTVFXGENERATOR_API FHktVFXDataInterfaceBinding
 	/**
 	 * 데이터 인터페이스 타입:
 	 * "skeletal_mesh" — UNiagaraDataInterfaceSkeletalMesh (캐릭터 메시 표면 스폰)
+	 * "spline"        — UNiagaraDataInterfaceSpline (스플라인 경로를 따라 스폰)
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	FString Type;
@@ -734,7 +735,7 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("      },\n");
 		S += TEXT("      \"dataInterfaces\": [\n");
 		S += TEXT("        {\n");
-		S += TEXT("          \"type\": \"skeletal_mesh\",\n");
+		S += TEXT("          \"type\": \"skeletal_mesh | spline\",\n");
 		S += TEXT("          \"parameterName\": \"string (User Parameter name for runtime binding)\",\n");
 		S += TEXT("          \"spawnSource\": \"surface | vertex | bone | socket (skeletal_mesh only)\",\n");
 		S += TEXT("          \"filterNames\": [\"bone1\", \"bone2\"] (optional bone/socket filter)\n");

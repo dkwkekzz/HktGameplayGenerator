@@ -868,7 +868,27 @@ void FHktVFXNiagaraBuilder::EnsureRequiredModules(
 // 데이터 인터페이스 설정
 // System-level User Parameter로 DI를 등록하여 런타임에 바인딩 가능하게 함.
 // 에미터 모듈(SampleSkeletalMesh 등)이 이 User Parameter를 참조.
+//
+// skeletal_mesh: 직접 헤더 사용 (FilteredBones 등 프로퍼티 접근 필요)
+// spline 등:    UClass 이름으로 런타임 검색 (헤더 의존성 회피)
 // ============================================================================
+
+// UClass 이름으로 DI 인스턴스를 생성하는 헬퍼
+static UNiagaraDataInterface* CreateDIByClassName(UObject* Outer, const TCHAR* ClassName)
+{
+	UClass* DIClass = FindObject<UClass>(ANY_PACKAGE, ClassName);
+	if (!DIClass)
+	{
+		// 엔진 모듈이 아직 로드되지 않았을 수 있으므로 LoadClass 시도
+		DIClass = LoadClass<UNiagaraDataInterface>(nullptr,
+			*FString::Printf(TEXT("/Script/Niagara.%s"), ClassName));
+	}
+	if (DIClass && DIClass->IsChildOf(UNiagaraDataInterface::StaticClass()))
+	{
+		return NewObject<UNiagaraDataInterface>(Outer, DIClass);
+	}
+	return nullptr;
+}
 
 void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 	UNiagaraSystem* System, int32 EmitterIndex,
@@ -890,13 +910,20 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 		{
 			UNiagaraDataInterfaceSkeletalMesh* SkelDI =
 				NewObject<UNiagaraDataInterfaceSkeletalMesh>(System);
-			// FilteredBones / FilteredSockets 설정
 			for (const FString& FilterName : DI.FilterNames)
 			{
 				SkelDI->FilteredBones.Add(FName(*FilterName));
 			}
 			NewDI = SkelDI;
 			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceSkeletalMesh::StaticClass());
+		}
+		else if (DI.Type == TEXT("spline"))
+		{
+			NewDI = CreateDIByClassName(System, TEXT("NiagaraDataInterfaceSpline"));
+			if (NewDI)
+			{
+				TypeDef = FNiagaraTypeDefinition(NewDI->GetClass());
+			}
 		}
 		else
 		{
@@ -906,11 +933,12 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 
 		if (!NewDI)
 		{
+			UE_LOG(LogHktVFXBuilder, Warning,
+				TEXT("Failed to create DataInterface for type: %s"), *DI.Type);
 			continue;
 		}
 
 		// System의 ExposedParameters(User Parameter)에 DI를 등록
-		// 이름 형식: "User.{ParameterName}"
 		FString UserParamName = FString::Printf(TEXT("User.%s"), *DI.ParameterName);
 		FNiagaraVariable UserVar(TypeDef, FName(*UserParamName));
 
@@ -918,16 +946,14 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 		System->GetExposedParameters().SetDataInterface(NewDI, UserVar);
 
 		UE_LOG(LogHktVFXBuilder, Log,
-			TEXT("Added DataInterface User Parameter: %s (type=%s, spawnSource=%s)"),
-			*UserParamName, *DI.Type, *DI.SpawnSource);
+			TEXT("Added DataInterface User Parameter: %s (type=%s)"),
+			*UserParamName, *DI.Type);
 
-		// skeletal_mesh의 경우 SampleSkeletalMesh / InitializeMeshReproduction 등의 모듈 주입이 필요.
-		// 이 모듈들은 EnsureRequiredModules와 동일한 방식으로 TryInject 가능.
-		// 단, 이 모듈들은 Spawn 스크립트에 추가되어야 하므로 별도 처리.
+		// 타입별 모듈 자동 주입
+		const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+
 		if (DI.Type == TEXT("skeletal_mesh"))
 		{
-			const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
-
 			// Initialize Mesh Reproduction Sprite — 메시 표면에서 파티클 위치 초기화
 			if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("InitializeMeshReproductionSprite")))
 			{
@@ -946,6 +972,19 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 				{
 					AddModuleToEmitter(System, EmitterIndex,
 						ENiagaraScriptUsage::ParticleUpdateScript,
+						Path->GetAssetPathString());
+				}
+			}
+		}
+		else if (DI.Type == TEXT("spline"))
+		{
+			// SampleSpline — 스플라인 위의 위치를 샘플링하여 파티클 배치
+			if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("SampleSpline")))
+			{
+				if (Path->IsValid())
+				{
+					AddModuleToEmitter(System, EmitterIndex,
+						ENiagaraScriptUsage::ParticleSpawnScript,
 						Path->GetAssetPathString());
 				}
 			}

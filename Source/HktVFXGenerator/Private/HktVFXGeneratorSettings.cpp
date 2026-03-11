@@ -160,6 +160,10 @@ UHktVFXGeneratorSettings::UHktVFXGeneratorSettings()
 	ModuleScriptPaths.Add(TEXT("UpdateMeshReproductionSprite"),
 		FSoftObjectPath(TEXT("/Niagara/Modules/UpdateMeshReproductionSprite.UpdateMeshReproductionSprite")));
 
+	// 스플라인 관련 모듈
+	ModuleScriptPaths.Add(TEXT("SampleSpline"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/SampleSpline.SampleSpline")));
+
 	// === 기본 머티리얼 (NiagaraExamples) ===
 	AdditiveMaterial =
 		FSoftObjectPath(TEXT("/Game/NiagaraExamples/Materials/MasterMaterials/M_SimpleAdditive.M_SimpleAdditive"));
