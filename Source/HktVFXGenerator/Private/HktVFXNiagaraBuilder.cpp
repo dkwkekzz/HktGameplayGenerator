@@ -13,8 +13,6 @@
 #include "NiagaraLightRendererProperties.h"
 #include "NiagaraMeshRendererProperties.h"
 #include "NiagaraDataInterfaceSkeletalMesh.h"
-#include "NiagaraDataInterfaceStaticMesh.h"
-#include "NiagaraDataInterfaceSpline.h"
 
 #include "NiagaraSystemFactoryNew.h"
 #include "NiagaraEditorUtilities.h"
@@ -899,16 +897,6 @@ void FHktVFXNiagaraBuilder::SetupDataInterfaces(
 			}
 			NewDI = SkelDI;
 			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceSkeletalMesh::StaticClass());
-		}
-		else if (DI.Type == TEXT("static_mesh"))
-		{
-			NewDI = NewObject<UNiagaraDataInterfaceStaticMesh>(System);
-			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceStaticMesh::StaticClass());
-		}
-		else if (DI.Type == TEXT("spline"))
-		{
-			NewDI = NewObject<UNiagaraDataInterfaceSpline>(System);
-			TypeDef = FNiagaraTypeDefinition(UNiagaraDataInterfaceSpline::StaticClass());
 		}
 		else
 		{
