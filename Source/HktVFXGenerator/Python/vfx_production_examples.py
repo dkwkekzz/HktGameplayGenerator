@@ -19,6 +19,10 @@ Usage:
 
     # 태그로 검색
     ribbon_configs = get_configs_by_tag("ribbon")
+
+    # 퀄리티별 필터
+    production_configs = get_configs_by_quality("production")
+    basic_configs = get_configs_by_quality("basic")
 """
 
 import json
@@ -51,6 +55,7 @@ def list_examples() -> list[dict]:
             "id": ex["_id"],
             "description": ex["_description"],
             "category": ex["_category"],
+            "quality": ex.get("_quality", "unknown"),
             "tags": ex["_tags"],
             "emitter_count": len(ex["config"]["emitters"]),
         }
@@ -107,6 +112,14 @@ def get_configs_by_tag(tag: str) -> list[dict]:
     return [ex["config"] for ex in load_examples() if tag in ex["_tags"]]
 
 
+def get_configs_by_quality(quality: str) -> list[dict]:
+    """퀄리티 등급으로 config 목록 반환.
+
+    Quality levels: "basic" (기존 레거시 예제), "production" (프로덕션 퀄리티)
+    """
+    return [ex["config"] for ex in load_examples() if ex.get("_quality") == quality]
+
+
 def get_all_configs() -> list[dict]:
     """모든 config를 리스트로 반환."""
     return [ex["config"] for ex in load_examples()]
@@ -126,5 +139,5 @@ if __name__ == "__main__":
     print("=== HKT VFX Production Examples ===\n")
     for info in list_examples():
         print(f"  [{info['id']}] {info['description']}")
-        print(f"    category: {info['category']}, emitters: {info['emitter_count']}, tags: {info['tags']}")
+        print(f"    category: {info['category']}, quality: {info['quality']}, emitters: {info['emitter_count']}, tags: {info['tags']}")
         print()
