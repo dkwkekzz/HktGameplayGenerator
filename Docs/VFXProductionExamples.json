@@ -1,0 +1,875 @@
+{
+  "_meta": {
+    "description": "Production-quality VFX example configs for HKT VFX Generator",
+    "version": "1.0.0",
+    "builder_limits": [
+      "Min/Max values are averaged to a single value — no per-particle randomness",
+      "No curve support — only linear start/end interpolation",
+      "No SubUV animation control — relies on rich template defaults"
+    ]
+  },
+  "examples": [
+    {
+      "_id": "aaa_explosion",
+      "_description": "AAA Explosion — 대형 폭발 (8 에미터)",
+      "_category": "explosion",
+      "_tags": ["burst", "rich_template", "mesh_debris", "ground_ring"],
+      "config": {
+        "systemName": "AAA_Explosion_Large",
+        "emitters": [
+          {
+            "name": "CoreFlash",
+            "spawn": { "mode": "burst", "burstCount": 2 },
+            "init": {
+              "lifetimeMin": 0.03, "lifetimeMax": 0.12,
+              "sizeMin": 120, "sizeMax": 300,
+              "color": { "r": 8, "g": 5, "b": 1.5 }
+            },
+            "update": { "sizeScaleEnd": 2.5, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "core", "sortOrder": 15 }
+          },
+          {
+            "name": "ExplosionBurst",
+            "spawn": { "mode": "burst", "burstCount": 8 },
+            "init": {
+              "lifetimeMin": 0.2, "lifetimeMax": 0.6,
+              "sizeMin": 80, "sizeMax": 200,
+              "color": { "r": 3, "g": 1.5, "b": 0.3 }
+            },
+            "update": {
+              "sizeScaleEnd": 1.8, "opacityEnd": 0,
+              "useColorOverLife": true, "colorEnd": { "r": 0.5, "g": 0.1, "b": 0 }
+            },
+            "render": { "emitterTemplate": "explosion", "sortOrder": 10 }
+          },
+          {
+            "name": "PrimarySparks",
+            "spawn": { "mode": "burst", "burstCount": 120 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 1.2,
+              "sizeMin": 2, "sizeMax": 8,
+              "velocityMin": { "x": -800, "y": -800, "z": -300 },
+              "velocityMax": { "x": 800, "y": 800, "z": 1200 },
+              "color": { "r": 2, "g": 1.2, "b": 0.3 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -980 },
+              "drag": 1.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "alignment": "velocity_aligned",
+              "sortOrder": 7
+            }
+          },
+          {
+            "name": "SecondarySparks",
+            "spawn": { "mode": "burst", "burstCount": 60, "burstDelay": 0.08 },
+            "init": {
+              "lifetimeMin": 0.8, "lifetimeMax": 2.5,
+              "sizeMin": 1, "sizeMax": 4,
+              "velocityMin": { "x": -400, "y": -400, "z": -100 },
+              "velocityMax": { "x": 400, "y": 400, "z": 600 },
+              "color": { "r": 1.5, "g": 0.6, "b": 0.1 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -980 },
+              "drag": 2.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark_secondary",
+              "alignment": "velocity_aligned",
+              "sortOrder": 6
+            }
+          },
+          {
+            "name": "Smoke",
+            "spawn": { "mode": "burst", "burstCount": 20, "burstDelay": 0.05 },
+            "init": {
+              "lifetimeMin": 1.5, "lifetimeMax": 4,
+              "sizeMin": 50, "sizeMax": 150,
+              "velocityMin": { "x": -80, "y": -80, "z": 30 },
+              "velocityMax": { "x": 80, "y": 80, "z": 120 },
+              "color": { "r": 0.12, "g": 0.1, "b": 0.08, "a": 0.6 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 40 },
+              "drag": 2,
+              "noiseStrength": 40, "noiseFrequency": 1.5,
+              "sizeScaleEnd": 4,
+              "opacityEnd": 0,
+              "useColorOverLife": true, "colorEnd": { "r": 0.06, "g": 0.05, "b": 0.04 }
+            },
+            "render": { "emitterTemplate": "smoke", "sortOrder": 1 }
+          },
+          {
+            "name": "MeshDebris",
+            "spawn": { "mode": "burst", "burstCount": 12 },
+            "init": {
+              "lifetimeMin": 0.8, "lifetimeMax": 2.5,
+              "sizeMin": 3, "sizeMax": 12,
+              "velocityMin": { "x": -500, "y": -500, "z": 200 },
+              "velocityMax": { "x": 500, "y": 500, "z": 800 },
+              "spriteRotationMin": 0, "spriteRotationMax": 360
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -980 },
+              "drag": 0.5,
+              "rotationRateMin": -180, "rotationRateMax": 180
+            },
+            "render": { "emitterTemplate": "upward_mesh_burst", "sortOrder": 4 }
+          },
+          {
+            "name": "GroundDust",
+            "spawn": { "mode": "burst", "burstCount": 25, "burstDelay": 0.02 },
+            "init": {
+              "lifetimeMin": 0.8, "lifetimeMax": 2,
+              "sizeMin": 30, "sizeMax": 80,
+              "velocityMin": { "x": -300, "y": -300, "z": 0 },
+              "velocityMax": { "x": 300, "y": 300, "z": 50 },
+              "color": { "r": 0.4, "g": 0.35, "b": 0.25, "a": 0.5 }
+            },
+            "update": { "drag": 3, "sizeScaleEnd": 3, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "ground_dust", "blendMode": "translucent", "sortOrder": 0 }
+          },
+          {
+            "name": "ExplosionLight",
+            "spawn": { "mode": "burst", "burstCount": 1 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.5,
+              "color": { "r": 4, "g": 2.5, "b": 0.8 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 8, "lightIntensity": 5 }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "muzzle_flash",
+      "_description": "Muzzle Flash — 총구 화염 (5 에미터)",
+      "_category": "weapon",
+      "_tags": ["burst", "muzzle_flash", "directional"],
+      "config": {
+        "systemName": "MuzzleFlash_Rifle",
+        "emitters": [
+          {
+            "name": "FlashCore",
+            "spawn": { "mode": "burst", "burstCount": 1 },
+            "init": {
+              "lifetimeMin": 0.02, "lifetimeMax": 0.05,
+              "sizeMin": 30, "sizeMax": 60,
+              "color": { "r": 10, "g": 8, "b": 3 }
+            },
+            "update": { "sizeScaleEnd": 1.5, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "core", "sortOrder": 15 }
+          },
+          {
+            "name": "MuzzleFlare",
+            "spawn": { "mode": "burst", "burstCount": 2 },
+            "init": {
+              "lifetimeMin": 0.03, "lifetimeMax": 0.08,
+              "sizeMin": 20, "sizeMax": 50,
+              "color": { "r": 5, "g": 3, "b": 1 }
+            },
+            "update": { "opacityEnd": 0 },
+            "render": { "emitterTemplate": "muzzle_flash", "sortOrder": 12 }
+          },
+          {
+            "name": "ForwardSparks",
+            "spawn": { "mode": "burst", "burstCount": 15 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.4,
+              "sizeMin": 1, "sizeMax": 3,
+              "velocityMin": { "x": 200, "y": -100, "z": -50 },
+              "velocityMax": { "x": 800, "y": 100, "z": 150 },
+              "color": { "r": 3, "g": 2, "b": 0.5 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -300 },
+              "drag": 5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "directional_burst",
+              "blendMode": "additive",
+              "alignment": "velocity_aligned",
+              "sortOrder": 8
+            }
+          },
+          {
+            "name": "GunSmoke",
+            "spawn": { "mode": "burst", "burstCount": 3, "burstDelay": 0.02 },
+            "init": {
+              "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+              "sizeMin": 5, "sizeMax": 15,
+              "velocityMin": { "x": 20, "y": -10, "z": 10 },
+              "velocityMax": { "x": 80, "y": 10, "z": 40 },
+              "color": { "r": 0.3, "g": 0.3, "b": 0.3, "a": 0.3 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 15 },
+              "drag": 2,
+              "sizeScaleEnd": 4,
+              "opacityEnd": 0
+            },
+            "render": { "emitterTemplate": "smoke", "sortOrder": 0 }
+          },
+          {
+            "name": "MuzzleLight",
+            "spawn": { "mode": "burst", "burstCount": 1 },
+            "init": {
+              "lifetimeMin": 0.03, "lifetimeMax": 0.08,
+              "color": { "r": 5, "g": 3.5, "b": 1 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 4, "lightIntensity": 4 }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "sword_slash",
+      "_description": "Sword Slash Trail — 근접 무기 궤적 (5 에미터)",
+      "_category": "weapon",
+      "_tags": ["rate", "ribbon", "distortion", "melee"],
+      "config": {
+        "systemName": "SwordSlash_Fire",
+        "emitters": [
+          {
+            "name": "SlashTrail",
+            "spawn": { "mode": "rate", "rate": 60 },
+            "init": {
+              "lifetimeMin": 0.15, "lifetimeMax": 0.3,
+              "color": { "r": 5, "g": 2, "b": 0.3 }
+            },
+            "update": { "opacityEnd": 0 },
+            "render": {
+              "emitterTemplate": "ribbon",
+              "blendMode": "additive",
+              "ribbonWidth": 30,
+              "sortOrder": 10
+            }
+          },
+          {
+            "name": "SlashGlow",
+            "spawn": { "mode": "rate", "rate": 40 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.25,
+              "sizeMin": 15, "sizeMax": 35,
+              "color": { "r": 4, "g": 1.5, "b": 0.2 }
+            },
+            "update": { "sizeScaleEnd": 0.3, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "core", "sortOrder": 12 }
+          },
+          {
+            "name": "EdgeSparks",
+            "spawn": { "mode": "rate", "rate": 25 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.4,
+              "sizeMin": 1, "sizeMax": 3,
+              "velocityMin": { "x": -200, "y": -200, "z": -100 },
+              "velocityMax": { "x": 200, "y": 200, "z": 200 },
+              "color": { "r": 3, "g": 1.5, "b": 0.3 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -400 },
+              "drag": 3,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "alignment": "velocity_aligned",
+              "sortOrder": 7
+            }
+          },
+          {
+            "name": "HeatDistortion",
+            "spawn": { "mode": "rate", "rate": 15 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.3,
+              "sizeMin": 10, "sizeMax": 25,
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0.3 }
+            },
+            "update": { "sizeScaleEnd": 2, "opacityEnd": 0 },
+            "render": {
+              "emitterTemplate": "simple_sprite_burst",
+              "materialPath": "/Game/NiagaraExamples/Materials/MI_Distortion",
+              "blendMode": "translucent",
+              "sortOrder": 2
+            }
+          },
+          {
+            "name": "TrailLight",
+            "spawn": { "mode": "rate", "rate": 20 },
+            "init": {
+              "lifetimeMin": 0.05, "lifetimeMax": 0.15,
+              "color": { "r": 3, "g": 1.5, "b": 0.3 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 2, "lightIntensity": 2 }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "bullet_impact",
+      "_description": "Bullet Impact — 콘크리트 피탄 (7 에미터)",
+      "_category": "impact",
+      "_tags": ["burst", "impact_mesh", "dust", "smoke"],
+      "config": {
+        "systemName": "BulletImpact_Concrete",
+        "emitters": [
+          {
+            "name": "ImpactFlash",
+            "spawn": { "mode": "burst", "burstCount": 2 },
+            "init": {
+              "lifetimeMin": 0.02, "lifetimeMax": 0.06,
+              "sizeMin": 8, "sizeMax": 20,
+              "color": { "r": 6, "g": 4, "b": 1.5 }
+            },
+            "update": { "opacityEnd": 0 },
+            "render": { "emitterTemplate": "impact", "sortOrder": 15 }
+          },
+          {
+            "name": "HotSparks",
+            "spawn": { "mode": "burst", "burstCount": 25 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.5,
+              "sizeMin": 1, "sizeMax": 3,
+              "velocityMin": { "x": -250, "y": -250, "z": 100 },
+              "velocityMax": { "x": 250, "y": 250, "z": 600 },
+              "color": { "r": 3, "g": 2, "b": 0.8 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -980 },
+              "drag": 2,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "alignment": "velocity_aligned",
+              "sortOrder": 10
+            }
+          },
+          {
+            "name": "DebrisSparks",
+            "spawn": { "mode": "burst", "burstCount": 15, "burstDelay": 0.02 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 1.0,
+              "sizeMin": 1, "sizeMax": 5,
+              "velocityMin": { "x": -200, "y": -200, "z": 50 },
+              "velocityMax": { "x": 200, "y": 200, "z": 400 },
+              "color": { "r": 0.6, "g": 0.5, "b": 0.4 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -980 },
+              "drag": 1.5
+            },
+            "render": { "emitterTemplate": "spark_debris", "sortOrder": 8 }
+          },
+          {
+            "name": "ChipMesh",
+            "spawn": { "mode": "burst", "burstCount": 5 },
+            "init": {
+              "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+              "sizeMin": 2, "sizeMax": 6,
+              "velocityMin": { "x": -150, "y": -150, "z": 100 },
+              "velocityMax": { "x": 150, "y": 150, "z": 350 },
+              "spriteRotationMin": 0, "spriteRotationMax": 360
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -980 },
+              "drag": 0.5,
+              "rotationRateMin": -300, "rotationRateMax": 300
+            },
+            "render": { "emitterTemplate": "impact_mesh", "sortOrder": 6 }
+          },
+          {
+            "name": "DustPuff",
+            "spawn": { "mode": "burst", "burstCount": 8 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 1.0,
+              "sizeMin": 8, "sizeMax": 25,
+              "velocityMin": { "x": -100, "y": -100, "z": 0 },
+              "velocityMax": { "x": 100, "y": 100, "z": 80 },
+              "color": { "r": 0.5, "g": 0.45, "b": 0.35, "a": 0.5 }
+            },
+            "update": { "drag": 4, "sizeScaleEnd": 3, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "dust", "sortOrder": 1 }
+          },
+          {
+            "name": "SmokeWisp",
+            "spawn": { "mode": "burst", "burstCount": 2, "burstDelay": 0.1 },
+            "init": {
+              "lifetimeMin": 1, "lifetimeMax": 2.5,
+              "sizeMin": 5, "sizeMax": 12,
+              "velocityMin": { "x": -5, "y": -5, "z": 10 },
+              "velocityMax": { "x": 5, "y": 5, "z": 30 },
+              "color": { "r": 0.2, "g": 0.18, "b": 0.15, "a": 0.25 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 8 },
+              "sizeScaleEnd": 3,
+              "opacityEnd": 0,
+              "noiseStrength": 15, "noiseFrequency": 2
+            },
+            "render": { "emitterTemplate": "smoke", "sortOrder": 0 }
+          },
+          {
+            "name": "ImpactLight",
+            "spawn": { "mode": "burst", "burstCount": 1 },
+            "init": {
+              "lifetimeMin": 0.03, "lifetimeMax": 0.1,
+              "color": { "r": 3, "g": 2, "b": 0.8 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 3, "lightIntensity": 3 }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "electric_arc",
+      "_description": "Electric Arc — 전기 방전 (5 에미터)",
+      "_category": "magic",
+      "_tags": ["looping", "arc", "ribbon", "high_frequency_noise"],
+      "config": {
+        "systemName": "ElectricArc_Discharge",
+        "looping": true,
+        "warmupTime": 0.5,
+        "emitters": [
+          {
+            "name": "MainArc",
+            "spawn": { "mode": "rate", "rate": 80 },
+            "init": {
+              "lifetimeMin": 0.05, "lifetimeMax": 0.15,
+              "color": { "r": 2, "g": 3, "b": 8 }
+            },
+            "update": {
+              "noiseStrength": 150, "noiseFrequency": 8,
+              "opacityEnd": 0
+            },
+            "render": { "emitterTemplate": "arc", "blendMode": "additive", "sortOrder": 10 }
+          },
+          {
+            "name": "ArcCore",
+            "spawn": { "mode": "rate", "rate": 15 },
+            "init": {
+              "lifetimeMin": 0.03, "lifetimeMax": 0.1,
+              "sizeMin": 8, "sizeMax": 20,
+              "color": { "r": 4, "g": 5, "b": 10 }
+            },
+            "update": { "sizeScaleEnd": 0.5, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "core", "sortOrder": 12 }
+          },
+          {
+            "name": "ElectricSparks",
+            "spawn": { "mode": "rate", "rate": 20 },
+            "init": {
+              "lifetimeMin": 0.05, "lifetimeMax": 0.2,
+              "sizeMin": 1, "sizeMax": 3,
+              "velocityMin": { "x": -300, "y": -300, "z": -300 },
+              "velocityMax": { "x": 300, "y": 300, "z": 300 },
+              "color": { "r": 2, "g": 3, "b": 6 }
+            },
+            "update": { "drag": 8, "opacityEnd": 0 },
+            "render": {
+              "emitterTemplate": "spark",
+              "alignment": "velocity_aligned",
+              "blendMode": "additive",
+              "sortOrder": 8
+            }
+          },
+          {
+            "name": "AmbientGlow",
+            "spawn": { "mode": "rate", "rate": 8 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 0.8,
+              "sizeMin": 2, "sizeMax": 6,
+              "velocityMin": { "x": -30, "y": -30, "z": -10 },
+              "velocityMax": { "x": 30, "y": 30, "z": 10 },
+              "color": { "r": 1, "g": 1.5, "b": 4 }
+            },
+            "update": { "noiseStrength": 50, "noiseFrequency": 4, "opacityEnd": 0 },
+            "render": {
+              "emitterTemplate": "hanging_particulates",
+              "blendMode": "additive",
+              "sortOrder": 5
+            }
+          },
+          {
+            "name": "ArcLight",
+            "spawn": { "mode": "rate", "rate": 30 },
+            "init": {
+              "lifetimeMin": 0.03, "lifetimeMax": 0.08,
+              "color": { "r": 1.5, "g": 2, "b": 5 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 3, "lightIntensity": 3 }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "healing_aura",
+      "_description": "Healing Aura — 힐링/버프 이펙트 (6 에미터)",
+      "_category": "magic",
+      "_tags": ["looping", "vortex", "attraction", "ribbon", "ground_glow"],
+      "config": {
+        "systemName": "HealingAura_Nature",
+        "looping": true,
+        "warmupTime": 2,
+        "emitters": [
+          {
+            "name": "RisingParticles",
+            "spawn": { "mode": "rate", "rate": 20 },
+            "init": {
+              "lifetimeMin": 1.5, "lifetimeMax": 3,
+              "sizeMin": 3, "sizeMax": 8,
+              "velocityMin": { "x": -20, "y": -20, "z": 50 },
+              "velocityMax": { "x": 20, "y": 20, "z": 120 },
+              "color": { "r": 0.5, "g": 2, "b": 0.8 }
+            },
+            "update": {
+              "vortexStrength": 80, "vortexRadius": 100,
+              "drag": 0.5,
+              "sizeScaleEnd": 0.2,
+              "opacityEnd": 0,
+              "useColorOverLife": true, "colorEnd": { "r": 1, "g": 3, "b": 1.5 }
+            },
+            "render": { "emitterTemplate": "hanging_particulates", "blendMode": "additive", "sortOrder": 7 }
+          },
+          {
+            "name": "VortexRing",
+            "spawn": { "mode": "rate", "rate": 30 },
+            "init": {
+              "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+              "sizeMin": 2, "sizeMax": 5,
+              "velocityMin": { "x": -80, "y": -80, "z": -5 },
+              "velocityMax": { "x": 80, "y": 80, "z": 5 },
+              "color": { "r": 0.3, "g": 1.5, "b": 0.5 }
+            },
+            "update": {
+              "vortexStrength": 200, "vortexRadius": 80,
+              "attractionStrength": 100, "attractionRadius": 120,
+              "opacityEnd": 0
+            },
+            "render": { "emitterTemplate": "hanging_particulates", "blendMode": "additive", "sortOrder": 6 }
+          },
+          {
+            "name": "CoreGlow",
+            "spawn": { "mode": "rate", "rate": 3 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 0.6,
+              "sizeMin": 40, "sizeMax": 60,
+              "color": { "r": 1, "g": 3, "b": 1.2 }
+            },
+            "update": { "sizeScaleEnd": 1.3, "opacityEnd": 0.3 },
+            "render": { "emitterTemplate": "core", "sortOrder": 3 }
+          },
+          {
+            "name": "SpiralTrail",
+            "spawn": { "mode": "rate", "rate": 40 },
+            "init": {
+              "lifetimeMin": 0.2, "lifetimeMax": 0.5,
+              "velocityMin": { "x": -60, "y": -60, "z": 30 },
+              "velocityMax": { "x": 60, "y": 60, "z": 80 },
+              "color": { "r": 0.8, "g": 2.5, "b": 1 }
+            },
+            "update": { "vortexStrength": 150, "vortexRadius": 70, "opacityEnd": 0 },
+            "render": {
+              "emitterTemplate": "ribbon",
+              "blendMode": "additive",
+              "ribbonWidth": 8,
+              "sortOrder": 8
+            }
+          },
+          {
+            "name": "GroundGlow",
+            "spawn": { "mode": "rate", "rate": 5 },
+            "init": {
+              "lifetimeMin": 0.5, "lifetimeMax": 1,
+              "sizeMin": 60, "sizeMax": 100,
+              "velocityMin": { "x": -5, "y": -5, "z": 0 },
+              "velocityMax": { "x": 5, "y": 5, "z": 3 },
+              "color": { "r": 0.3, "g": 1.5, "b": 0.5, "a": 0.3 }
+            },
+            "update": { "sizeScaleEnd": 1.5, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "ground_dust", "blendMode": "additive", "sortOrder": 0 }
+          },
+          {
+            "name": "HealLight",
+            "spawn": { "mode": "rate", "rate": 5 },
+            "init": {
+              "lifetimeMin": 0.2, "lifetimeMax": 0.5,
+              "color": { "r": 0.5, "g": 2, "b": 0.8 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 4, "lightIntensity": 1.5 }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "campfire_deluxe",
+      "_description": "Campfire Deluxe — 고급 모닥불 (7 에미터)",
+      "_category": "environment",
+      "_tags": ["looping", "material_override", "distortion", "ground_glow"],
+      "config": {
+        "systemName": "Campfire_Deluxe",
+        "looping": true,
+        "warmupTime": 3,
+        "emitters": [
+          {
+            "name": "FlameCore",
+            "spawn": { "mode": "rate", "rate": 25 },
+            "init": {
+              "lifetimeMin": 0.2, "lifetimeMax": 0.6,
+              "sizeMin": 20, "sizeMax": 50,
+              "velocityMin": { "x": -20, "y": -20, "z": 120 },
+              "velocityMax": { "x": 20, "y": 20, "z": 280 },
+              "color": { "r": 4, "g": 2, "b": 0.3 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 80 },
+              "sizeScaleEnd": 0.1,
+              "opacityEnd": 0,
+              "useColorOverLife": true, "colorEnd": { "r": 1, "g": 0.1, "b": 0 }
+            },
+            "render": {
+              "emitterTemplate": "fountain",
+              "materialPath": "/Game/NiagaraExamples/Materials/MI_FireRoil_8x8",
+              "sortOrder": 6
+            }
+          },
+          {
+            "name": "FlameOuter",
+            "spawn": { "mode": "rate", "rate": 12 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 0.7,
+              "sizeMin": 30, "sizeMax": 70,
+              "velocityMin": { "x": -40, "y": -40, "z": 80 },
+              "velocityMax": { "x": 40, "y": 40, "z": 200 },
+              "color": { "r": 2.5, "g": 1, "b": 0.1, "a": 0.7 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 60 },
+              "noiseStrength": 30, "noiseFrequency": 3,
+              "sizeScaleEnd": 0.3,
+              "opacityEnd": 0,
+              "useColorOverLife": true, "colorEnd": { "r": 0.8, "g": 0.05, "b": 0 }
+            },
+            "render": {
+              "emitterTemplate": "fountain",
+              "materialPath": "/Game/NiagaraExamples/Materials/MI_FireBall_8x8",
+              "blendMode": "additive",
+              "sortOrder": 5
+            }
+          },
+          {
+            "name": "Embers",
+            "spawn": { "mode": "rate", "rate": 10 },
+            "init": {
+              "lifetimeMin": 1.5, "lifetimeMax": 4,
+              "sizeMin": 1, "sizeMax": 3,
+              "velocityMin": { "x": -30, "y": -30, "z": 60 },
+              "velocityMax": { "x": 30, "y": 30, "z": 200 },
+              "color": { "r": 3, "g": 1, "b": 0.2 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 20 },
+              "drag": 0.3,
+              "noiseStrength": 20, "noiseFrequency": 2,
+              "opacityEnd": 0
+            },
+            "render": { "emitterTemplate": "spark", "sortOrder": 8 }
+          },
+          {
+            "name": "Smoke",
+            "spawn": { "mode": "rate", "rate": 4 },
+            "init": {
+              "lifetimeMin": 3, "lifetimeMax": 6,
+              "sizeMin": 25, "sizeMax": 60,
+              "velocityMin": { "x": -10, "y": -10, "z": 50 },
+              "velocityMax": { "x": 10, "y": 10, "z": 100 },
+              "color": { "r": 0.08, "g": 0.06, "b": 0.05, "a": 0.25 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 15 },
+              "drag": 0.8,
+              "noiseStrength": 25, "noiseFrequency": 1,
+              "sizeScaleEnd": 5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "smoke",
+              "materialPath": "/Game/NiagaraExamples/Materials/MI_SmokeRoil_8x8",
+              "sortOrder": 0
+            }
+          },
+          {
+            "name": "HeatDistortion",
+            "spawn": { "mode": "rate", "rate": 5 },
+            "init": {
+              "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+              "sizeMin": 20, "sizeMax": 40,
+              "velocityMin": { "x": -5, "y": -5, "z": 30 },
+              "velocityMax": { "x": 5, "y": 5, "z": 60 },
+              "color": { "r": 1, "g": 1, "b": 1, "a": 0.15 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": 20 },
+              "sizeScaleEnd": 2,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "simple_sprite_burst",
+              "materialPath": "/Game/NiagaraExamples/Materials/MI_Distortion",
+              "blendMode": "translucent",
+              "sortOrder": 2
+            }
+          },
+          {
+            "name": "GroundGlow",
+            "spawn": { "mode": "rate", "rate": 3 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 0.7,
+              "sizeMin": 80, "sizeMax": 120,
+              "color": { "r": 1.5, "g": 0.5, "b": 0.1, "a": 0.2 }
+            },
+            "update": { "opacityEnd": 0.1 },
+            "render": { "emitterTemplate": "ground_dust", "blendMode": "additive", "sortOrder": 1 }
+          },
+          {
+            "name": "FireLight",
+            "spawn": { "mode": "rate", "rate": 8 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.3,
+              "color": { "r": 2.5, "g": 1.2, "b": 0.3 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 5, "lightIntensity": 2.5 }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "magic_impact",
+      "_description": "Magic Projectile Impact — 마법 투사체 충돌 (7 에미터)",
+      "_category": "magic",
+      "_tags": ["burst", "shockwave", "vortex", "ribbon"],
+      "config": {
+        "systemName": "MagicImpact_Arcane",
+        "emitters": [
+          {
+            "name": "ImpactFlash",
+            "spawn": { "mode": "burst", "burstCount": 2 },
+            "init": {
+              "lifetimeMin": 0.03, "lifetimeMax": 0.1,
+              "sizeMin": 60, "sizeMax": 120,
+              "color": { "r": 3, "g": 1, "b": 8 }
+            },
+            "update": { "sizeScaleEnd": 2, "opacityEnd": 0 },
+            "render": { "emitterTemplate": "core", "sortOrder": 15 }
+          },
+          {
+            "name": "Shockwave",
+            "spawn": { "mode": "burst", "burstCount": 1 },
+            "init": {
+              "lifetimeMin": 0.15, "lifetimeMax": 0.3,
+              "sizeMin": 5, "sizeMax": 10,
+              "color": { "r": 2, "g": 0.5, "b": 5, "a": 0.6 }
+            },
+            "update": { "sizeScaleEnd": 30, "opacityEnd": 0 },
+            "render": {
+              "emitterTemplate": "simple_sprite_burst",
+              "blendMode": "additive",
+              "sortOrder": 12
+            }
+          },
+          {
+            "name": "EnergyBurst",
+            "spawn": { "mode": "burst", "burstCount": 40 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 1.0,
+              "sizeMin": 3, "sizeMax": 10,
+              "velocityMin": { "x": -500, "y": -500, "z": -200 },
+              "velocityMax": { "x": 500, "y": 500, "z": 600 },
+              "color": { "r": 1.5, "g": 0.5, "b": 4 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -300 },
+              "drag": 2,
+              "vortexStrength": 100, "vortexRadius": 150,
+              "opacityEnd": 0,
+              "useColorOverLife": true, "colorEnd": { "r": 0.5, "g": 0.1, "b": 1 }
+            },
+            "render": { "emitterTemplate": "omnidirectional_burst", "blendMode": "additive", "sortOrder": 8 }
+          },
+          {
+            "name": "MagicSparks",
+            "spawn": { "mode": "burst", "burstCount": 60 },
+            "init": {
+              "lifetimeMin": 0.2, "lifetimeMax": 0.8,
+              "sizeMin": 1, "sizeMax": 4,
+              "velocityMin": { "x": -600, "y": -600, "z": -300 },
+              "velocityMax": { "x": 600, "y": 600, "z": 800 },
+              "color": { "r": 2, "g": 1, "b": 5 }
+            },
+            "update": {
+              "gravity": { "x": 0, "y": 0, "z": -500 },
+              "drag": 4,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "alignment": "velocity_aligned",
+              "blendMode": "additive",
+              "sortOrder": 7
+            }
+          },
+          {
+            "name": "EnergyTrails",
+            "spawn": { "mode": "burst", "burstCount": 15 },
+            "init": {
+              "lifetimeMin": 0.3, "lifetimeMax": 0.8,
+              "velocityMin": { "x": -300, "y": -300, "z": -100 },
+              "velocityMax": { "x": 300, "y": 300, "z": 400 },
+              "color": { "r": 1, "g": 0.3, "b": 3 }
+            },
+            "update": { "drag": 3, "opacityEnd": 0 },
+            "render": {
+              "emitterTemplate": "ribbon",
+              "blendMode": "additive",
+              "ribbonWidth": 5,
+              "sortOrder": 9
+            }
+          },
+          {
+            "name": "MagicSmoke",
+            "spawn": { "mode": "burst", "burstCount": 8, "burstDelay": 0.03 },
+            "init": {
+              "lifetimeMin": 0.8, "lifetimeMax": 2,
+              "sizeMin": 20, "sizeMax": 50,
+              "velocityMin": { "x": -40, "y": -40, "z": 10 },
+              "velocityMax": { "x": 40, "y": 40, "z": 40 },
+              "color": { "r": 0.15, "g": 0.05, "b": 0.2, "a": 0.4 }
+            },
+            "update": {
+              "drag": 2,
+              "sizeScaleEnd": 3,
+              "opacityEnd": 0,
+              "noiseStrength": 30, "noiseFrequency": 2
+            },
+            "render": { "emitterTemplate": "smoke", "sortOrder": 1 }
+          },
+          {
+            "name": "ImpactLight",
+            "spawn": { "mode": "burst", "burstCount": 1 },
+            "init": {
+              "lifetimeMin": 0.1, "lifetimeMax": 0.4,
+              "color": { "r": 2, "g": 0.8, "b": 5 }
+            },
+            "render": { "rendererType": "light", "lightRadiusScale": 6, "lightIntensity": 4 }
+          }
+        ]
+      }
+    }
+  ]
+}
