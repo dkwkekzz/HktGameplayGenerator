@@ -110,12 +110,25 @@ result = unreal.HktVFXGeneratorFunctionLibrary.mcp_build_preset_explosion(
 ### Emitter: init
 | Field | Type | Description |
 |-------|------|-------------|
-| lifetimeMin/Max | float | Particle lifetime (seconds) |
-| sizeMin/Max | float | Particle size (UE units) |
-| spriteRotationMin/Max | float | Initial rotation (degrees) |
-| massMin/Max | float | Mass (force calculation) |
-| velocityMin/Max | {x,y,z} | Initial velocity range |
+| lifetimeMin/Max | float | Particle lifetime — random per particle |
+| sizeMin/Max | float | Particle size — random per particle |
+| spriteRotationMin/Max | float | Initial rotation (degrees) — random per particle |
+| massMin/Max | float | Mass (force calculation) — random per particle |
+| velocityMin/Max | {x,y,z} | Initial velocity range — random per particle |
 | color | {r,g,b,a} | Particle color (HDR: r/g/b > 1.0 for glow) |
+
+### Emitter: shapeLocation (Emission Shape)
+| Field | Type | Description |
+|-------|------|-------------|
+| shape | string | `"sphere"`, `"box"`, `"cylinder"`, `"cone"`, `"ring"`, `"torus"`, `"plane"` |
+| sphereRadius | float | Sphere radius (sphere only) |
+| boxSize | {x,y,z} | Box extents (box only) |
+| cylinderRadius/Height | float | Cylinder dimensions |
+| coneAngle/Length | float | Cone angle (degrees) and length |
+| ringRadius/Width | float | Ring dimensions |
+| torusRadius/SectionRadius | float | Torus dimensions |
+| offset | {x,y,z} | Shape offset from emitter origin |
+| surfaceOnly | bool | true = spawn on surface only |
 
 ### Emitter: update
 | Field | Type | Description |
@@ -142,6 +155,7 @@ result = unreal.HktVFXGeneratorFunctionLibrary.mcp_build_preset_explosion(
 | blendMode | string | `"additive"` (glow), `"translucent"` (alpha) |
 | sortOrder | int | Render order (higher = on top) |
 | alignment | string | `"unaligned"`, `"velocity_aligned"` |
+| facingMode | string | `"default"`, `"velocity"`, `"camera_position"`, `"camera_plane"`, `"custom_axis"` |
 | lightRadiusScale | float | Light renderer radius |
 | lightIntensity | float | Light renderer intensity |
 | ribbonWidth | float | Ribbon renderer width |

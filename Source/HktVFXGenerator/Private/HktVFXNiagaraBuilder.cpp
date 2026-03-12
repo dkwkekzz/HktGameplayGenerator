@@ -202,6 +202,12 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 		SetupDataInterfaces(System, ActualIndex, Config.DataInterfaces);
 	}
 
+	// Shape Location (방출 형태 모듈)
+	if (Config.Init.ShapeLocation.IsEnabled())
+	{
+		SetupShapeLocation(System, ActualIndex, Config.Init.ShapeLocation);
+	}
+
 	// 머티리얼 오버라이드 (materialPath가 지정된 경우)
 	if (!Config.Render.MaterialPath.IsEmpty())
 	{
@@ -245,36 +251,82 @@ void FHktVFXNiagaraBuilder::SetupInitializeModule(UNiagaraSystem* System, int32 
 {
 	const FString Module = TEXT("InitializeParticle");
 
-	// Lifetime — 단일 float (Min/Max 평균값 사용)
+	// ---------------------------------------------------------------
+	// Lifetime — Direct Set 모드와 Random 모드 모두 지원
+	// 템플릿이 Direct Set이면 Lifetime 파라미터가, Random이면 Min/Max가 적용됨.
+	// 둘 다 설정하여 어떤 모드든 올바른 값을 받도록 함.
+	// ---------------------------------------------------------------
 	float AvgLifetime = (Config.LifetimeMin + Config.LifetimeMax) * 0.5f;
 	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Lifetime"), AvgLifetime);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Lifetime Minimum"), Config.LifetimeMin);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Lifetime Maximum"), Config.LifetimeMax);
+	// NiagaraExamples 템플릿용 대체 파라미터 이름
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Lifetime Min"), Config.LifetimeMin);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Lifetime Max"), Config.LifetimeMax);
 
-	// Uniform Sprite Size — 단일 float (Min/Max 평균값 사용)
+	// ---------------------------------------------------------------
+	// Uniform Sprite Size — Direct Set / Random 모드 모두 지원
+	// ---------------------------------------------------------------
 	float AvgSize = (Config.SizeMin + Config.SizeMax) * 0.5f;
 	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Uniform Sprite Size"), AvgSize);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Uniform Sprite Size Minimum"), Config.SizeMin);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Uniform Sprite Size Maximum"), Config.SizeMax);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Uniform Sprite Size Min"), Config.SizeMin);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Uniform Sprite Size Max"), Config.SizeMax);
+	// Mesh 템플릿용 크기도 설정
+	SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Mesh Scale"),
+		FVector(AvgSize * 0.01f, AvgSize * 0.01f, AvgSize * 0.01f));
+	SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Mesh Scale Minimum"),
+		FVector(Config.SizeMin * 0.01f, Config.SizeMin * 0.01f, Config.SizeMin * 0.01f));
+	SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Mesh Scale Maximum"),
+		FVector(Config.SizeMax * 0.01f, Config.SizeMax * 0.01f, Config.SizeMax * 0.01f));
 
+	// ---------------------------------------------------------------
 	// Color
+	// ---------------------------------------------------------------
 	SetParticleParamColor(System, EmitterIndex, Module, TEXT("Color"), Config.Color);
 
-	// Velocity — Min/Max 평균 벡터 사용
+	// ---------------------------------------------------------------
+	// Velocity — Direct Set / Random 모드 모두 지원
+	// ---------------------------------------------------------------
 	FVector AvgVelocity = (Config.VelocityMin + Config.VelocityMax) * 0.5f;
 	if (!AvgVelocity.IsNearlyZero(1.f))
 	{
 		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Velocity"), AvgVelocity);
 	}
+	if (!Config.VelocityMin.IsNearlyZero(1.f) || !Config.VelocityMax.IsNearlyZero(1.f))
+	{
+		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Velocity Minimum"), Config.VelocityMin);
+		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Velocity Maximum"), Config.VelocityMax);
+		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Velocity Min"), Config.VelocityMin);
+		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Velocity Max"), Config.VelocityMax);
+	}
 
-	// Sprite Rotation — Min/Max 평균값 사용 (도 단위)
+	// ---------------------------------------------------------------
+	// Sprite Rotation — Direct Set / Random 모드 모두 지원
+	// ---------------------------------------------------------------
 	float AvgRotation = (Config.SpriteRotationMin + Config.SpriteRotationMax) * 0.5f;
 	if (AvgRotation != 0.f)
 	{
 		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Sprite Rotation Angle"), AvgRotation);
 	}
+	if (Config.SpriteRotationMin != 0.f || Config.SpriteRotationMax != 0.f)
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Sprite Rotation Angle Minimum"), Config.SpriteRotationMin);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Sprite Rotation Angle Maximum"), Config.SpriteRotationMax);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Sprite Rotation Angle Min"), Config.SpriteRotationMin);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Sprite Rotation Angle Max"), Config.SpriteRotationMax);
+	}
 
-	// Mass — Min/Max 평균값 사용
+	// ---------------------------------------------------------------
+	// Mass — Direct Set / Random 모드 모두 지원
+	// ---------------------------------------------------------------
 	float AvgMass = (Config.MassMin + Config.MassMax) * 0.5f;
 	if (AvgMass != 1.f)
 	{
 		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Mass"), AvgMass);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Mass Minimum"), Config.MassMin);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Mass Maximum"), Config.MassMax);
 	}
 }
 
@@ -339,12 +391,21 @@ void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 Emi
 	}
 
 	// --- SpriteRotationRate 모듈 ---
-	// ConfettiBurst에 존재
+	// ConfettiBurst에 존재 — Min/Max 랜덤 분포 지원
 	if (Config.RotationRateMin != 0.f || Config.RotationRateMax != 0.f)
 	{
 		float AvgRate = (Config.RotationRateMin + Config.RotationRateMax) * 0.5f;
 		SetParticleParamFloat(System, EmitterIndex,
 			TEXT("Sprite Rotation Rate"), TEXT("Rotation Rate"), AvgRate);
+		// Random 모드 파라미터 (Min/Max)
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Sprite Rotation Rate"), TEXT("Rotation Rate Minimum"), Config.RotationRateMin);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Sprite Rotation Rate"), TEXT("Rotation Rate Maximum"), Config.RotationRateMax);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Sprite Rotation Rate"), TEXT("Rotation Rate Min"), Config.RotationRateMin);
+		SetParticleParamFloat(System, EmitterIndex,
+			TEXT("Sprite Rotation Rate"), TEXT("Rotation Rate Max"), Config.RotationRateMax);
 	}
 
 	// --- ScaleSpriteSize / ScaleMeshSize 모듈 ---
@@ -442,10 +503,31 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 		// --- Sprite 렌더러 ---
 		if (UNiagaraSpriteRendererProperties* SR = Cast<UNiagaraSpriteRendererProperties>(Renderer))
 		{
+			// Alignment 설정
 			if (Config.Alignment == TEXT("velocity_aligned"))
 			{
 				SR->Alignment = ENiagaraSpriteAlignment::VelocityAligned;
 			}
+
+			// Facing Mode 설정
+			if (Config.FacingMode == TEXT("velocity"))
+			{
+				SR->FacingMode = ENiagaraSpriteFacingMode::FaceCamera;
+				SR->Alignment = ENiagaraSpriteAlignment::VelocityAligned;
+			}
+			else if (Config.FacingMode == TEXT("camera_position"))
+			{
+				SR->FacingMode = ENiagaraSpriteFacingMode::FaceCameraPosition;
+			}
+			else if (Config.FacingMode == TEXT("camera_plane"))
+			{
+				SR->FacingMode = ENiagaraSpriteFacingMode::FaceCameraPlane;
+			}
+			else if (Config.FacingMode == TEXT("custom_axis"))
+			{
+				SR->FacingMode = ENiagaraSpriteFacingMode::CustomFacingVector;
+			}
+			// "default" → FaceCamera (이미 기본값)
 
 			// SubUV 플립북 설정
 			if (Config.SubImageRows > 0 && Config.SubImageColumns > 0)
@@ -489,6 +571,86 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 			// materialPath로 오버라이드 가능
 		}
 	}
+}
+
+// ============================================================================
+// Shape Location — 파티클 방출 형태 모듈
+// ShapeLocation 모듈을 스폰 스크립트에 주입하고 형태별 파라미터를 설정.
+// ============================================================================
+void FHktVFXNiagaraBuilder::SetupShapeLocation(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FHktVFXShapeLocationConfig& Config)
+{
+	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+
+	// ShapeLocation 모듈 주입 (Spawn 스크립트에 추가)
+	if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("ShapeLocation")))
+	{
+		if (Path->IsValid())
+		{
+			AddModuleToEmitter(System, EmitterIndex,
+				ENiagaraScriptUsage::ParticleSpawnScript,
+				Path->GetAssetPathString());
+		}
+	}
+	else
+	{
+		// Settings에 ShapeLocation 경로가 없으면 기본 엔진 경로 시도
+		AddModuleToEmitter(System, EmitterIndex,
+			ENiagaraScriptUsage::ParticleSpawnScript,
+			TEXT("/Niagara/Modules/Location/ShapeLocation.ShapeLocation"));
+	}
+
+	const FString Module = TEXT("ShapeLocation");
+
+	// 형태별 파라미터 설정
+	if (Config.Shape == TEXT("sphere"))
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Sphere Radius"), Config.SphereRadius);
+	}
+	else if (Config.Shape == TEXT("box"))
+	{
+		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Box Size"), Config.BoxSize);
+	}
+	else if (Config.Shape == TEXT("cylinder"))
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Cylinder Height"), Config.CylinderHeight);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Cylinder Radius"), Config.CylinderRadius);
+	}
+	else if (Config.Shape == TEXT("cone"))
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Cone Angle"), Config.ConeAngle);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Cone Length"), Config.ConeLength);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Cone Height"), Config.ConeLength);
+	}
+	else if (Config.Shape == TEXT("ring"))
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Ring Radius"), Config.RingRadius);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Ring Width"), Config.RingWidth);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Large Radius"), Config.RingRadius);
+	}
+	else if (Config.Shape == TEXT("torus"))
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Large Radius"), Config.TorusRadius);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Small Radius"), Config.TorusSectionRadius);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Torus Radius"), Config.TorusRadius);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Torus Section Radius"), Config.TorusSectionRadius);
+	}
+
+	// 공통 파라미터
+	if (!Config.Offset.IsNearlyZero(1.f))
+	{
+		SetParticleParamVec3(System, EmitterIndex, Module, TEXT("Offset"), Config.Offset);
+	}
+
+	// Surface Only — bool 파라미터 (int32로 설정)
+	if (Config.bSurfaceOnly)
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Surface Only Band Thickness"), 1.f);
+	}
+
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("  Shape Location: %s (surfaceOnly=%d)"),
+		*Config.Shape, Config.bSurfaceOnly);
 }
 
 // ============================================================================

@@ -36,6 +36,7 @@ private:
 	void SetupInitializeModule(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterInitConfig& Config);
 	void SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterUpdateConfig& Config);
 	void SetupRenderer(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterRenderConfig& Config);
+	void SetupShapeLocation(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXShapeLocationConfig& Config);
 	void SetupSystemProperties(UNiagaraSystem* System, const FHktVFXNiagaraConfig& Config);
 
 	UMaterialInterface* GetVFXMaterial(const FString& BlendMode);

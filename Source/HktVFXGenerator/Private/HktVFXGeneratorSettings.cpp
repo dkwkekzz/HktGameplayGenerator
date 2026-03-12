@@ -164,6 +164,10 @@ UHktVFXGeneratorSettings::UHktVFXGeneratorSettings()
 	ModuleScriptPaths.Add(TEXT("SampleSpline"),
 		FSoftObjectPath(TEXT("/Niagara/Modules/SampleSpline.SampleSpline")));
 
+	// Shape Location 모듈 (파티클 방출 형태: sphere, box, cone, ring, torus 등)
+	ModuleScriptPaths.Add(TEXT("ShapeLocation"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/Location/ShapeLocation.ShapeLocation")));
+
 	// === 기본 머티리얼 (NiagaraExamples) ===
 	AdditiveMaterial =
 		FSoftObjectPath(TEXT("/Game/NiagaraExamples/Materials/MasterMaterials/M_SimpleAdditive.M_SimpleAdditive"));

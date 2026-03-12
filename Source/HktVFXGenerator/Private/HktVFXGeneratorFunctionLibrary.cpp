@@ -266,7 +266,9 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  spawn.mode='burst'  → SpawnBurst_Instantaneous (burstCount, burstDelay)\n");
 	S += TEXT("  spawn.mode='rate'   → SpawnRate (rate)\n\n");
 
-	S += TEXT("  init.*              → InitializeParticle (Lifetime, Uniform Sprite Size, Color)\n\n");
+	S += TEXT("  init.*              → InitializeParticle (Lifetime, Uniform Sprite Size, Color, Velocity)\n");
+	S += TEXT("                        Min/Max values create RANDOM DISTRIBUTIONS per particle.\n");
+	S += TEXT("  shapeLocation.*    → ShapeLocation module (sphere, box, cone, ring, torus, cylinder, plane)\n\n");
 
 	S += TEXT("  update.gravity      → Gravity Force module (auto-injected if missing)\n");
 	S += TEXT("  update.drag         → Drag module (auto-injected if missing)\n");
@@ -296,6 +298,36 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  Need constant accel?     → ANY template + accelerationForce (auto-injected)\n");
 	S += TEXT("  Need light?              → minimal (rendererType='light')\n");
 	S += TEXT("  Need rich visuals?       → spark, smoke, explosion, core, debris (NiagaraExamples)\n\n");
+
+	// ===================================================================
+	S += TEXT("[SHAPE LOCATION — Emission Shape]\n");
+	S += TEXT("Use shapeLocation to control WHERE particles spawn (replaces point-spawn):\n\n");
+	S += TEXT("  \"sphere\"   — Spherical emission. Params: sphereRadius (default 100)\n");
+	S += TEXT("               Use for: Explosions, magic orbs, shockwaves, auras\n");
+	S += TEXT("  \"box\"      — Box-shaped emission. Params: boxSize {x,y,z}\n");
+	S += TEXT("               Use for: Rain, snow, environment particles, area effects\n");
+	S += TEXT("  \"cone\"     — Cone-shaped emission. Params: coneAngle (degrees), coneLength\n");
+	S += TEXT("               Use for: Muzzle flash, directional spray, spotlight particles\n");
+	S += TEXT("  \"cylinder\" — Cylindrical emission. Params: cylinderRadius, cylinderHeight\n");
+	S += TEXT("               Use for: Pillars, portals, beam origins, ground dust\n");
+	S += TEXT("  \"ring\"     — Ring emission. Params: ringRadius, ringWidth\n");
+	S += TEXT("               Use for: Shockwaves, halos, orbital effects, portals\n");
+	S += TEXT("  \"torus\"    — Torus/donut emission. Params: torusRadius, torusSectionRadius\n");
+	S += TEXT("               Use for: Orbital rings, portal edges, Saturn-like effects\n");
+	S += TEXT("  \"plane\"    — Flat plane emission.\n");
+	S += TEXT("               Use for: Ground effects, floor sparkles\n\n");
+	S += TEXT("  Common: offset {x,y,z}, surfaceOnly (bool)\n");
+	S += TEXT("  surfaceOnly=true → particles only on shape surface (rings, shells)\n");
+	S += TEXT("  surfaceOnly=false → particles fill the volume (clouds, orbs)\n\n");
+
+	// ===================================================================
+	S += TEXT("[SPRITE FACING MODE]\n");
+	S += TEXT("Controls how sprite particles orient relative to camera:\n\n");
+	S += TEXT("  \"default\"          — Standard billboarding (always face camera)\n");
+	S += TEXT("  \"velocity\"         — Face velocity direction (sparks, debris, streaks)\n");
+	S += TEXT("  \"camera_position\"  — Face toward camera position (perspective-correct for close-ups)\n");
+	S += TEXT("  \"camera_plane\"     — Parallel to camera plane (uniform facing, UI particles)\n");
+	S += TEXT("  \"custom_axis\"      — Custom facing vector\n\n");
 
 	// ===================================================================
 	S += TEXT("[MATERIAL LIBRARY]\n");
@@ -336,7 +368,12 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("[DESIGN TIPS]\n");
 	S += TEXT("  - ALWAYS prefer templates with the modules you need (see Template Selection Guide).\n");
 	S += TEXT("  - Layer 3-6 emitters with different roles for rich effects.\n");
-	S += TEXT("  - velocity_aligned alignment makes sparks/debris look like streaks.\n");
+	S += TEXT("  - Min/Max values create RANDOM DISTRIBUTIONS — each particle gets unique random values.\n");
+	S += TEXT("    Wide ranges = organic/natural, narrow ranges = uniform/artificial.\n");
+	S += TEXT("  - Use shapeLocation to give particles a spawn SHAPE (sphere, cone, ring, etc.).\n");
+	S += TEXT("    Combine shape + velocity for complex emission: ring + upward velocity = rising halo.\n");
+	S += TEXT("  - velocity_aligned alignment OR facingMode='velocity' makes sparks/debris look like streaks.\n");
+	S += TEXT("  - facingMode='camera_position' for perspective-correct billboarding on close-up effects.\n");
 	S += TEXT("  - burstDelay staggers layers (smoke 0.05s after explosion).\n");
 	S += TEXT("  - colorOverLife: fire=orange->dark, magic=blue->purple->transparent.\n");
 	S += TEXT("  - sizeScaleEnd>1 = particle grows. sizeScaleEnd<1 = shrinks.\n");
@@ -687,6 +724,78 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXExampleConfigs()
 	S += TEXT("            \"color\":{\"r\":3,\"g\":0.5,\"b\":5}},\n");
 	S += TEXT("     \"update\":{\"sizeScaleEnd\":2,\"opacityEnd\":0},\n");
 	S += TEXT("     \"render\":{\"emitterTemplate\":\"core\",\"sortOrder\":10}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 12: Magic Portal (shapeLocation + facingMode)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Magic Portal - ring-shaped emission with vortex and facingMode\",\n");
+	S += TEXT("  \"_templates_used\": \"hanging_particulates, simple_sprite_burst, spark, minimal(light)\",\n");
+	S += TEXT("  \"_new_features\": \"shapeLocation (ring, sphere, torus), facingMode (camera_plane, velocity)\",\n");
+	S += TEXT("  \"systemName\": \"MagicPortal_Ring\",\n");
+	S += TEXT("  \"looping\": true,\n");
+	S += TEXT("  \"warmupTime\": 2,\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"PortalRing\",\"spawn\":{\"mode\":\"rate\",\"rate\":40},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":1.5,\"sizeMin\":3,\"sizeMax\":8,\n");
+	S += TEXT("            \"color\":{\"r\":0.5,\"g\":1.5,\"b\":3}},\n");
+	S += TEXT("     \"shapeLocation\":{\"shape\":\"ring\",\"ringRadius\":120,\"ringWidth\":5,\"surfaceOnly\":true},\n");
+	S += TEXT("     \"update\":{\"noiseStrength\":20,\"noiseFrequency\":2,\"opacityEnd\":0,\n");
+	S += TEXT("              \"useColorOverLife\":true,\"colorEnd\":{\"r\":2,\"g\":0.5,\"b\":3}},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"hanging_particulates\",\"blendMode\":\"additive\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"PortalCore\",\"spawn\":{\"mode\":\"rate\",\"rate\":15},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":20,\"sizeMax\":60,\n");
+	S += TEXT("            \"color\":{\"r\":1,\"g\":2,\"b\":4,\"a\":0.3}},\n");
+	S += TEXT("     \"shapeLocation\":{\"shape\":\"sphere\",\"sphereRadius\":40},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":2,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"simple_sprite_burst\",\"blendMode\":\"additive\",\n");
+	S += TEXT("              \"facingMode\":\"camera_plane\",\"sortOrder\":3}},\n");
+	S += TEXT("    {\"name\":\"OrbitalSparks\",\"spawn\":{\"mode\":\"rate\",\"rate\":10},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.8,\"lifetimeMax\":2,\"sizeMin\":1,\"sizeMax\":3,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-50,\"y\":-50,\"z\":-50},\"velocityMax\":{\"x\":50,\"y\":50,\"z\":50},\n");
+	S += TEXT("            \"color\":{\"r\":2,\"g\":3,\"b\":5}},\n");
+	S += TEXT("     \"shapeLocation\":{\"shape\":\"torus\",\"torusRadius\":100,\"torusSectionRadius\":10},\n");
+	S += TEXT("     \"update\":{\"vortexStrength\":200,\"vortexRadius\":150,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"spark\",\"facingMode\":\"velocity\",\"sortOrder\":7}},\n");
+	S += TEXT("    {\"name\":\"GlowLight\",\"spawn\":{\"mode\":\"rate\",\"rate\":2},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"color\":{\"r\":0.3,\"g\":0.8,\"b\":2}},\n");
+	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":4,\"lightIntensity\":2}}\n");
+	S += TEXT("  ]\n");
+	S += TEXT("},\n");
+
+	// ===================================================================
+	// Example 13: Shockwave Impact (cone + ring + cylinder shapes)
+	// ===================================================================
+	S += TEXT("{\n");
+	S += TEXT("  \"_description\": \"Shockwave Impact - ring shockwave + cone debris + cylinder dust\",\n");
+	S += TEXT("  \"_templates_used\": \"simple_sprite_burst, spark, smoke, minimal(light)\",\n");
+	S += TEXT("  \"_new_features\": \"shapeLocation (ring, cone, cylinder), facingMode (velocity)\",\n");
+	S += TEXT("  \"systemName\": \"ShockwaveImpact\",\n");
+	S += TEXT("  \"emitters\": [\n");
+	S += TEXT("    {\"name\":\"ShockwaveRing\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":30},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.3,\"lifetimeMax\":0.8,\"sizeMin\":10,\"sizeMax\":30,\n");
+	S += TEXT("            \"color\":{\"r\":3,\"g\":2,\"b\":0.5}},\n");
+	S += TEXT("     \"shapeLocation\":{\"shape\":\"ring\",\"ringRadius\":50,\"ringWidth\":5,\"surfaceOnly\":true},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":3,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"simple_sprite_burst\",\"blendMode\":\"additive\",\"sortOrder\":8}},\n");
+	S += TEXT("    {\"name\":\"UpwardDebris\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":40},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.5,\"lifetimeMax\":1.5,\"sizeMin\":2,\"sizeMax\":8,\n");
+	S += TEXT("            \"velocityMin\":{\"x\":-200,\"y\":-200,\"z\":200},\"velocityMax\":{\"x\":200,\"y\":200,\"z\":600},\n");
+	S += TEXT("            \"color\":{\"r\":1,\"g\":0.7,\"b\":0.3}},\n");
+	S += TEXT("     \"shapeLocation\":{\"shape\":\"cone\",\"coneAngle\":30,\"coneLength\":50},\n");
+	S += TEXT("     \"update\":{\"gravity\":{\"x\":0,\"y\":0,\"z\":-980},\"drag\":1.5,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"spark\",\"facingMode\":\"velocity\",\"sortOrder\":5}},\n");
+	S += TEXT("    {\"name\":\"GroundDust\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":20},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":1,\"lifetimeMax\":3,\"sizeMin\":30,\"sizeMax\":80,\n");
+	S += TEXT("            \"color\":{\"r\":0.3,\"g\":0.25,\"b\":0.2,\"a\":0.4}},\n");
+	S += TEXT("     \"shapeLocation\":{\"shape\":\"cylinder\",\"cylinderRadius\":80,\"cylinderHeight\":10},\n");
+	S += TEXT("     \"update\":{\"sizeScaleEnd\":4,\"opacityEnd\":0},\n");
+	S += TEXT("     \"render\":{\"emitterTemplate\":\"smoke\",\"sortOrder\":0}},\n");
+	S += TEXT("    {\"name\":\"FlashLight\",\"spawn\":{\"mode\":\"burst\",\"burstCount\":1},\n");
+	S += TEXT("     \"init\":{\"lifetimeMin\":0.1,\"lifetimeMax\":0.3,\"color\":{\"r\":5,\"g\":3,\"b\":1}},\n");
+	S += TEXT("     \"render\":{\"rendererType\":\"light\",\"lightRadiusScale\":8,\"lightIntensity\":5}}\n");
 	S += TEXT("  ]\n");
 	S += TEXT("}\n");
 

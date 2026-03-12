@@ -48,6 +48,67 @@ struct HKTVFXGENERATOR_API FHktVFXDataInterfaceBinding
 };
 
 // ============================================================================
+// Shape Location 설정 (파티클 방출 형태)
+// InitializeParticle의 ShapeLocation 모듈로 주입하여
+// 파티클 스폰 위치를 구/박스/콘/링/토러스 등의 형태로 분포.
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXShapeLocationConfig
+{
+	GENERATED_BODY()
+
+	/**
+	 * 방출 형태:
+	 * "sphere"   — 구형 방출 (폭발, 마법 오라)
+	 * "box"      — 박스형 방출 (환경 파티클, 비)
+	 * "cylinder" — 원기둥형 (기둥 이펙트, 포탈)
+	 * "cone"     — 콘형 (머즐 플래시, 분수)
+	 * "ring"     — 링형 (충격파, 소용돌이)
+	 * "torus"    — 토러스형 (도넛 형태)
+	 * "plane"    — 평면형 (바닥 이펙트)
+	 * 비어있으면 ShapeLocation 미사용 (포인트 스폰)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString Shape;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SphereRadius = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector BoxSize = FVector(100.f, 100.f, 100.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CylinderHeight = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CylinderRadius = 50.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float ConeAngle = 45.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float ConeLength = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RingRadius = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RingWidth = 10.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float TorusRadius = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float TorusSectionRadius = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector Offset = FVector::ZeroVector;
+
+	/** true면 표면에서만 스폰, false면 볼륨 내부에서도 스폰 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bSurfaceOnly = false;
+
+	bool IsEnabled() const { return !Shape.IsEmpty(); }
+};
+
+// ============================================================================
 // 에미터 Spawn 설정
 // ============================================================================
 
@@ -111,6 +172,10 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterInitConfig
 	float MassMin = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float MassMax = 1.f;
+
+	/** 파티클 방출 형태 (Shape Location 모듈) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXShapeLocationConfig ShapeLocation;
 };
 
 // ============================================================================
@@ -230,6 +295,17 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterRenderConfig
 	// "unaligned", "velocity_aligned" (sprite only)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	FString Alignment = TEXT("unaligned");
+
+	/**
+	 * 스프라이트 페이싱 모드:
+	 * "default"          — 카메라를 향함 (기본)
+	 * "velocity"         — 속도 방향으로 향함
+	 * "camera_position"  — 카메라 위치를 향함 (원근 보정)
+	 * "camera_plane"     — 카메라 평면에 평행 (UI용)
+	 * "custom_axis"      — 커스텀 축 정렬
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString FacingMode = TEXT("default");
 
 	// Light renderer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
@@ -412,6 +488,26 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 					Emitter.Init.Color = ParseJsonColor(*C);
 			}
 
+			// ShapeLocation (init 하위)
+			if (const TSharedPtr<FJsonObject>* ShapeObj; EmObj->TryGetObjectField(TEXT("shapeLocation"), ShapeObj))
+			{
+				(*ShapeObj)->TryGetStringField(TEXT("shape"), Emitter.Init.ShapeLocation.Shape);
+				(*ShapeObj)->TryGetNumberField(TEXT("sphereRadius"), Emitter.Init.ShapeLocation.SphereRadius);
+				if (const TSharedPtr<FJsonObject>* BS; (*ShapeObj)->TryGetObjectField(TEXT("boxSize"), BS))
+					Emitter.Init.ShapeLocation.BoxSize = ParseJsonVector(*BS);
+				(*ShapeObj)->TryGetNumberField(TEXT("cylinderHeight"), Emitter.Init.ShapeLocation.CylinderHeight);
+				(*ShapeObj)->TryGetNumberField(TEXT("cylinderRadius"), Emitter.Init.ShapeLocation.CylinderRadius);
+				(*ShapeObj)->TryGetNumberField(TEXT("coneAngle"), Emitter.Init.ShapeLocation.ConeAngle);
+				(*ShapeObj)->TryGetNumberField(TEXT("coneLength"), Emitter.Init.ShapeLocation.ConeLength);
+				(*ShapeObj)->TryGetNumberField(TEXT("ringRadius"), Emitter.Init.ShapeLocation.RingRadius);
+				(*ShapeObj)->TryGetNumberField(TEXT("ringWidth"), Emitter.Init.ShapeLocation.RingWidth);
+				(*ShapeObj)->TryGetNumberField(TEXT("torusRadius"), Emitter.Init.ShapeLocation.TorusRadius);
+				(*ShapeObj)->TryGetNumberField(TEXT("torusSectionRadius"), Emitter.Init.ShapeLocation.TorusSectionRadius);
+				if (const TSharedPtr<FJsonObject>* Off; (*ShapeObj)->TryGetObjectField(TEXT("offset"), Off))
+					Emitter.Init.ShapeLocation.Offset = ParseJsonVector(*Off);
+				(*ShapeObj)->TryGetBoolField(TEXT("surfaceOnly"), Emitter.Init.ShapeLocation.bSurfaceOnly);
+			}
+
 			// Update
 			if (const TSharedPtr<FJsonObject>* UpdObj; EmObj->TryGetObjectField(TEXT("update"), UpdObj))
 			{
@@ -455,6 +551,7 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				if ((*RenObj)->TryGetNumberField(TEXT("sortOrder"), SO))
 					Emitter.Render.SortOrder = SO;
 				(*RenObj)->TryGetStringField(TEXT("alignment"), Emitter.Render.Alignment);
+				(*RenObj)->TryGetStringField(TEXT("facingMode"), Emitter.Render.FacingMode);
 				(*RenObj)->TryGetNumberField(TEXT("lightRadiusScale"), Emitter.Render.LightRadiusScale);
 				(*RenObj)->TryGetNumberField(TEXT("lightIntensity"), Emitter.Render.LightIntensity);
 				(*RenObj)->TryGetNumberField(TEXT("ribbonWidth"), Emitter.Render.RibbonWidth);
@@ -558,6 +655,53 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteObjectEnd();
 			W->WriteObjectEnd(); // init
 
+			// ShapeLocation
+			if (E.Init.ShapeLocation.IsEnabled())
+			{
+				W->WriteObjectStart(TEXT("shapeLocation"));
+				W->WriteValue(TEXT("shape"), E.Init.ShapeLocation.Shape);
+				if (E.Init.ShapeLocation.Shape == TEXT("sphere"))
+					W->WriteValue(TEXT("sphereRadius"), E.Init.ShapeLocation.SphereRadius);
+				if (E.Init.ShapeLocation.Shape == TEXT("box"))
+				{
+					W->WriteObjectStart(TEXT("boxSize"));
+					W->WriteValue(TEXT("x"), E.Init.ShapeLocation.BoxSize.X);
+					W->WriteValue(TEXT("y"), E.Init.ShapeLocation.BoxSize.Y);
+					W->WriteValue(TEXT("z"), E.Init.ShapeLocation.BoxSize.Z);
+					W->WriteObjectEnd();
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("cylinder"))
+				{
+					W->WriteValue(TEXT("cylinderHeight"), E.Init.ShapeLocation.CylinderHeight);
+					W->WriteValue(TEXT("cylinderRadius"), E.Init.ShapeLocation.CylinderRadius);
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("cone"))
+				{
+					W->WriteValue(TEXT("coneAngle"), E.Init.ShapeLocation.ConeAngle);
+					W->WriteValue(TEXT("coneLength"), E.Init.ShapeLocation.ConeLength);
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("ring"))
+				{
+					W->WriteValue(TEXT("ringRadius"), E.Init.ShapeLocation.RingRadius);
+					W->WriteValue(TEXT("ringWidth"), E.Init.ShapeLocation.RingWidth);
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("torus"))
+				{
+					W->WriteValue(TEXT("torusRadius"), E.Init.ShapeLocation.TorusRadius);
+					W->WriteValue(TEXT("torusSectionRadius"), E.Init.ShapeLocation.TorusSectionRadius);
+				}
+				if (!E.Init.ShapeLocation.Offset.IsNearlyZero(1.f))
+				{
+					W->WriteObjectStart(TEXT("offset"));
+					W->WriteValue(TEXT("x"), E.Init.ShapeLocation.Offset.X);
+					W->WriteValue(TEXT("y"), E.Init.ShapeLocation.Offset.Y);
+					W->WriteValue(TEXT("z"), E.Init.ShapeLocation.Offset.Z);
+					W->WriteObjectEnd();
+				}
+				W->WriteValue(TEXT("surfaceOnly"), E.Init.ShapeLocation.bSurfaceOnly);
+				W->WriteObjectEnd();
+			}
+
 			// Update
 			W->WriteObjectStart(TEXT("update"));
 			W->WriteObjectStart(TEXT("gravity"));
@@ -624,6 +768,8 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("blendMode"), E.Render.BlendMode);
 			W->WriteValue(TEXT("sortOrder"), E.Render.SortOrder);
 			W->WriteValue(TEXT("alignment"), E.Render.Alignment);
+			if (E.Render.FacingMode != TEXT("default") && !E.Render.FacingMode.IsEmpty())
+				W->WriteValue(TEXT("facingMode"), E.Render.FacingMode);
 			W->WriteValue(TEXT("lightRadiusScale"), E.Render.LightRadiusScale);
 			W->WriteValue(TEXT("lightIntensity"), E.Render.LightIntensity);
 			W->WriteValue(TEXT("ribbonWidth"), E.Render.RibbonWidth);
@@ -699,6 +845,17 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"velocityMax\": {\"x\":0,\"y\":0,\"z\":0},\n");
 		S += TEXT("        \"color\": {\"r\":1,\"g\":1,\"b\":1,\"a\":1}\n");
 		S += TEXT("      },\n");
+		S += TEXT("      \"shapeLocation\": {\n");
+		S += TEXT("        \"shape\": \"sphere | box | cylinder | cone | ring | torus | plane (empty=point spawn)\",\n");
+		S += TEXT("        \"sphereRadius\": \"float (sphere only)\",\n");
+		S += TEXT("        \"boxSize\": {\"x\":100,\"y\":100,\"z\":100} (box only),\n");
+		S += TEXT("        \"cylinderHeight\": \"float\", \"cylinderRadius\": \"float\",\n");
+		S += TEXT("        \"coneAngle\": \"float (degrees)\", \"coneLength\": \"float\",\n");
+		S += TEXT("        \"ringRadius\": \"float\", \"ringWidth\": \"float\",\n");
+		S += TEXT("        \"torusRadius\": \"float\", \"torusSectionRadius\": \"float\",\n");
+		S += TEXT("        \"offset\": {\"x\":0,\"y\":0,\"z\":0},\n");
+		S += TEXT("        \"surfaceOnly\": \"bool (true=surface only, false=volume fill)\"\n");
+		S += TEXT("      },\n");
 		S += TEXT("      \"update\": {\n");
 		S += TEXT("        \"gravity\": {\"x\":0,\"y\":0,\"z\":-980},\n");
 		S += TEXT("        \"drag\": \"float\",\n");
@@ -723,6 +880,7 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"blendMode\": \"additive | translucent\",\n");
 		S += TEXT("        \"sortOrder\": \"int\",\n");
 		S += TEXT("        \"alignment\": \"unaligned | velocity_aligned\",\n");
+		S += TEXT("        \"facingMode\": \"default | velocity | camera_position | camera_plane | custom_axis\",\n");
 		S += TEXT("        \"lightRadiusScale\": \"float (light only)\",\n");
 		S += TEXT("        \"lightIntensity\": \"float (light only)\",\n");
 		S += TEXT("        \"ribbonWidth\": \"float (ribbon only)\",\n");

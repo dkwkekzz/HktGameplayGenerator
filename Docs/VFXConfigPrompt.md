@@ -90,7 +90,9 @@ RICH TEMPLATES (NiagaraExamples — pre-configured with materials+textures):
   spawn.mode="burst"    → SpawnBurst_Instantaneous (burstCount, burstDelay)
   spawn.mode="rate"     → SpawnRate (rate) — requires rate-capable template
 
-  init.*                → InitializeParticle (Lifetime, Uniform Sprite Size, Color)
+  init.*                → InitializeParticle (Lifetime, Uniform Sprite Size, Color, Velocity)
+                           Min/Max values create RANDOM DISTRIBUTIONS (each particle gets unique values).
+  shapeLocation.*       → ShapeLocation module (sphere, box, cone, ring, torus, cylinder, plane)
 
   update.gravity        → Gravity Force module (omnidirectional_burst, fountain, confetti_burst, etc.)
   update.drag           → Drag module (omnidirectional_burst, directional_burst, confetti_burst)
@@ -100,6 +102,8 @@ RICH TEMPLATES (NiagaraExamples — pre-configured with materials+textures):
   update.opacity/color  → ScaleColor module (Scale RGBA, Scale RGB)
   update.attraction*    → Point Attraction Force module
   update.vortex*        → Vortex Velocity module
+
+  render.facingMode     → Sprite Facing Mode (velocity, camera_position, camera_plane, custom_axis)
 
 === TEMPLATE SELECTION GUIDE ===
 
@@ -111,6 +115,34 @@ RICH TEMPLATES (NiagaraExamples — pre-configured with materials+textures):
   Need mesh debris?       → upward_mesh_burst
   Need light?             → minimal (rendererType="light")
   Need rich visuals?      → spark, smoke, explosion, core, debris (NiagaraExamples)
+
+=== SHAPE LOCATION (Emission Shape) ===
+
+Use shapeLocation to control WHERE particles spawn:
+
+  "sphere"   — Spherical emission (explosions, magic orbs, shockwaves)
+               Params: sphereRadius (default 100)
+  "box"      — Box-shaped emission (rain, snow, environment particles)
+               Params: boxSize {x,y,z} (default 100x100x100)
+  "cone"     — Cone-shaped emission (muzzle flash, directional spray, spotlight)
+               Params: coneAngle (degrees, default 45), coneLength (default 100)
+  "cylinder" — Cylindrical emission (pillars, portals, beam origins)
+               Params: cylinderRadius (default 50), cylinderHeight (default 100)
+  "ring"     — Ring emission (shockwaves, halos, orbital effects)
+               Params: ringRadius (default 100), ringWidth (default 10)
+  "torus"    — Torus/donut emission (orbital rings, portal edges)
+               Params: torusRadius (default 100), torusSectionRadius (default 20)
+  "plane"    — Flat plane emission (ground effects, floor particles)
+
+Common params: offset {x,y,z}, surfaceOnly (bool, true=surface only)
+
+=== SPRITE FACING MODE ===
+
+  "default"          — Always face camera (standard billboarding)
+  "velocity"         — Face velocity direction (streaks, sparks, debris)
+  "camera_position"  — Face toward camera position (perspective-correct)
+  "camera_plane"     — Parallel to camera plane (UI particles, uniform facing)
+  "custom_axis"      — Custom facing vector
 
 === MATERIAL LIBRARY ===
 Override material via render.materialPath (optional):
@@ -145,13 +177,20 @@ Override material via render.materialPath (optional):
 
   - ALWAYS choose a template that has the modules you need (see Template Selection Guide).
   - Layer 3-6 emitters with different roles for rich effects.
-  - velocity_aligned alignment makes sparks/debris look like streaks.
+  - Min/Max values create RANDOM DISTRIBUTIONS — each particle gets a unique random value in the range.
+    Use wide ranges for organic/natural effects (e.g., sizeMin:5, sizeMax:50).
+  - shapeLocation gives particles spawn SHAPE (sphere, cone, ring, etc.).
+    Use "sphere" for explosions, "cone" for directional effects, "ring" for shockwaves.
+  - velocity_aligned alignment OR facingMode="velocity" makes sparks/debris look like streaks.
+  - facingMode="camera_position" gives perspective-correct billboarding for close-up effects.
   - burstDelay staggers layers (smoke 0.05s after explosion).
   - colorOverLife: fire=orange→dark, magic=blue→purple→transparent.
   - sizeScaleEnd>1 = particle grows over lifetime. sizeScaleEnd<1 = shrinks.
   - For looping effects: spawn.mode="rate" + looping=true + warmupTime.
   - Only set non-default values. Omitted fields use sensible defaults.
   - Rich templates (spark, smoke, explosion, etc.) have materials+textures built-in — no need to set materialPath unless overriding.
+  - Combine shapeLocation with velocity for complex emission: ring+upward velocity = rising halo.
+  - For multi-color transitions, layer multiple emitters with different colors and staggered lifetimes.
 
 === JSON SCHEMA ===
 
@@ -169,13 +208,24 @@ Override material via render.materialPath (optional):
         "burstDelay": "float (delay seconds)"
       },
       "init": {
-        "lifetimeMin": "float", "lifetimeMax": "float",
-        "sizeMin": "float", "sizeMax": "float",
+        "lifetimeMin": "float", "lifetimeMax": "float (random distribution per particle)",
+        "sizeMin": "float", "sizeMax": "float (random distribution per particle)",
         "spriteRotationMin": "float (degrees)", "spriteRotationMax": "float",
         "massMin": "float", "massMax": "float",
         "velocityMin": {"x":0,"y":0,"z":0},
         "velocityMax": {"x":0,"y":0,"z":0},
         "color": {"r":1,"g":1,"b":1,"a":1}
+      },
+      "shapeLocation": {
+        "shape": "sphere | box | cylinder | cone | ring | torus | plane",
+        "sphereRadius": "float",
+        "boxSize": {"x":100,"y":100,"z":100},
+        "coneAngle": "float (degrees)", "coneLength": "float",
+        "cylinderRadius": "float", "cylinderHeight": "float",
+        "ringRadius": "float", "ringWidth": "float",
+        "torusRadius": "float", "torusSectionRadius": "float",
+        "offset": {"x":0,"y":0,"z":0},
+        "surfaceOnly": "bool"
       },
       "update": {
         "gravity": {"x":0,"y":0,"z":-980},
@@ -197,6 +247,7 @@ Override material via render.materialPath (optional):
         "blendMode": "additive | translucent",
         "sortOrder": "int (higher = on top)",
         "alignment": "unaligned | velocity_aligned",
+        "facingMode": "default | velocity | camera_position | camera_plane | custom_axis",
         "lightRadiusScale": "float (light only)",
         "lightIntensity": "float (light only)",
         "ribbonWidth": "float (ribbon only)"
@@ -366,6 +417,67 @@ Override material via render.materialPath (optional):
     {"name":"WarmLight","spawn":{"mode":"rate","rate":3},
      "init":{"lifetimeMin":0.2,"lifetimeMax":0.5,"color":{"r":2,"g":1,"b":0.3}},
      "render":{"rendererType":"light","lightRadiusScale":3,"lightIntensity":2}}
+  ]
+}
+
+--- Example 8: Magic Portal (shapeLocation + facingMode) ---
+{
+  "systemName": "MagicPortal",
+  "looping": true, "warmupTime": 2,
+  "emitters": [
+    {"name":"PortalRing","spawn":{"mode":"rate","rate":40},
+     "init":{"lifetimeMin":0.5,"lifetimeMax":1.5,"sizeMin":3,"sizeMax":8,
+            "color":{"r":0.5,"g":1.5,"b":3}},
+     "shapeLocation":{"shape":"ring","ringRadius":120,"ringWidth":5,"surfaceOnly":true},
+     "update":{"noiseStrength":20,"noiseFrequency":2,"opacityEnd":0,
+              "useColorOverLife":true,"colorEnd":{"r":2,"g":0.5,"b":3}},
+     "render":{"emitterTemplate":"hanging_particulates","blendMode":"additive","sortOrder":5}},
+    {"name":"PortalCore","spawn":{"mode":"rate","rate":15},
+     "init":{"lifetimeMin":0.3,"lifetimeMax":0.8,"sizeMin":20,"sizeMax":60,
+            "color":{"r":1,"g":2,"b":4,"a":0.3}},
+     "shapeLocation":{"shape":"sphere","sphereRadius":40},
+     "update":{"sizeScaleEnd":2,"opacityEnd":0},
+     "render":{"emitterTemplate":"simple_sprite_burst","blendMode":"additive",
+              "facingMode":"camera_plane","sortOrder":3}},
+    {"name":"Sparks","spawn":{"mode":"rate","rate":10},
+     "init":{"lifetimeMin":0.8,"lifetimeMax":2,"sizeMin":1,"sizeMax":3,
+            "velocityMin":{"x":-50,"y":-50,"z":-50},"velocityMax":{"x":50,"y":50,"z":50},
+            "color":{"r":2,"g":3,"b":5}},
+     "shapeLocation":{"shape":"torus","torusRadius":100,"torusSectionRadius":10},
+     "update":{"vortexStrength":200,"vortexRadius":150,"opacityEnd":0},
+     "render":{"emitterTemplate":"spark","facingMode":"velocity","sortOrder":7}},
+    {"name":"GlowLight","spawn":{"mode":"rate","rate":2},
+     "init":{"lifetimeMin":0.3,"lifetimeMax":0.8,"color":{"r":0.3,"g":0.8,"b":2}},
+     "render":{"rendererType":"light","lightRadiusScale":4,"lightIntensity":2}}
+  ]
+}
+
+--- Example 9: Shockwave Impact (ring + cone shapes) ---
+{
+  "systemName": "ShockwaveImpact",
+  "emitters": [
+    {"name":"ShockwaveRing","spawn":{"mode":"burst","burstCount":30},
+     "init":{"lifetimeMin":0.3,"lifetimeMax":0.8,"sizeMin":10,"sizeMax":30,
+            "color":{"r":3,"g":2,"b":0.5}},
+     "shapeLocation":{"shape":"ring","ringRadius":50,"ringWidth":5,"surfaceOnly":true},
+     "update":{"sizeScaleEnd":3,"opacityEnd":0},
+     "render":{"emitterTemplate":"simple_sprite_burst","blendMode":"additive","sortOrder":8}},
+    {"name":"UpwardDebris","spawn":{"mode":"burst","burstCount":40},
+     "init":{"lifetimeMin":0.5,"lifetimeMax":1.5,"sizeMin":2,"sizeMax":8,
+            "velocityMin":{"x":-200,"y":-200,"z":200},"velocityMax":{"x":200,"y":200,"z":600},
+            "color":{"r":1,"g":0.7,"b":0.3}},
+     "shapeLocation":{"shape":"cone","coneAngle":30,"coneLength":50},
+     "update":{"gravity":{"x":0,"y":0,"z":-980},"drag":1.5,"opacityEnd":0},
+     "render":{"emitterTemplate":"spark","facingMode":"velocity","sortOrder":5}},
+    {"name":"GroundDust","spawn":{"mode":"burst","burstCount":20},
+     "init":{"lifetimeMin":1,"lifetimeMax":3,"sizeMin":30,"sizeMax":80,
+            "color":{"r":0.3,"g":0.25,"b":0.2,"a":0.4}},
+     "shapeLocation":{"shape":"cylinder","cylinderRadius":80,"cylinderHeight":10},
+     "update":{"sizeScaleEnd":4,"opacityEnd":0},
+     "render":{"emitterTemplate":"smoke","sortOrder":0}},
+    {"name":"FlashLight","spawn":{"mode":"burst","burstCount":1},
+     "init":{"lifetimeMin":0.1,"lifetimeMax":0.3,"color":{"r":5,"g":3,"b":1}},
+     "render":{"rendererType":"light","lightRadiusScale":8,"lightIntensity":5}}
   ]
 }
 
