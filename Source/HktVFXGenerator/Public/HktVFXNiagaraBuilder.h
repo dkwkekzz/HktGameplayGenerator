@@ -10,6 +10,9 @@ class UNiagaraSystem;
 class UNiagaraEmitter;
 class UMaterialInterface;
 struct FHktVFXDataInterfaceBinding;
+struct FHktVFXCollisionConfig;
+struct FHktVFXEventSpawnConfig;
+struct FHktVFXSpawnPerUnitConfig;
 
 /**
  * FHktVFXNiagaraConfig로 UNiagaraSystem .uasset을 생성.
@@ -37,6 +40,10 @@ private:
 	void SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterUpdateConfig& Config);
 	void SetupRenderer(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterRenderConfig& Config);
 	void SetupShapeLocation(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXShapeLocationConfig& Config);
+	void SetupCollision(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXCollisionConfig& Config);
+	void SetupEventSpawn(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEventSpawnConfig& Config, const FString& EmitterName);
+	void SetupSpawnPerUnit(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXSpawnPerUnitConfig& Config);
+	void SetupGPUSim(UNiagaraSystem* System, int32 EmitterIndex);
 	void SetupSystemProperties(UNiagaraSystem* System, const FHktVFXNiagaraConfig& Config);
 
 	UMaterialInterface* GetVFXMaterial(const FString& BlendMode);

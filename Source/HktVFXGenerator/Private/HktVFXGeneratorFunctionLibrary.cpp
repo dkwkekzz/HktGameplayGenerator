@@ -365,6 +365,54 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  SortOrder: higher = renders on top. Light=15, Glow=10, Sparks=5, Smoke=0\n\n");
 
 	// ===================================================================
+	S += TEXT("[COLLISION — Surface Interaction]\n");
+	S += TEXT("Add collision to make particles interact with world geometry:\n\n");
+	S += TEXT("  \"collision\": { \"enabled\": true, \"response\": \"bounce\", \"restitution\": 0.5, \"friction\": 0.2 }\n\n");
+	S += TEXT("  response modes:\n");
+	S += TEXT("    \"bounce\"  — Reflect off surfaces (debris, sparks hitting ground)\n");
+	S += TEXT("    \"kill\"    — Destroy on contact (raindrops, snowflakes)\n");
+	S += TEXT("    \"stick\"   — Stop at collision point (blood splatter, paint)\n\n");
+	S += TEXT("  restitution: 0.0=no bounce, 0.5=moderate, 1.0=full elastic (bounce only)\n");
+	S += TEXT("  friction: 0.0=slippery, 0.5=moderate, 1.0=rough surface\n");
+	S += TEXT("  traceDistance: GPU ray trace depth (0=default, increase for fast particles)\n\n");
+
+	// ===================================================================
+	S += TEXT("[EVENT-BASED SECONDARY SPAWN]\n");
+	S += TEXT("Trigger secondary particles from particle events:\n\n");
+	S += TEXT("  \"eventSpawn\": { \"triggerEvent\": \"death\", \"spawnCount\": 5, \"targetEmitter\": \"Smoke\" }\n\n");
+	S += TEXT("  triggerEvent:\n");
+	S += TEXT("    \"death\"     — When particle dies → spawn secondary (sparks→smoke, fire→embers)\n");
+	S += TEXT("    \"collision\" — When particle hits surface → spawn secondary (bullet→dust)\n\n");
+	S += TEXT("  spawnCount: Number of secondary particles per event (1-20)\n");
+	S += TEXT("  targetEmitter: Name of target emitter in same system (receives location event)\n");
+	S += TEXT("  velocityScale: Inherited velocity multiplier (0.5=half speed, 0=stationary)\n\n");
+	S += TEXT("  Workflow: Source emitter (eventSpawn) → GenerateLocationEvent → Target emitter receives\n");
+	S += TEXT("  Both emitters must exist in same system. Target gets particles at source particle's position.\n\n");
+
+	// ===================================================================
+	S += TEXT("[SPAWN PER UNIT — Distance-based Spawning]\n");
+	S += TEXT("Spawn particles based on emitter movement distance (for trails, afterimages):\n\n");
+	S += TEXT("  \"spawnPerUnit\": { \"enabled\": true, \"spawnPerUnit\": 5, \"maxFrameSpawn\": 100 }\n\n");
+	S += TEXT("  spawnPerUnit: Particles per distance unit moved (higher=denser trail)\n");
+	S += TEXT("  maxFrameSpawn: Safety cap per frame (prevent teleport-spawning thousands)\n");
+	S += TEXT("  movementTolerance: Minimum movement to trigger spawn (filter jitter)\n\n");
+	S += TEXT("  Best with: ribbon renderers, velocity_aligned sprites for trails.\n");
+	S += TEXT("  Combine with: looping=true, no burst/rate spawn needed.\n\n");
+
+	// ===================================================================
+	S += TEXT("[GPU SIMULATION]\n");
+	S += TEXT("Enable GPU simulation for massive particle counts:\n\n");
+	S += TEXT("  \"gpuSim\": true\n\n");
+	S += TEXT("  When to use:\n");
+	S += TEXT("    - Particle count > 1000 (storms, galaxy, dense smoke)\n");
+	S += TEXT("    - Heavy physics (collision + noise + attraction combined)\n");
+	S += TEXT("    - Large-scale environment effects (snow, rain, fireflies)\n\n");
+	S += TEXT("  Limitations:\n");
+	S += TEXT("    - No CPU readback (cannot drive audio/gameplay from GPU particles)\n");
+	S += TEXT("    - Some modules may not support GPU (check template compatibility)\n");
+	S += TEXT("    - Ribbon renderer does NOT work with GPU sim\n\n");
+
+	// ===================================================================
 	S += TEXT("[DESIGN TIPS]\n");
 	S += TEXT("  - ALWAYS prefer templates with the modules you need (see Template Selection Guide).\n");
 	S += TEXT("  - Layer 3-6 emitters with different roles for rich effects.\n");
@@ -382,7 +430,10 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  - Use McpDumpAllTemplateParameters() to see actual module params at runtime.\n");
 	S += TEXT("  - Combine vortex+attraction for spiral implosion (portals, black holes).\n");
 	S += TEXT("  - accelerationForce for constant thrust (missiles, jets, ascending spirits).\n");
-	S += TEXT("  - vortexAxis: default (0,0,1)=Z. Set (1,0,0) for horizontal tornado.\n\n");
+	S += TEXT("  - vortexAxis: default (0,0,1)=Z. Set (1,0,0) for horizontal tornado.\n");
+	S += TEXT("  - Use collision + eventSpawn together: sparks hit ground → spawn dust/scorch marks.\n");
+	S += TEXT("  - spawnPerUnit for movement trails (swords, projectiles, vehicles).\n");
+	S += TEXT("  - gpuSim for >1000 particles or heavy physics combos.\n\n");
 
 	// ===================================================================
 	S += TEXT("[TEXTURE GENERATION]\n");

@@ -173,6 +173,46 @@ Override material via render.materialPath (optional):
   NoiseStrength: 10-50 (subtle), 50-200 (turbulent), 200+ (chaotic)
   SortOrder: higher = renders on top. Light=15, Glow=10, Sparks=5, Smoke=0
 
+=== COLLISION (Surface Interaction) ===
+
+Add collision to make particles interact with world geometry:
+  "collision": { "enabled": true, "response": "bounce", "restitution": 0.5, "friction": 0.2 }
+
+  response: "bounce" (reflect), "kill" (destroy on contact), "stick" (stop at point)
+  restitution: 0.0=dead stop, 0.5=moderate bounce, 1.0=full elastic
+  friction: 0.0=slippery, 1.0=rough
+  Best for: debris landing, sparks bouncing, rain splatter (kill + secondary spawn)
+
+=== EVENT-BASED SECONDARY SPAWN ===
+
+Trigger secondary particles from death/collision events:
+  "eventSpawn": { "triggerEvent": "death", "spawnCount": 5, "targetEmitter": "Smoke" }
+
+  triggerEvent: "death" (particle expires) or "collision" (hits surface)
+  spawnCount: 1-20 secondary particles per event
+  targetEmitter: Name of receiving emitter in same system
+  velocityScale: Inherited velocity (0.5=half, 0=stationary)
+
+  Use cases: sparks die→smoke, bullet→dust on impact, firework burst stages
+
+=== SPAWN PER UNIT (Distance-based) ===
+
+Spawn based on emitter movement distance (for trails):
+  "spawnPerUnit": { "enabled": true, "spawnPerUnit": 5, "maxFrameSpawn": 100 }
+
+  spawnPerUnit: Particles per distance unit (higher=denser)
+  maxFrameSpawn: Safety cap per frame
+  Best with: ribbon renderers, velocity_aligned for trails
+  Use cases: sword trail, vehicle exhaust, projectile trail
+
+=== GPU SIMULATION ===
+
+Enable GPU computation for massive particle counts:
+  "gpuSim": true
+
+  When to use: >1000 particles, heavy physics combos, environment effects
+  Limitations: No ribbon renderer, no CPU readback
+
 === DESIGN TIPS ===
 
   - ALWAYS choose a template that has the modules you need (see Template Selection Guide).
@@ -191,6 +231,9 @@ Override material via render.materialPath (optional):
   - Rich templates (spark, smoke, explosion, etc.) have materials+textures built-in — no need to set materialPath unless overriding.
   - Combine shapeLocation with velocity for complex emission: ring+upward velocity = rising halo.
   - For multi-color transitions, layer multiple emitters with different colors and staggered lifetimes.
+  - collision + eventSpawn combo: sparks hit ground → spawn dust/scorch marks.
+  - spawnPerUnit for movement trails (swords, projectiles, vehicles).
+  - gpuSim for >1000 particles or heavy physics combos (no ribbon support).
 
 === JSON SCHEMA ===
 
@@ -251,7 +294,27 @@ Override material via render.materialPath (optional):
         "lightRadiusScale": "float (light only)",
         "lightIntensity": "float (light only)",
         "ribbonWidth": "float (ribbon only)"
-      }
+      },
+      "collision": {
+        "enabled": "bool",
+        "response": "bounce | kill | stick",
+        "restitution": "float (0-1)",
+        "friction": "float (0-1)",
+        "traceDistance": "float (0=default)"
+      },
+      "eventSpawn": {
+        "triggerEvent": "death | collision",
+        "spawnCount": "int",
+        "targetEmitter": "string (target emitter name)",
+        "velocityScale": "float"
+      },
+      "spawnPerUnit": {
+        "enabled": "bool",
+        "spawnPerUnit": "float",
+        "maxFrameSpawn": "float",
+        "movementTolerance": "float"
+      },
+      "gpuSim": "bool (GPU simulation)"
     }
   ]
 }

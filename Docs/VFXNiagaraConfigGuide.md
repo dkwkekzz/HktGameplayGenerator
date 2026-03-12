@@ -160,6 +160,36 @@ result = unreal.HktVFXGeneratorFunctionLibrary.mcp_build_preset_explosion(
 | lightIntensity | float | Light renderer intensity |
 | ribbonWidth | float | Ribbon renderer width |
 
+### Emitter: collision
+| Field | Type | Description |
+|-------|------|-------------|
+| enabled | bool | Activate collision module |
+| response | string | `"bounce"`, `"kill"`, `"stick"` |
+| restitution | float | Bounciness 0-1 (bounce mode only) |
+| friction | float | Surface friction 0-1 |
+| traceDistance | float | GPU ray trace distance (0=default) |
+
+### Emitter: eventSpawn
+| Field | Type | Description |
+|-------|------|-------------|
+| triggerEvent | string | `"death"` or `"collision"` |
+| spawnCount | int | Secondary particles per event |
+| targetEmitter | string | Target emitter name in same system |
+| velocityScale | float | Inherited velocity multiplier |
+
+### Emitter: spawnPerUnit
+| Field | Type | Description |
+|-------|------|-------------|
+| enabled | bool | Activate distance-based spawning |
+| spawnPerUnit | float | Particles per distance unit |
+| maxFrameSpawn | float | Max particles per frame |
+| movementTolerance | float | Minimum movement threshold |
+
+### Emitter-level
+| Field | Type | Description |
+|-------|------|-------------|
+| gpuSim | bool | GPU simulation (large particle counts) |
+
 ## Settings
 
 Project Settings > Plugins > Hkt VFX Generator:

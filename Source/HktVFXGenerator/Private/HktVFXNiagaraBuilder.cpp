@@ -208,6 +208,30 @@ void FHktVFXNiagaraBuilder::ConfigureEmitter(
 		SetupShapeLocation(System, ActualIndex, Config.Init.ShapeLocation);
 	}
 
+	// Collision 모듈
+	if (Config.Collision.bEnabled)
+	{
+		SetupCollision(System, ActualIndex, Config.Collision);
+	}
+
+	// Event-based 2차 스폰
+	if (Config.EventSpawn.IsEnabled())
+	{
+		SetupEventSpawn(System, ActualIndex, Config.EventSpawn, Config.Name);
+	}
+
+	// Spawn Per Unit (이동 거리 기반 스폰)
+	if (Config.SpawnPerUnit.bEnabled)
+	{
+		SetupSpawnPerUnit(System, ActualIndex, Config.SpawnPerUnit);
+	}
+
+	// GPU Sim 모드
+	if (Config.bGPUSim)
+	{
+		SetupGPUSim(System, ActualIndex);
+	}
+
 	// 머티리얼 오버라이드 (materialPath가 지정된 경우)
 	if (!Config.Render.MaterialPath.IsEmpty())
 	{
@@ -651,6 +675,195 @@ void FHktVFXNiagaraBuilder::SetupShapeLocation(
 
 	UE_LOG(LogHktVFXBuilder, Log, TEXT("  Shape Location: %s (surfaceOnly=%d)"),
 		*Config.Shape, Config.bSurfaceOnly);
+}
+
+// ============================================================================
+// Collision — 바닥/벽 충돌 모듈
+// GPU Depth Buffer 기반 충돌 감지. bounce/kill/stick 반응.
+// ============================================================================
+void FHktVFXNiagaraBuilder::SetupCollision(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FHktVFXCollisionConfig& Config)
+{
+	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+
+	// Collision 모듈 주입 (Update 스크립트)
+	if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("Collision")))
+	{
+		if (Path->IsValid())
+		{
+			AddModuleToEmitter(System, EmitterIndex,
+				ENiagaraScriptUsage::ParticleUpdateScript,
+				Path->GetAssetPathString());
+		}
+	}
+	else
+	{
+		AddModuleToEmitter(System, EmitterIndex,
+			ENiagaraScriptUsage::ParticleUpdateScript,
+			TEXT("/Niagara/Modules/Collision.Collision"));
+	}
+
+	const FString Module = TEXT("Collision");
+
+	// Restitution (반발 계수)
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Restitution"), Config.Restitution);
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Elasticity"), Config.Restitution);
+
+	// Friction (마찰 계수)
+	SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Friction"), Config.Friction);
+
+	// GPU Trace Distance
+	if (Config.TraceDistance > 0.f)
+	{
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("GPU Trace Distance"), Config.TraceDistance);
+		SetParticleParamFloat(System, EmitterIndex, Module, TEXT("Trace Distance"), Config.TraceDistance);
+	}
+
+	// Response type (bounce/kill/stick 설정은 static switch이므로
+	// RapidIterationParameters로는 설정 불가. 로그만 남김.)
+	UE_LOG(LogHktVFXBuilder, Log,
+		TEXT("  Collision: response=%s, restitution=%.2f, friction=%.2f"),
+		*Config.Response, Config.Restitution, Config.Friction);
+}
+
+// ============================================================================
+// Event-based 2차 스폰
+// 파티클 death/collision → GenerateLocationEvent → 2차 에미터 트리거
+// Niagara의 Event Handler 시스템을 활용.
+// ============================================================================
+void FHktVFXNiagaraBuilder::SetupEventSpawn(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FHktVFXEventSpawnConfig& Config,
+	const FString& EmitterName)
+{
+	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+
+	// GenerateLocationEvent 모듈 주입 (소스 에미터의 Update 스크립트에)
+	if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("GenerateLocationEvent")))
+	{
+		if (Path->IsValid())
+		{
+			AddModuleToEmitter(System, EmitterIndex,
+				ENiagaraScriptUsage::ParticleUpdateScript,
+				Path->GetAssetPathString());
+		}
+	}
+	else
+	{
+		AddModuleToEmitter(System, EmitterIndex,
+			ENiagaraScriptUsage::ParticleUpdateScript,
+			TEXT("/Niagara/Modules/GenerateLocationEvent.GenerateLocationEvent"));
+	}
+
+	const FString Module = TEXT("GenerateLocationEvent");
+
+	// 이벤트 조건 로그 (Death/Collision 등은 static switch이므로 RapidIteration으로 설정 불가)
+	UE_LOG(LogHktVFXBuilder, Log,
+		TEXT("  EventSpawn: trigger=%s, count=%d, target=%s, velScale=%.2f"),
+		*Config.TriggerEvent, Config.SpawnCount,
+		*Config.TargetEmitterName, Config.VelocityScale);
+
+	// ReceiveLocationEvent 모듈을 타겟 에미터에도 주입 시도
+	// (타겟이 같은 시스템 내 다른 에미터일 때)
+	if (!Config.TargetEmitterName.IsEmpty())
+	{
+		const auto& Handles = System->GetEmitterHandles();
+		for (int32 i = 0; i < Handles.Num(); ++i)
+		{
+			if (i == EmitterIndex) continue;
+			FString OtherName = Handles[i].GetName().ToString();
+			// 에미터 이름에 타겟 이름이 포함되어 있으면 매칭
+			if (OtherName.Contains(Config.TargetEmitterName))
+			{
+				if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("ReceiveLocationEvent")))
+				{
+					if (Path->IsValid())
+					{
+						AddModuleToEmitter(System, i,
+							ENiagaraScriptUsage::ParticleSpawnScript,
+							Path->GetAssetPathString());
+					}
+				}
+				else
+				{
+					AddModuleToEmitter(System, i,
+						ENiagaraScriptUsage::ParticleSpawnScript,
+						TEXT("/Niagara/Modules/ReceiveLocationEvent.ReceiveLocationEvent"));
+				}
+				UE_LOG(LogHktVFXBuilder, Log,
+					TEXT("  Injected ReceiveLocationEvent into target emitter '%s' (index %d)"),
+					*OtherName, i);
+				break;
+			}
+		}
+	}
+}
+
+// ============================================================================
+// Spawn Per Unit — 이동 거리 기반 파티클 스폰
+// 트레일, 잔상, 이동 궤적 효과에 사용.
+// ============================================================================
+void FHktVFXNiagaraBuilder::SetupSpawnPerUnit(
+	UNiagaraSystem* System, int32 EmitterIndex,
+	const FHktVFXSpawnPerUnitConfig& Config)
+{
+	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+
+	// SpawnPerUnit 모듈 주입 (Emitter Update 스크립트)
+	if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("SpawnPerUnit")))
+	{
+		if (Path->IsValid())
+		{
+			AddModuleToEmitter(System, EmitterIndex,
+				ENiagaraScriptUsage::EmitterUpdateScript,
+				Path->GetAssetPathString());
+		}
+	}
+	else
+	{
+		AddModuleToEmitter(System, EmitterIndex,
+			ENiagaraScriptUsage::EmitterUpdateScript,
+			TEXT("/Niagara/Modules/SpawnPerUnit.SpawnPerUnit"));
+	}
+
+	const FString Module = TEXT("SpawnPerUnit");
+
+	SetEmitterParamFloat(System, EmitterIndex, Module, TEXT("Spawn Per Unit"), Config.SpawnPerUnit);
+	SetEmitterParamFloat(System, EmitterIndex, Module, TEXT("SpawnPerUnit"), Config.SpawnPerUnit);
+
+	if (Config.MaxFrameSpawn > 0.f)
+	{
+		SetEmitterParamFloat(System, EmitterIndex, Module, TEXT("Max Frame Spawn"), Config.MaxFrameSpawn);
+		SetEmitterParamFloat(System, EmitterIndex, Module, TEXT("Max Spawn Per Frame"), Config.MaxFrameSpawn);
+	}
+
+	if (Config.MovementTolerance > 0.f)
+	{
+		SetEmitterParamFloat(System, EmitterIndex, Module, TEXT("Movement Tolerance"), Config.MovementTolerance);
+	}
+
+	UE_LOG(LogHktVFXBuilder, Log,
+		TEXT("  SpawnPerUnit: spawnPerUnit=%.2f, maxFrame=%.0f, tolerance=%.2f"),
+		Config.SpawnPerUnit, Config.MaxFrameSpawn, Config.MovementTolerance);
+}
+
+// ============================================================================
+// GPU Simulation — 에미터를 GPU 시뮬레이션 모드로 전환
+// 대규모 파티클(수천~수만)에서 CPU 부하를 GPU로 이전.
+// ============================================================================
+void FHktVFXNiagaraBuilder::SetupGPUSim(
+	UNiagaraSystem* System, int32 EmitterIndex)
+{
+	const auto& EmitterHandles = System->GetEmitterHandles();
+	if (!EmitterHandles.IsValidIndex(EmitterIndex)) return;
+
+	FVersionedNiagaraEmitterData* EmitterData = EmitterHandles[EmitterIndex].GetEmitterData();
+	if (!EmitterData) return;
+
+	EmitterData->SimTarget = ENiagaraSimTarget::GPUComputeSim;
+
+	UE_LOG(LogHktVFXBuilder, Log, TEXT("  GPU Sim enabled for emitter %d"), EmitterIndex);
 }
 
 // ============================================================================

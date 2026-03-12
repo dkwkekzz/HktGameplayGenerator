@@ -1,0 +1,784 @@
+[
+  {
+    "_comment": "Example 1: Bouncing Sparks — Collision + EventSpawn (Phase 2) + ShapeLocation (Phase 1)",
+    "_features": ["collision:bounce", "eventSpawn:death→Smoke", "shapeLocation:sphere", "facingMode:velocity"],
+    "systemName": "BouncingSparks",
+    "emitters": [
+      {
+        "name": "Sparks",
+        "spawn": {"mode": "burst", "burstCount": 50},
+        "init": {
+          "lifetimeMin": 1.0, "lifetimeMax": 3.0,
+          "sizeMin": 2, "sizeMax": 6,
+          "velocityMin": {"x": -400, "y": -400, "z": 200},
+          "velocityMax": {"x": 400, "y": 400, "z": 800},
+          "color": {"r": 3, "g": 1.5, "b": 0.3}
+        },
+        "shapeLocation": {
+          "shape": "sphere", "sphereRadius": 20, "surfaceOnly": true
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -980},
+          "drag": 1.5,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "spark",
+          "blendMode": "additive",
+          "facingMode": "velocity",
+          "sortOrder": 7
+        },
+        "collision": {
+          "enabled": true,
+          "response": "bounce",
+          "restitution": 0.4,
+          "friction": 0.3
+        },
+        "eventSpawn": {
+          "triggerEvent": "death",
+          "spawnCount": 3,
+          "targetEmitter": "Smoke",
+          "velocityScale": 0.1
+        }
+      },
+      {
+        "name": "Smoke",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 1.0, "lifetimeMax": 2.5,
+          "sizeMin": 10, "sizeMax": 30,
+          "color": {"r": 0.15, "g": 0.12, "b": 0.1, "a": 0.3}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": 30},
+          "sizeScaleEnd": 3,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "smoke",
+          "blendMode": "translucent",
+          "sortOrder": 0
+        }
+      },
+      {
+        "name": "FlashLight",
+        "spawn": {"mode": "burst", "burstCount": 1},
+        "init": {
+          "lifetimeMin": 0.1, "lifetimeMax": 0.3,
+          "color": {"r": 4, "g": 2, "b": 0.5}
+        },
+        "render": {
+          "rendererType": "light",
+          "lightRadiusScale": 5,
+          "lightIntensity": 3
+        }
+      }
+    ]
+  },
+  {
+    "_comment": "Example 2: Raindrop Splash — Collision:kill + EventSpawn:collision + GPU Sim + Box ShapeLocation",
+    "_features": ["collision:kill", "eventSpawn:collision→Splash", "gpuSim", "shapeLocation:box"],
+    "systemName": "RaindropSplash",
+    "looping": true,
+    "warmupTime": 2,
+    "emitters": [
+      {
+        "name": "Raindrops",
+        "spawn": {"mode": "rate", "rate": 200},
+        "init": {
+          "lifetimeMin": 1.0, "lifetimeMax": 2.0,
+          "sizeMin": 1, "sizeMax": 3,
+          "velocityMin": {"x": -20, "y": -20, "z": -800},
+          "velocityMax": {"x": 20, "y": 20, "z": -600},
+          "color": {"r": 0.7, "g": 0.8, "b": 1.2, "a": 0.6}
+        },
+        "shapeLocation": {
+          "shape": "box",
+          "boxSize": {"x": 500, "y": 500, "z": 50},
+          "offset": {"x": 0, "y": 0, "z": 500}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -980},
+          "opacityEnd": 0.3
+        },
+        "render": {
+          "emitterTemplate": "fountain",
+          "blendMode": "translucent",
+          "alignment": "velocity_aligned",
+          "facingMode": "velocity",
+          "sortOrder": 5
+        },
+        "collision": {
+          "enabled": true,
+          "response": "kill"
+        },
+        "eventSpawn": {
+          "triggerEvent": "collision",
+          "spawnCount": 5,
+          "targetEmitter": "Splash",
+          "velocityScale": 0.2
+        },
+        "gpuSim": true
+      },
+      {
+        "name": "Splash",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.1, "lifetimeMax": 0.4,
+          "sizeMin": 2, "sizeMax": 8,
+          "velocityMin": {"x": -100, "y": -100, "z": 50},
+          "velocityMax": {"x": 100, "y": 100, "z": 200},
+          "color": {"r": 0.8, "g": 0.9, "b": 1.5, "a": 0.5}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -980},
+          "drag": 3,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "omnidirectional_burst",
+          "blendMode": "translucent",
+          "sortOrder": 7
+        }
+      },
+      {
+        "name": "Ripples",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.3, "lifetimeMax": 0.8,
+          "sizeMin": 5, "sizeMax": 15,
+          "color": {"r": 0.5, "g": 0.6, "b": 0.8, "a": 0.2}
+        },
+        "update": {
+          "sizeScaleEnd": 5,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "simple_sprite_burst",
+          "blendMode": "translucent",
+          "facingMode": "camera_plane",
+          "sortOrder": 2
+        }
+      }
+    ]
+  },
+  {
+    "_comment": "Example 3: Sword Trail — SpawnPerUnit + Ribbon + Collision Sparks",
+    "_features": ["spawnPerUnit", "ribbon", "collision:bounce", "eventSpawn:collision→GroundSparks"],
+    "systemName": "SwordTrail",
+    "looping": true,
+    "emitters": [
+      {
+        "name": "Trail",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.3, "lifetimeMax": 0.6,
+          "sizeMin": 5, "sizeMax": 10,
+          "color": {"r": 2, "g": 3, "b": 5, "a": 0.8}
+        },
+        "update": {
+          "opacityEnd": 0,
+          "sizeScaleEnd": 0.1
+        },
+        "render": {
+          "rendererType": "ribbon",
+          "blendMode": "additive",
+          "ribbonWidth": 15,
+          "sortOrder": 5
+        },
+        "spawnPerUnit": {
+          "enabled": true,
+          "spawnPerUnit": 10,
+          "maxFrameSpawn": 50,
+          "movementTolerance": 0.5
+        }
+      },
+      {
+        "name": "TrailSparks",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.2, "lifetimeMax": 0.8,
+          "sizeMin": 1, "sizeMax": 3,
+          "velocityMin": {"x": -50, "y": -50, "z": -20},
+          "velocityMax": {"x": 50, "y": 50, "z": 20},
+          "color": {"r": 3, "g": 2, "b": 5}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -200},
+          "drag": 2,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "spark",
+          "blendMode": "additive",
+          "facingMode": "velocity",
+          "sortOrder": 7
+        },
+        "spawnPerUnit": {
+          "enabled": true,
+          "spawnPerUnit": 3,
+          "maxFrameSpawn": 20
+        },
+        "collision": {
+          "enabled": true,
+          "response": "bounce",
+          "restitution": 0.6
+        },
+        "eventSpawn": {
+          "triggerEvent": "collision",
+          "spawnCount": 2,
+          "targetEmitter": "GroundSparks",
+          "velocityScale": 0.3
+        }
+      },
+      {
+        "name": "GroundSparks",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.1, "lifetimeMax": 0.3,
+          "sizeMin": 1, "sizeMax": 2,
+          "color": {"r": 4, "g": 3, "b": 1}
+        },
+        "update": {
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "spark",
+          "blendMode": "additive",
+          "sortOrder": 8
+        }
+      },
+      {
+        "name": "GlowLight",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.1, "lifetimeMax": 0.2,
+          "color": {"r": 1, "g": 1.5, "b": 3}
+        },
+        "render": {
+          "rendererType": "light",
+          "lightRadiusScale": 2,
+          "lightIntensity": 1.5
+        },
+        "spawnPerUnit": {
+          "enabled": true,
+          "spawnPerUnit": 2,
+          "maxFrameSpawn": 10
+        }
+      }
+    ]
+  },
+  {
+    "_comment": "Example 4: Massive Snow — GPU Sim + Box Shape + Collision:stick",
+    "_features": ["gpuSim", "shapeLocation:box", "collision:stick", "facingMode:camera_plane"],
+    "systemName": "MassiveSnow",
+    "looping": true,
+    "warmupTime": 5,
+    "emitters": [
+      {
+        "name": "Snowflakes",
+        "spawn": {"mode": "rate", "rate": 500},
+        "init": {
+          "lifetimeMin": 5, "lifetimeMax": 10,
+          "sizeMin": 2, "sizeMax": 6,
+          "spriteRotationMin": 0, "spriteRotationMax": 360,
+          "velocityMin": {"x": -30, "y": -30, "z": -100},
+          "velocityMax": {"x": 30, "y": 30, "z": -50},
+          "color": {"r": 0.9, "g": 0.95, "b": 1, "a": 0.7}
+        },
+        "shapeLocation": {
+          "shape": "box",
+          "boxSize": {"x": 1000, "y": 1000, "z": 100},
+          "offset": {"x": 0, "y": 0, "z": 500}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -50},
+          "noiseStrength": 40,
+          "noiseFrequency": 1.5,
+          "rotationRateMin": -90,
+          "rotationRateMax": 90,
+          "windForce": {"x": 50, "y": 20, "z": 0},
+          "opacityEnd": 0.3
+        },
+        "render": {
+          "emitterTemplate": "blowing_particles",
+          "blendMode": "translucent",
+          "facingMode": "camera_plane",
+          "sortOrder": 5
+        },
+        "collision": {
+          "enabled": true,
+          "response": "stick"
+        },
+        "gpuSim": true
+      },
+      {
+        "name": "FineSnow",
+        "spawn": {"mode": "rate", "rate": 200},
+        "init": {
+          "lifetimeMin": 3, "lifetimeMax": 7,
+          "sizeMin": 1, "sizeMax": 2,
+          "velocityMin": {"x": -20, "y": -20, "z": -80},
+          "velocityMax": {"x": 20, "y": 20, "z": -30},
+          "color": {"r": 0.8, "g": 0.85, "b": 0.95, "a": 0.4}
+        },
+        "shapeLocation": {
+          "shape": "box",
+          "boxSize": {"x": 800, "y": 800, "z": 80},
+          "offset": {"x": 0, "y": 0, "z": 400}
+        },
+        "update": {
+          "noiseStrength": 25,
+          "noiseFrequency": 2,
+          "windForce": {"x": 70, "y": 30, "z": 0},
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "hanging_particulates",
+          "blendMode": "translucent",
+          "sortOrder": 3
+        },
+        "gpuSim": true
+      }
+    ]
+  },
+  {
+    "_comment": "Example 5: Firework Burst — EventSpawn death chain + Ring ShapeLocation + GPU Sim",
+    "_features": ["eventSpawn:death chain", "shapeLocation:ring+sphere", "gpuSim", "collision:kill"],
+    "systemName": "FireworkBurst",
+    "emitters": [
+      {
+        "name": "LaunchTrail",
+        "spawn": {"mode": "burst", "burstCount": 1},
+        "init": {
+          "lifetimeMin": 1.0, "lifetimeMax": 1.5,
+          "sizeMin": 5, "sizeMax": 10,
+          "velocityMin": {"x": -10, "y": -10, "z": 800},
+          "velocityMax": {"x": 10, "y": 10, "z": 1000},
+          "color": {"r": 3, "g": 2, "b": 0.5}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -300},
+          "drag": 0.5,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "spark",
+          "blendMode": "additive",
+          "facingMode": "velocity",
+          "sortOrder": 5
+        },
+        "eventSpawn": {
+          "triggerEvent": "death",
+          "spawnCount": 1,
+          "targetEmitter": "BurstSparks",
+          "velocityScale": 0
+        }
+      },
+      {
+        "name": "BurstSparks",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 1.0, "lifetimeMax": 2.5,
+          "sizeMin": 2, "sizeMax": 5,
+          "velocityMin": {"x": -500, "y": -500, "z": -300},
+          "velocityMax": {"x": 500, "y": 500, "z": 500},
+          "color": {"r": 5, "g": 1, "b": 0.5}
+        },
+        "shapeLocation": {
+          "shape": "sphere", "sphereRadius": 10, "surfaceOnly": true
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -400},
+          "drag": 2,
+          "opacityEnd": 0,
+          "useColorOverLife": true,
+          "colorEnd": {"r": 1, "g": 0.2, "b": 0}
+        },
+        "render": {
+          "emitterTemplate": "spark",
+          "blendMode": "additive",
+          "facingMode": "velocity",
+          "sortOrder": 8
+        },
+        "collision": {
+          "enabled": true,
+          "response": "kill"
+        },
+        "eventSpawn": {
+          "triggerEvent": "death",
+          "spawnCount": 2,
+          "targetEmitter": "FadingEmbers",
+          "velocityScale": 0.1
+        },
+        "gpuSim": true
+      },
+      {
+        "name": "FadingEmbers",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+          "sizeMin": 1, "sizeMax": 3,
+          "color": {"r": 2, "g": 0.5, "b": 0.1}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -200},
+          "drag": 3,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "spark",
+          "blendMode": "additive",
+          "sortOrder": 6
+        },
+        "gpuSim": true
+      },
+      {
+        "name": "BurstRing",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.3, "lifetimeMax": 0.8,
+          "sizeMin": 15, "sizeMax": 40,
+          "color": {"r": 4, "g": 2, "b": 1}
+        },
+        "shapeLocation": {
+          "shape": "ring", "ringRadius": 30, "ringWidth": 5, "surfaceOnly": true
+        },
+        "update": {
+          "sizeScaleEnd": 4,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "simple_sprite_burst",
+          "blendMode": "additive",
+          "sortOrder": 3
+        }
+      },
+      {
+        "name": "FlashLight",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.2, "lifetimeMax": 0.5,
+          "color": {"r": 5, "g": 2, "b": 1}
+        },
+        "render": {
+          "rendererType": "light",
+          "lightRadiusScale": 10,
+          "lightIntensity": 5
+        }
+      }
+    ]
+  },
+  {
+    "_comment": "Example 6: Vehicle Exhaust Trail — SpawnPerUnit + Collision dust + Cone Shape",
+    "_features": ["spawnPerUnit", "shapeLocation:cone", "collision:kill", "eventSpawn:collision→DustPuff"],
+    "systemName": "VehicleExhaust",
+    "looping": true,
+    "emitters": [
+      {
+        "name": "ExhaustSmoke",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 1, "lifetimeMax": 3,
+          "sizeMin": 10, "sizeMax": 25,
+          "velocityMin": {"x": -20, "y": -20, "z": 10},
+          "velocityMax": {"x": 20, "y": 20, "z": 40},
+          "color": {"r": 0.2, "g": 0.18, "b": 0.15, "a": 0.4}
+        },
+        "shapeLocation": {
+          "shape": "cone", "coneAngle": 15, "coneLength": 20
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": 20},
+          "drag": 1,
+          "sizeScaleEnd": 4,
+          "opacityEnd": 0,
+          "noiseStrength": 30,
+          "noiseFrequency": 1.5
+        },
+        "render": {
+          "emitterTemplate": "smoke",
+          "blendMode": "translucent",
+          "sortOrder": 0
+        },
+        "spawnPerUnit": {
+          "enabled": true,
+          "spawnPerUnit": 3,
+          "maxFrameSpawn": 30,
+          "movementTolerance": 1
+        }
+      },
+      {
+        "name": "HeatDistortion",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+          "sizeMin": 15, "sizeMax": 40,
+          "color": {"r": 1, "g": 0.5, "b": 0.2, "a": 0.1}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": 30},
+          "sizeScaleEnd": 2,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "simple_sprite_burst",
+          "blendMode": "additive",
+          "sortOrder": 2
+        },
+        "spawnPerUnit": {
+          "enabled": true,
+          "spawnPerUnit": 2,
+          "maxFrameSpawn": 15
+        }
+      },
+      {
+        "name": "TireDust",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 2,
+          "sizeMin": 5, "sizeMax": 15,
+          "velocityMin": {"x": -80, "y": -80, "z": 10},
+          "velocityMax": {"x": 80, "y": 80, "z": 60},
+          "color": {"r": 0.4, "g": 0.35, "b": 0.3, "a": 0.3}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -200},
+          "drag": 2,
+          "sizeScaleEnd": 3,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "smoke",
+          "blendMode": "translucent",
+          "sortOrder": 1
+        },
+        "spawnPerUnit": {
+          "enabled": true,
+          "spawnPerUnit": 5,
+          "maxFrameSpawn": 40
+        },
+        "collision": {
+          "enabled": true,
+          "response": "kill"
+        },
+        "eventSpawn": {
+          "triggerEvent": "collision",
+          "spawnCount": 3,
+          "targetEmitter": "DustPuff"
+        }
+      },
+      {
+        "name": "DustPuff",
+        "spawn": {"mode": "rate", "rate": 0},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+          "sizeMin": 8, "sizeMax": 20,
+          "color": {"r": 0.35, "g": 0.3, "b": 0.25, "a": 0.2}
+        },
+        "update": {
+          "sizeScaleEnd": 3,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "smoke",
+          "blendMode": "translucent",
+          "sortOrder": 0
+        }
+      }
+    ]
+  },
+  {
+    "_comment": "Example 7: Galaxy Vortex — GPU Sim + Vortex + Ring Shape + Attraction",
+    "_features": ["gpuSim", "shapeLocation:torus+ring", "vortex+attraction", "facingMode:camera_position"],
+    "systemName": "GalaxyVortex",
+    "looping": true,
+    "warmupTime": 5,
+    "emitters": [
+      {
+        "name": "StarParticles",
+        "spawn": {"mode": "rate", "rate": 300},
+        "init": {
+          "lifetimeMin": 3, "lifetimeMax": 8,
+          "sizeMin": 1, "sizeMax": 4,
+          "velocityMin": {"x": -20, "y": -20, "z": -5},
+          "velocityMax": {"x": 20, "y": 20, "z": 5},
+          "color": {"r": 1.5, "g": 2, "b": 3}
+        },
+        "shapeLocation": {
+          "shape": "torus",
+          "torusRadius": 300,
+          "torusSectionRadius": 50
+        },
+        "update": {
+          "vortexStrength": 150,
+          "vortexRadius": 350,
+          "attractionStrength": 30,
+          "attractionRadius": 400,
+          "drag": 0.5,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "hanging_particulates",
+          "blendMode": "additive",
+          "facingMode": "camera_position",
+          "sortOrder": 5
+        },
+        "gpuSim": true
+      },
+      {
+        "name": "CoreGlow",
+        "spawn": {"mode": "rate", "rate": 10},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+          "sizeMin": 30, "sizeMax": 80,
+          "color": {"r": 2, "g": 1, "b": 4, "a": 0.3}
+        },
+        "shapeLocation": {
+          "shape": "sphere", "sphereRadius": 30
+        },
+        "update": {
+          "sizeScaleEnd": 2,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "simple_sprite_burst",
+          "blendMode": "additive",
+          "facingMode": "camera_plane",
+          "sortOrder": 2
+        }
+      },
+      {
+        "name": "DustLane",
+        "spawn": {"mode": "rate", "rate": 50},
+        "init": {
+          "lifetimeMin": 4, "lifetimeMax": 10,
+          "sizeMin": 5, "sizeMax": 15,
+          "color": {"r": 0.5, "g": 0.3, "b": 0.8, "a": 0.2}
+        },
+        "shapeLocation": {
+          "shape": "ring",
+          "ringRadius": 250,
+          "ringWidth": 80
+        },
+        "update": {
+          "vortexStrength": 120,
+          "vortexRadius": 300,
+          "noiseStrength": 15,
+          "noiseFrequency": 1,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "blowing_particles",
+          "blendMode": "translucent",
+          "sortOrder": 1
+        },
+        "gpuSim": true
+      },
+      {
+        "name": "CenterLight",
+        "spawn": {"mode": "rate", "rate": 2},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1,
+          "color": {"r": 1, "g": 0.5, "b": 2}
+        },
+        "render": {
+          "rendererType": "light",
+          "lightRadiusScale": 6,
+          "lightIntensity": 3
+        }
+      }
+    ]
+  },
+  {
+    "_comment": "Example 8: Magic Portal (Phase 1 showcase) — Ring+Torus Shape + Vortex + FacingMode",
+    "_features": ["shapeLocation:ring+sphere+torus", "facingMode:camera_plane+velocity", "vortex", "attraction"],
+    "systemName": "MagicPortal",
+    "looping": true,
+    "warmupTime": 2,
+    "emitters": [
+      {
+        "name": "PortalRing",
+        "spawn": {"mode": "rate", "rate": 40},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1.5,
+          "sizeMin": 3, "sizeMax": 8,
+          "color": {"r": 0.5, "g": 1.5, "b": 3}
+        },
+        "shapeLocation": {
+          "shape": "ring", "ringRadius": 120, "ringWidth": 5, "surfaceOnly": true
+        },
+        "update": {
+          "noiseStrength": 20, "noiseFrequency": 2,
+          "opacityEnd": 0,
+          "useColorOverLife": true,
+          "colorEnd": {"r": 2, "g": 0.5, "b": 3}
+        },
+        "render": {
+          "emitterTemplate": "hanging_particulates",
+          "blendMode": "additive",
+          "sortOrder": 5
+        }
+      },
+      {
+        "name": "PortalCore",
+        "spawn": {"mode": "rate", "rate": 15},
+        "init": {
+          "lifetimeMin": 0.3, "lifetimeMax": 0.8,
+          "sizeMin": 20, "sizeMax": 60,
+          "color": {"r": 1, "g": 2, "b": 4, "a": 0.3}
+        },
+        "shapeLocation": {
+          "shape": "sphere", "sphereRadius": 40
+        },
+        "update": {
+          "sizeScaleEnd": 2,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "simple_sprite_burst",
+          "blendMode": "additive",
+          "facingMode": "camera_plane",
+          "sortOrder": 3
+        }
+      },
+      {
+        "name": "OrbitSparks",
+        "spawn": {"mode": "rate", "rate": 10},
+        "init": {
+          "lifetimeMin": 0.8, "lifetimeMax": 2,
+          "sizeMin": 1, "sizeMax": 3,
+          "velocityMin": {"x": -50, "y": -50, "z": -50},
+          "velocityMax": {"x": 50, "y": 50, "z": 50},
+          "color": {"r": 2, "g": 3, "b": 5}
+        },
+        "shapeLocation": {
+          "shape": "torus", "torusRadius": 100, "torusSectionRadius": 10
+        },
+        "update": {
+          "vortexStrength": 200, "vortexRadius": 150,
+          "attractionStrength": 50, "attractionRadius": 180,
+          "opacityEnd": 0
+        },
+        "render": {
+          "emitterTemplate": "spark",
+          "facingMode": "velocity",
+          "sortOrder": 7
+        }
+      },
+      {
+        "name": "GlowLight",
+        "spawn": {"mode": "rate", "rate": 2},
+        "init": {
+          "lifetimeMin": 0.3, "lifetimeMax": 0.8,
+          "color": {"r": 0.3, "g": 0.8, "b": 2}
+        },
+        "render": {
+          "rendererType": "light",
+          "lightRadiusScale": 4,
+          "lightIntensity": 2
+        }
+      }
+    ]
+  }
+]

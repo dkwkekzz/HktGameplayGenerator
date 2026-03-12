@@ -109,6 +109,106 @@ struct HKTVFXGENERATOR_API FHktVFXShapeLocationConfig
 };
 
 // ============================================================================
+// Collision 설정 (바닥/벽 충돌)
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXCollisionConfig
+{
+	GENERATED_BODY()
+
+	/**
+	 * 충돌 활성화 여부. true면 Collision 모듈을 주입.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bEnabled = false;
+
+	/**
+	 * 충돌 반응:
+	 * "bounce" — 표면에서 바운스 (반사)
+	 * "kill"   — 충돌 시 파티클 사망
+	 * "stick"  — 충돌 지점에 멈춤
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString Response = TEXT("bounce");
+
+	/** 반발 계수 (0 = 완전 비탄성, 1 = 완전 탄성) bounce 모드에서만 유효 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float Restitution = 0.5f;
+
+	/** 마찰 계수 (0 = 마찰 없음, 1 = 최대 마찰) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float Friction = 0.2f;
+
+	/** GPU Ray Trace 거리 (충돌 감지 깊이). 0이면 기본값 사용 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float TraceDistance = 0.f;
+};
+
+// ============================================================================
+// Event-based 2차 스폰 설정
+// 파티클 death/collision 이벤트 → 2차 파티클 생성
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXEventSpawnConfig
+{
+	GENERATED_BODY()
+
+	/**
+	 * 이벤트 트리거 조건:
+	 * "death"     — 파티클 사망 시
+	 * "collision" — 충돌 시 (Collision 모듈 필요)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString TriggerEvent = TEXT("death");
+
+	/** 이벤트당 생성할 2차 파티클 수 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	int32 SpawnCount = 3;
+
+	/**
+	 * 2차 파티클이 참조할 에미터 이름.
+	 * 같은 시스템 내의 다른 에미터 이름을 지정.
+	 * 비어있으면 동일 에미터에서 자체 스폰 (GenerateLocationEvent 방식).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString TargetEmitterName;
+
+	/** 2차 파티클 속도 스케일 (원본 파티클 속도 기준) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float VelocityScale = 0.5f;
+
+	bool IsEnabled() const { return !TriggerEvent.IsEmpty() && SpawnCount > 0; }
+};
+
+// ============================================================================
+// Spawn Per Unit 설정 (이동 거리 기반 스폰)
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXSpawnPerUnitConfig
+{
+	GENERATED_BODY()
+
+	/** 활성화 여부 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bEnabled = false;
+
+	/** 거리 단위당 스폰할 파티클 수 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SpawnPerUnit = 5.f;
+
+	/** 최대 프레임당 스폰 수 (성능 보호) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float MaxFrameSpawn = 100.f;
+
+	/** 이동 허용 역치 (이 거리 미만의 이동은 무시) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float MovementTolerance = 0.1f;
+};
+
+// ============================================================================
 // 에미터 Spawn 설정
 // ============================================================================
 
@@ -380,6 +480,22 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterConfig
 	/** 이 에미터가 사용하는 데이터 인터페이스 바인딩 목록 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	TArray<FHktVFXDataInterfaceBinding> DataInterfaces;
+
+	/** 충돌 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXCollisionConfig Collision;
+
+	/** 이벤트 기반 2차 스폰 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXEventSpawnConfig EventSpawn;
+
+	/** 이동 거리 기반 스폰 (Spawn Per Unit) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXSpawnPerUnitConfig SpawnPerUnit;
+
+	/** GPU 시뮬레이션 모드 (대규모 파티클 성능 향상) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bGPUSim = false;
 };
 
 // ============================================================================
@@ -568,6 +684,39 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				if ((*RenObj)->TryGetNumberField(TEXT("textureResolution"), TexRes))
 					Emitter.Render.TextureResolution = TexRes;
 			}
+
+			// Collision
+			if (const TSharedPtr<FJsonObject>* ColObj; EmObj->TryGetObjectField(TEXT("collision"), ColObj))
+			{
+				(*ColObj)->TryGetBoolField(TEXT("enabled"), Emitter.Collision.bEnabled);
+				(*ColObj)->TryGetStringField(TEXT("response"), Emitter.Collision.Response);
+				(*ColObj)->TryGetNumberField(TEXT("restitution"), Emitter.Collision.Restitution);
+				(*ColObj)->TryGetNumberField(TEXT("friction"), Emitter.Collision.Friction);
+				(*ColObj)->TryGetNumberField(TEXT("traceDistance"), Emitter.Collision.TraceDistance);
+			}
+
+			// Event Spawn
+			if (const TSharedPtr<FJsonObject>* EvtObj; EmObj->TryGetObjectField(TEXT("eventSpawn"), EvtObj))
+			{
+				(*EvtObj)->TryGetStringField(TEXT("triggerEvent"), Emitter.EventSpawn.TriggerEvent);
+				int32 SC = 0;
+				if ((*EvtObj)->TryGetNumberField(TEXT("spawnCount"), SC))
+					Emitter.EventSpawn.SpawnCount = SC;
+				(*EvtObj)->TryGetStringField(TEXT("targetEmitter"), Emitter.EventSpawn.TargetEmitterName);
+				(*EvtObj)->TryGetNumberField(TEXT("velocityScale"), Emitter.EventSpawn.VelocityScale);
+			}
+
+			// Spawn Per Unit
+			if (const TSharedPtr<FJsonObject>* SpuObj; EmObj->TryGetObjectField(TEXT("spawnPerUnit"), SpuObj))
+			{
+				(*SpuObj)->TryGetBoolField(TEXT("enabled"), Emitter.SpawnPerUnit.bEnabled);
+				(*SpuObj)->TryGetNumberField(TEXT("spawnPerUnit"), Emitter.SpawnPerUnit.SpawnPerUnit);
+				(*SpuObj)->TryGetNumberField(TEXT("maxFrameSpawn"), Emitter.SpawnPerUnit.MaxFrameSpawn);
+				(*SpuObj)->TryGetNumberField(TEXT("movementTolerance"), Emitter.SpawnPerUnit.MovementTolerance);
+			}
+
+			// GPU Sim
+			EmObj->TryGetBoolField(TEXT("gpuSim"), Emitter.bGPUSim);
 
 			// DataInterfaces
 			const TArray<TSharedPtr<FJsonValue>>* DIArray;
@@ -787,6 +936,48 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			}
 			W->WriteObjectEnd();
 
+			// Collision
+			if (E.Collision.bEnabled)
+			{
+				W->WriteObjectStart(TEXT("collision"));
+				W->WriteValue(TEXT("enabled"), E.Collision.bEnabled);
+				W->WriteValue(TEXT("response"), E.Collision.Response);
+				W->WriteValue(TEXT("restitution"), E.Collision.Restitution);
+				W->WriteValue(TEXT("friction"), E.Collision.Friction);
+				if (E.Collision.TraceDistance > 0.f)
+					W->WriteValue(TEXT("traceDistance"), E.Collision.TraceDistance);
+				W->WriteObjectEnd();
+			}
+
+			// Event Spawn
+			if (E.EventSpawn.IsEnabled())
+			{
+				W->WriteObjectStart(TEXT("eventSpawn"));
+				W->WriteValue(TEXT("triggerEvent"), E.EventSpawn.TriggerEvent);
+				W->WriteValue(TEXT("spawnCount"), E.EventSpawn.SpawnCount);
+				if (!E.EventSpawn.TargetEmitterName.IsEmpty())
+					W->WriteValue(TEXT("targetEmitter"), E.EventSpawn.TargetEmitterName);
+				W->WriteValue(TEXT("velocityScale"), E.EventSpawn.VelocityScale);
+				W->WriteObjectEnd();
+			}
+
+			// Spawn Per Unit
+			if (E.SpawnPerUnit.bEnabled)
+			{
+				W->WriteObjectStart(TEXT("spawnPerUnit"));
+				W->WriteValue(TEXT("enabled"), E.SpawnPerUnit.bEnabled);
+				W->WriteValue(TEXT("spawnPerUnit"), E.SpawnPerUnit.SpawnPerUnit);
+				W->WriteValue(TEXT("maxFrameSpawn"), E.SpawnPerUnit.MaxFrameSpawn);
+				W->WriteValue(TEXT("movementTolerance"), E.SpawnPerUnit.MovementTolerance);
+				W->WriteObjectEnd();
+			}
+
+			// GPU Sim
+			if (E.bGPUSim)
+			{
+				W->WriteValue(TEXT("gpuSim"), E.bGPUSim);
+			}
+
 			// DataInterfaces
 			if (E.DataInterfaces.Num() > 0)
 			{
@@ -891,6 +1082,26 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"textureType\": \"particle_sprite | flipbook_4x4 | flipbook_8x8 | noise | gradient\",\n");
 		S += TEXT("        \"textureResolution\": \"int (0=none, 128/256/512/1024)\"\n");
 		S += TEXT("      },\n");
+		S += TEXT("      \"collision\": {\n");
+		S += TEXT("        \"enabled\": \"bool (activate collision module)\",\n");
+		S += TEXT("        \"response\": \"bounce | kill | stick\",\n");
+		S += TEXT("        \"restitution\": \"float (0-1, bounciness, bounce mode only)\",\n");
+		S += TEXT("        \"friction\": \"float (0-1)\",\n");
+		S += TEXT("        \"traceDistance\": \"float (GPU ray trace distance, 0=default)\"\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"eventSpawn\": {\n");
+		S += TEXT("        \"triggerEvent\": \"death | collision\",\n");
+		S += TEXT("        \"spawnCount\": \"int (particles per event)\",\n");
+		S += TEXT("        \"targetEmitter\": \"string (target emitter name in same system, optional)\",\n");
+		S += TEXT("        \"velocityScale\": \"float (inherited velocity multiplier)\"\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"spawnPerUnit\": {\n");
+		S += TEXT("        \"enabled\": \"bool\",\n");
+		S += TEXT("        \"spawnPerUnit\": \"float (particles per distance unit)\",\n");
+		S += TEXT("        \"maxFrameSpawn\": \"float (max particles per frame)\",\n");
+		S += TEXT("        \"movementTolerance\": \"float (min movement threshold)\"\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"gpuSim\": \"bool (GPU simulation for large particle counts)\",\n");
 		S += TEXT("      \"dataInterfaces\": [\n");
 		S += TEXT("        {\n");
 		S += TEXT("          \"type\": \"skeletal_mesh | spline\",\n");
