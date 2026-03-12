@@ -39,6 +39,7 @@ public class HktVFXGenerator : ModuleRules
 				"AssetRegistry",
 				"AssetTools",
 				"RenderCore",
+				"Projects"
 			}
 		);
 	}
