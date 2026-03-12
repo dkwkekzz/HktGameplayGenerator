@@ -234,6 +234,41 @@ Enable GPU computation for massive particle counts:
   - collision + eventSpawn combo: sparks hit ground → spawn dust/scorch marks.
   - spawnPerUnit for movement trails (swords, projectiles, vehicles).
   - gpuSim for >1000 particles or heavy physics combos (no ribbon support).
+  - SubUV flipbook: set subImageRows/Columns + subUVPlayRate for animated sprites.
+  - Soft particle (bSoftParticle) prevents hard edges where particles intersect geometry.
+  - Ribbon taper: ribbonWidthScaleStart=1, ribbonWidthScaleEnd=0 for natural trail fade.
+  - Mesh orientation='velocity' for directional debris; 'camera' for billboard mesh.
+  - cameraOffset > 0 pushes sprites toward camera (prevents z-fighting with surfaces).
+
+=== RENDERING QUALITY ===
+
+SubUV Animation:
+  render.subImageRows / subImageColumns = flipbook grid dimensions
+  render.subUVPlayRate = animation speed multiplier (default 1.0)
+  render.bSubUVRandomStartFrame = true → each particle starts at random frame
+  Best for: fire, smoke, explosions, energy effects with animated textures
+
+Soft Particle / Depth Fade:
+  render.bSoftParticle = true → enables soft edges at geometry intersection
+  render.softParticleFadeDistance = fade range in cm (default 100)
+  render.cameraOffset = push toward camera to prevent z-fighting (0=none)
+  Best for: smoke, fog, volumetric clouds, ground effects
+
+Ribbon Extensions:
+  render.ribbonUVMode = stretch | tile_distance | tile_lifetime | distribute
+  render.ribbonTessellation = int (0=auto, higher=smoother curves)
+  render.ribbonWidthScaleStart / ribbonWidthScaleEnd = taper width (1→0 for trail)
+  Best for: sword trails, energy beams, smoke trails, magic ribbons
+
+Mesh Renderer Extensions:
+  render.meshPath = /Engine/BasicShapes/Cube.Cube (or custom asset path)
+  render.meshOrientation = default | velocity | camera
+  Best for: debris, shrapnel, crystalline effects, geometric particles
+
+Light Renderer Extensions:
+  render.lightExponent = falloff exponent (1=default, higher=sharper)
+  render.bLightVolumetricScattering = true → affects volumetric fog
+  Best for: fireflies, magic orbs, muzzle flash illumination
 
 === JSON SCHEMA ===
 
@@ -293,7 +328,22 @@ Enable GPU computation for massive particle counts:
         "facingMode": "default | velocity | camera_position | camera_plane | custom_axis",
         "lightRadiusScale": "float (light only)",
         "lightIntensity": "float (light only)",
-        "ribbonWidth": "float (ribbon only)"
+        "ribbonWidth": "float (ribbon only)",
+        "subImageRows": "int (flipbook rows, 0=none)",
+        "subImageColumns": "int (flipbook columns, 0=none)",
+        "subUVPlayRate": "float (animation speed, default 1.0)",
+        "bSubUVRandomStartFrame": "bool (random start frame)",
+        "bSoftParticle": "bool (soft edge at geometry intersection)",
+        "softParticleFadeDistance": "float (fade distance cm, default 100)",
+        "cameraOffset": "float (push toward camera, 0=none)",
+        "ribbonUVMode": "stretch | tile_distance | tile_lifetime | distribute",
+        "ribbonTessellation": "int (0=auto, higher=smoother)",
+        "ribbonWidthScaleStart": "float (start width scale, 1.0)",
+        "ribbonWidthScaleEnd": "float (end width scale, 1.0)",
+        "meshPath": "string (static mesh asset path)",
+        "meshOrientation": "default | velocity | camera",
+        "lightExponent": "float (falloff, default 1.0)",
+        "bLightVolumetricScattering": "bool (volumetric fog interaction)"
       },
       "collision": {
         "enabled": "bool",

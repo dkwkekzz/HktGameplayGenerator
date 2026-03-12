@@ -190,6 +190,25 @@ result = unreal.HktVFXGeneratorFunctionLibrary.mcp_build_preset_explosion(
 |-------|------|-------------|
 | gpuSim | bool | GPU simulation (large particle counts) |
 
+### Rendering Quality (render extensions)
+| Field | Type | Description |
+|-------|------|-------------|
+| subImageRows | int | Flipbook row count (0=disabled) |
+| subImageColumns | int | Flipbook column count (0=disabled) |
+| subUVPlayRate | float | SubUV animation speed multiplier (default 1.0) |
+| bSubUVRandomStartFrame | bool | Random start frame per particle |
+| bSoftParticle | bool | Soft edges at geometry intersection |
+| softParticleFadeDistance | float | Depth fade distance in cm (default 100) |
+| cameraOffset | float | Push sprite toward camera (prevents z-fighting) |
+| ribbonUVMode | string | stretch / tile_distance / tile_lifetime / distribute |
+| ribbonTessellation | int | Custom tessellation factor (0=auto) |
+| ribbonWidthScaleStart | float | Ribbon width at start (default 1.0) |
+| ribbonWidthScaleEnd | float | Ribbon width at end (default 1.0) |
+| meshPath | string | Static mesh asset path (e.g. /Engine/BasicShapes/Cube.Cube) |
+| meshOrientation | string | default / velocity / camera |
+| lightExponent | float | Light falloff exponent (default 1.0) |
+| bLightVolumetricScattering | bool | Affects volumetric fog |
+
 ## Settings
 
 Project Settings > Plugins > Hkt VFX Generator:

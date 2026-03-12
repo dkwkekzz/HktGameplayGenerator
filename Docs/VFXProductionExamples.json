@@ -780,5 +780,188 @@
         }
       }
     ]
+  },
+
+  {
+    "_comment": "Example 9: Animated Fire — SubUV flipbook + Soft Particle (Phase 3)",
+    "_features": ["subUV:4x4", "subUVPlayRate", "bSubUVRandomStartFrame", "bSoftParticle", "cameraOffset"],
+    "systemName": "AnimatedFire",
+    "emitters": [
+      {
+        "name": "FireSprites",
+        "spawn": {"mode": "rate", "rate": 30},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1.2,
+          "sizeMin": 40, "sizeMax": 80,
+          "velocityMin": {"x": -20, "y": -20, "z": 80},
+          "velocityMax": {"x": 20, "y": 20, "z": 200},
+          "color": {"r": 1, "g": 0.6, "b": 0.1, "a": 1}
+        },
+        "update": {
+          "opacityStart": 1, "opacityEnd": 0,
+          "sizeScaleStart": 0.5, "sizeScaleEnd": 1.5
+        },
+        "render": {
+          "rendererType": "sprite",
+          "blendMode": "additive",
+          "sortOrder": 5,
+          "subImageRows": 4,
+          "subImageColumns": 4,
+          "subUVPlayRate": 2.0,
+          "bSubUVRandomStartFrame": true,
+          "bSoftParticle": true,
+          "softParticleFadeDistance": 50,
+          "cameraOffset": 5
+        }
+      }
+    ]
+  },
+
+  {
+    "_comment": "Example 10: Sword Slash Trail — Ribbon taper + tessellation + UV tiling (Phase 3)",
+    "_features": ["ribbon:taper", "ribbonUVMode:tile_distance", "ribbonTessellation", "ribbonWidthScale"],
+    "systemName": "SwordSlashTrail",
+    "emitters": [
+      {
+        "name": "SlashRibbon",
+        "spawn": {"mode": "rate", "rate": 60},
+        "init": {
+          "lifetimeMin": 0.3, "lifetimeMax": 0.5,
+          "sizeMin": 1, "sizeMax": 1,
+          "color": {"r": 0.4, "g": 0.8, "b": 1, "a": 1}
+        },
+        "update": {
+          "opacityStart": 1, "opacityEnd": 0,
+          "drag": 2
+        },
+        "render": {
+          "rendererType": "ribbon",
+          "blendMode": "additive",
+          "sortOrder": 10,
+          "ribbonWidth": 30,
+          "ribbonUVMode": "tile_distance",
+          "ribbonTessellation": 8,
+          "ribbonWidthScaleStart": 1.0,
+          "ribbonWidthScaleEnd": 0.0
+        },
+        "spawnPerUnit": {
+          "enabled": true,
+          "spawnPerUnit": 5,
+          "maxFrameSpawn": 30,
+          "movementTolerance": 0.5
+        }
+      }
+    ]
+  },
+
+  {
+    "_comment": "Example 11: Debris Explosion — Mesh renderer + velocity orientation + collision (Phase 3 + Phase 2)",
+    "_features": ["meshPath", "meshOrientation:velocity", "collision:bounce", "gpuSim"],
+    "systemName": "DebrisExplosion",
+    "emitters": [
+      {
+        "name": "Debris",
+        "spawn": {"mode": "burst", "burstCount": 30},
+        "init": {
+          "lifetimeMin": 1.5, "lifetimeMax": 3.0,
+          "sizeMin": 5, "sizeMax": 15,
+          "velocityMin": {"x": -400, "y": -400, "z": 100},
+          "velocityMax": {"x": 400, "y": 400, "z": 600},
+          "color": {"r": 0.5, "g": 0.4, "b": 0.3, "a": 1}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -980},
+          "rotationRateMin": -180, "rotationRateMax": 180,
+          "drag": 0.5
+        },
+        "render": {
+          "rendererType": "mesh",
+          "meshPath": "/Engine/BasicShapes/Cube.Cube",
+          "meshOrientation": "velocity",
+          "sortOrder": 5
+        },
+        "collision": {
+          "enabled": true,
+          "response": "bounce",
+          "restitution": 0.3,
+          "friction": 0.6
+        }
+      },
+      {
+        "name": "DustCloud",
+        "spawn": {"mode": "burst", "burstCount": 15},
+        "init": {
+          "lifetimeMin": 1.0, "lifetimeMax": 2.5,
+          "sizeMin": 50, "sizeMax": 120,
+          "velocityMin": {"x": -100, "y": -100, "z": 30},
+          "velocityMax": {"x": 100, "y": 100, "z": 150},
+          "color": {"r": 0.6, "g": 0.55, "b": 0.45, "a": 0.6}
+        },
+        "update": {
+          "sizeScaleStart": 0.5, "sizeScaleEnd": 3.0,
+          "opacityStart": 0.6, "opacityEnd": 0,
+          "drag": 3
+        },
+        "render": {
+          "rendererType": "sprite",
+          "blendMode": "translucent",
+          "sortOrder": 0,
+          "bSoftParticle": true,
+          "softParticleFadeDistance": 80
+        }
+      }
+    ]
+  },
+
+  {
+    "_comment": "Example 12: Magical Fireflies — Light volumetric + exponent + camera-facing mesh (Phase 3)",
+    "_features": ["lightExponent", "bLightVolumetricScattering", "meshOrientation:camera"],
+    "systemName": "MagicalFireflies",
+    "looping": true,
+    "emitters": [
+      {
+        "name": "Fireflies",
+        "spawn": {"mode": "rate", "rate": 8},
+        "init": {
+          "lifetimeMin": 3, "lifetimeMax": 6,
+          "sizeMin": 3, "sizeMax": 6,
+          "velocityMin": {"x": -50, "y": -50, "z": -10},
+          "velocityMax": {"x": 50, "y": 50, "z": 40},
+          "color": {"r": 0.5, "g": 1, "b": 0.3, "a": 1}
+        },
+        "shapeLocation": {
+          "shape": "sphere",
+          "sphereRadius": 300
+        },
+        "update": {
+          "noiseStrength": 80,
+          "noiseFrequency": 2,
+          "opacityStart": 0, "opacityEnd": 0,
+          "drag": 1
+        },
+        "render": {
+          "rendererType": "sprite",
+          "blendMode": "additive",
+          "sortOrder": 10,
+          "cameraOffset": 2
+        }
+      },
+      {
+        "name": "FireflyGlow",
+        "spawn": {"mode": "rate", "rate": 8},
+        "init": {
+          "lifetimeMin": 3, "lifetimeMax": 6,
+          "sizeMin": 1, "sizeMax": 1,
+          "color": {"r": 0.5, "g": 1, "b": 0.3, "a": 1}
+        },
+        "render": {
+          "rendererType": "light",
+          "lightRadiusScale": 3,
+          "lightIntensity": 1.5,
+          "lightExponent": 2.0,
+          "bLightVolumetricScattering": true
+        }
+      }
+    ]
   }
 ]

@@ -23,6 +23,7 @@
 #include "NiagaraNodeOutput.h"
 #include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
 
+#include "Engine/StaticMesh.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
@@ -557,6 +558,37 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 			if (Config.SubImageRows > 0 && Config.SubImageColumns > 0)
 			{
 				SR->SubImageSize = FVector2D(Config.SubImageColumns, Config.SubImageRows);
+
+				// SubUV 재생 속도 — SubImageIndex 모듈의 PlayRate
+				if (Config.SubUVPlayRate != 1.f)
+				{
+					SetParticleParamFloat(System, EmitterIndex,
+						TEXT("SubImageIndex"), TEXT("Play Rate"), Config.SubUVPlayRate);
+				}
+
+				// SubUV 랜덤 시작 프레임 — 모든 파티클이 동시에 시작하지 않게
+				if (Config.bSubUVRandomStartFrame)
+				{
+					SetParticleParamFloat(System, EmitterIndex,
+						TEXT("SubImageIndex"), TEXT("Random Start Frame"), 1.f);
+				}
+			}
+
+			// Soft Particle / Depth Fade — 지오메트리 교차부 부드럽게
+			if (Config.bSoftParticle)
+			{
+				SR->bSoftCutout = true;
+				// Depth Fade 거리는 머티리얼 파라미터이므로 로그로 안내
+				UE_LOG(LogHktVFXBuilder, Log,
+					TEXT("  Soft Particle enabled (FadeDistance=%.1f). "
+						 "Depth Fade는 머티리얼의 DepthFade 노드로 구현 필요."),
+					Config.SoftParticleFadeDistance);
+			}
+
+			// Camera Offset — 겹침 방지
+			if (Config.CameraOffset != 0.f)
+			{
+				SR->CameraOffset = Config.CameraOffset;
 			}
 
 			// EmitterTemplate이 지정되면 템플릿 머티리얼 유지 (텍스처 포함)
@@ -575,10 +607,53 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 			LR->RadiusScale = Config.LightRadiusScale;
 			LR->ColorAdd = FVector3f(
 				Config.LightIntensity, Config.LightIntensity, Config.LightIntensity);
+
+			// Light Exponent (감쇠 폴오프)
+			if (Config.LightExponent != 1.f)
+			{
+				LR->DefaultExponent = Config.LightExponent;
+			}
+
+			// Volumetric Scattering (볼류메트릭 안개 상호작용)
+			if (Config.bLightVolumetricScattering)
+			{
+				LR->bAffectsTranslucency = true;
+			}
 		}
 		// --- Ribbon 렌더러 ---
 		else if (UNiagaraRibbonRendererProperties* RR = Cast<UNiagaraRibbonRendererProperties>(Renderer))
 		{
+			// UV Mode
+			if (Config.RibbonUVMode == TEXT("tile_distance"))
+			{
+				RR->UV0Settings.DistributionMode = ENiagaraRibbonUVDistributionMode::TiledOverRibbonLength;
+			}
+			else if (Config.RibbonUVMode == TEXT("tile_lifetime"))
+			{
+				RR->UV0Settings.DistributionMode = ENiagaraRibbonUVDistributionMode::TiledFromStartOverRibbonLength;
+			}
+			else if (Config.RibbonUVMode == TEXT("distribute"))
+			{
+				RR->UV0Settings.DistributionMode = ENiagaraRibbonUVDistributionMode::ScaledUniformly;
+			}
+			// "stretch" → ScaledUsingRibbonSegmentLength (기본)
+
+			// Tessellation
+			if (Config.RibbonTessellation > 0)
+			{
+				RR->TessellationMode = ENiagaraRibbonTessellationMode::Custom;
+				RR->CustomTessellationFactor = Config.RibbonTessellation;
+			}
+
+			// Ribbon Width Scale — 시작/끝 너비 비율 (테이퍼 효과)
+			if (Config.RibbonWidthScaleStart != 1.f || Config.RibbonWidthScaleEnd != 1.f)
+			{
+				SetParticleParamFloat(System, EmitterIndex,
+					TEXT("ScaleRibbonWidth"), TEXT("Scale Ribbon Width Start"), Config.RibbonWidthScaleStart);
+				SetParticleParamFloat(System, EmitterIndex,
+					TEXT("ScaleRibbonWidth"), TEXT("Scale Ribbon Width End"), Config.RibbonWidthScaleEnd);
+			}
+
 			if (Config.EmitterTemplate.IsEmpty())
 			{
 				UMaterialInterface* Mat = GetVFXMaterial(Config.BlendMode);
@@ -591,8 +666,39 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 		// --- Mesh 렌더러 ---
 		else if (UNiagaraMeshRendererProperties* MR = Cast<UNiagaraMeshRendererProperties>(Renderer))
 		{
-			// Mesh 렌더러는 템플릿의 기본 메시/머티리얼 유지
-			// materialPath로 오버라이드 가능
+			// Mesh Path 오버라이드
+			if (!Config.MeshPath.IsEmpty())
+			{
+				UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, *Config.MeshPath);
+				if (Mesh)
+				{
+					if (MR->Meshes.Num() > 0)
+					{
+						MR->Meshes[0].Mesh = Mesh;
+					}
+					else
+					{
+						FNiagaraMeshRendererMeshProperties MeshProps;
+						MeshProps.Mesh = Mesh;
+						MR->Meshes.Add(MeshProps);
+					}
+					UE_LOG(LogHktVFXBuilder, Log, TEXT("  Mesh override: %s"), *Config.MeshPath);
+				}
+				else
+				{
+					UE_LOG(LogHktVFXBuilder, Warning, TEXT("  Mesh not found: %s"), *Config.MeshPath);
+				}
+			}
+
+			// Mesh Orientation (Facing 모드)
+			if (Config.MeshOrientation == TEXT("velocity"))
+			{
+				MR->FacingMode = ENiagaraMeshFacingMode::Velocity;
+			}
+			else if (Config.MeshOrientation == TEXT("camera"))
+			{
+				MR->FacingMode = ENiagaraMeshFacingMode::CameraFacing;
+			}
 		}
 	}
 }

@@ -413,15 +413,104 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterRenderConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float LightIntensity = 1.f;
 
+	// =========================================================================
 	// Ribbon renderer
+	// =========================================================================
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float RibbonWidth = 10.f;
 
-	// SubUV 플립북 (0이면 사용 안함)
+	/**
+	 * 리본 UV 모드:
+	 * "stretch"          — 전체 리본에 텍스처 스트레치 (기본)
+	 * "tile_distance"    — 이동 거리 기반 타일링
+	 * "tile_lifetime"    — 수명 기반 타일링
+	 * "distribute"       — 균등 분배
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString RibbonUVMode;
+
+	/** 리본 테셀레이션 수 (세밀한 곡선, 0=기본값) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	int32 RibbonTessellation = 0;
+
+	/** 리본 너비 스케일 커브 — 시작/끝 (0=시작, 1=끝) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RibbonWidthScaleStart = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RibbonWidthScaleEnd = 1.f;
+
+	// =========================================================================
+	// Mesh renderer
+	// =========================================================================
+
+	/**
+	 * 메시 렌더러에 사용할 스태틱 메시 에셋 경로.
+	 * 예: "/Engine/BasicShapes/Cube.Cube", "/Game/Meshes/SM_Debris_01.SM_Debris_01"
+	 * 비어있으면 템플릿 기본 메시 사용.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString MeshPath;
+
+	/**
+	 * 메시 방향 모드:
+	 * "velocity"  — 속도 방향으로 정렬
+	 * "camera"    — 카메라를 향함
+	 * "default"   — 기본 방향 (회전 없음)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString MeshOrientation;
+
+	// =========================================================================
+	// Light renderer (확장)
+	// =========================================================================
+
+	/** 라이트 감쇠 반경 배율 (기본 1, 높을수록 넓은 범위) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float LightExponent = 1.f;
+
+	/** 라이트가 그림자를 생성하는지 여부 (비용 높음) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bLightVolumetricScattering = false;
+
+	// =========================================================================
+	// SubUV 플립북
+	// =========================================================================
+
+	/** SubUV 그리드 크기 (0이면 사용 안함) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	int32 SubImageRows = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	int32 SubImageColumns = 0;
+
+	/** SubUV 재생 속도 (1=수명 동안 1회 재생, 2=2배속, 0=정지) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SubUVPlayRate = 1.f;
+
+	/** SubUV 랜덤 시작 프레임 활성화 (폭발 등에서 동일한 시작 방지) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bSubUVRandomStartFrame = false;
+
+	// =========================================================================
+	// Soft Particle / Depth Fade
+	// =========================================================================
+
+	/**
+	 * 소프트 파티클 활성화 — 지오메트리와의 교차면에서 부드러운 페이드.
+	 * 연기, 안개 등 반투명 파티클이 바닥을 뚫고 보이는 것을 방지.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bSoftParticle = false;
+
+	/** 소프트 파티클 페이드 거리 (월드 유닛, 높을수록 부드러움) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SoftParticleFadeDistance = 100.f;
+
+	/**
+	 * 카메라 오프셋 거리 — 파티클을 카메라 방향으로 오프셋.
+	 * 양수=카메라 쪽으로, 음수=멀리. 겹침 방지에 유용.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CameraOffset = 0.f;
 
 	// =========================================================================
 	// 텍스처 생성 요청 (외부 SD/이미지 생성 도구용)
@@ -683,6 +772,26 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				int32 TexRes = 0;
 				if ((*RenObj)->TryGetNumberField(TEXT("textureResolution"), TexRes))
 					Emitter.Render.TextureResolution = TexRes;
+				// Phase 3: Ribbon
+				(*RenObj)->TryGetStringField(TEXT("ribbonUVMode"), Emitter.Render.RibbonUVMode);
+				int32 RibTess = 0;
+				if ((*RenObj)->TryGetNumberField(TEXT("ribbonTessellation"), RibTess))
+					Emitter.Render.RibbonTessellation = RibTess;
+				(*RenObj)->TryGetNumberField(TEXT("ribbonWidthScaleStart"), Emitter.Render.RibbonWidthScaleStart);
+				(*RenObj)->TryGetNumberField(TEXT("ribbonWidthScaleEnd"), Emitter.Render.RibbonWidthScaleEnd);
+				// Phase 3: Mesh
+				(*RenObj)->TryGetStringField(TEXT("meshPath"), Emitter.Render.MeshPath);
+				(*RenObj)->TryGetStringField(TEXT("meshOrientation"), Emitter.Render.MeshOrientation);
+				// Phase 3: Light extended
+				(*RenObj)->TryGetNumberField(TEXT("lightExponent"), Emitter.Render.LightExponent);
+				(*RenObj)->TryGetBoolField(TEXT("lightVolumetricScattering"), Emitter.Render.bLightVolumetricScattering);
+				// Phase 3: SubUV extended
+				(*RenObj)->TryGetNumberField(TEXT("subUVPlayRate"), Emitter.Render.SubUVPlayRate);
+				(*RenObj)->TryGetBoolField(TEXT("subUVRandomStartFrame"), Emitter.Render.bSubUVRandomStartFrame);
+				// Phase 3: Soft Particle / Depth Fade
+				(*RenObj)->TryGetBoolField(TEXT("softParticle"), Emitter.Render.bSoftParticle);
+				(*RenObj)->TryGetNumberField(TEXT("softParticleFadeDistance"), Emitter.Render.SoftParticleFadeDistance);
+				(*RenObj)->TryGetNumberField(TEXT("cameraOffset"), Emitter.Render.CameraOffset);
 			}
 
 			// Collision
@@ -922,10 +1031,38 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("lightRadiusScale"), E.Render.LightRadiusScale);
 			W->WriteValue(TEXT("lightIntensity"), E.Render.LightIntensity);
 			W->WriteValue(TEXT("ribbonWidth"), E.Render.RibbonWidth);
+			if (!E.Render.RibbonUVMode.IsEmpty())
+				W->WriteValue(TEXT("ribbonUVMode"), E.Render.RibbonUVMode);
+			if (E.Render.RibbonTessellation > 0)
+				W->WriteValue(TEXT("ribbonTessellation"), E.Render.RibbonTessellation);
+			if (E.Render.RibbonWidthScaleStart != 1.f || E.Render.RibbonWidthScaleEnd != 1.f)
+			{
+				W->WriteValue(TEXT("ribbonWidthScaleStart"), E.Render.RibbonWidthScaleStart);
+				W->WriteValue(TEXT("ribbonWidthScaleEnd"), E.Render.RibbonWidthScaleEnd);
+			}
+			if (!E.Render.MeshPath.IsEmpty())
+				W->WriteValue(TEXT("meshPath"), E.Render.MeshPath);
+			if (!E.Render.MeshOrientation.IsEmpty())
+				W->WriteValue(TEXT("meshOrientation"), E.Render.MeshOrientation);
+			if (E.Render.LightExponent != 1.f)
+				W->WriteValue(TEXT("lightExponent"), E.Render.LightExponent);
+			if (E.Render.bLightVolumetricScattering)
+				W->WriteValue(TEXT("lightVolumetricScattering"), E.Render.bLightVolumetricScattering);
 			if (E.Render.SubImageRows > 0)
 				W->WriteValue(TEXT("subImageRows"), E.Render.SubImageRows);
 			if (E.Render.SubImageColumns > 0)
 				W->WriteValue(TEXT("subImageColumns"), E.Render.SubImageColumns);
+			if (E.Render.SubUVPlayRate != 1.f)
+				W->WriteValue(TEXT("subUVPlayRate"), E.Render.SubUVPlayRate);
+			if (E.Render.bSubUVRandomStartFrame)
+				W->WriteValue(TEXT("subUVRandomStartFrame"), E.Render.bSubUVRandomStartFrame);
+			if (E.Render.bSoftParticle)
+			{
+				W->WriteValue(TEXT("softParticle"), E.Render.bSoftParticle);
+				W->WriteValue(TEXT("softParticleFadeDistance"), E.Render.SoftParticleFadeDistance);
+			}
+			if (E.Render.CameraOffset != 0.f)
+				W->WriteValue(TEXT("cameraOffset"), E.Render.CameraOffset);
 			if (!E.Render.TexturePrompt.IsEmpty())
 			{
 				W->WriteValue(TEXT("texturePrompt"), E.Render.TexturePrompt);
@@ -1074,9 +1211,22 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"facingMode\": \"default | velocity | camera_position | camera_plane | custom_axis\",\n");
 		S += TEXT("        \"lightRadiusScale\": \"float (light only)\",\n");
 		S += TEXT("        \"lightIntensity\": \"float (light only)\",\n");
+		S += TEXT("        \"lightExponent\": \"float (attenuation falloff, default 1)\",\n");
+		S += TEXT("        \"lightVolumetricScattering\": \"bool (volumetric fog interaction, expensive)\",\n");
 		S += TEXT("        \"ribbonWidth\": \"float (ribbon only)\",\n");
+		S += TEXT("        \"ribbonUVMode\": \"stretch | tile_distance | tile_lifetime | distribute\",\n");
+		S += TEXT("        \"ribbonTessellation\": \"int (curve smoothness, 0=default)\",\n");
+		S += TEXT("        \"ribbonWidthScaleStart\": \"float (width at ribbon start)\",\n");
+		S += TEXT("        \"ribbonWidthScaleEnd\": \"float (width at ribbon end, <1=taper)\",\n");
+		S += TEXT("        \"meshPath\": \"/Game/... or /Engine/BasicShapes/... (mesh renderer asset)\",\n");
+		S += TEXT("        \"meshOrientation\": \"velocity | camera | default\",\n");
 		S += TEXT("        \"subImageRows\": \"int (flipbook rows, 0=none)\",\n");
 		S += TEXT("        \"subImageColumns\": \"int (flipbook cols, 0=none)\",\n");
+		S += TEXT("        \"subUVPlayRate\": \"float (1=lifetime, 2=2x speed, 0=static)\",\n");
+		S += TEXT("        \"subUVRandomStartFrame\": \"bool (randomize start frame)\",\n");
+		S += TEXT("        \"softParticle\": \"bool (depth fade at geometry intersection)\",\n");
+		S += TEXT("        \"softParticleFadeDistance\": \"float (fade distance in world units)\",\n");
+		S += TEXT("        \"cameraOffset\": \"float (offset toward camera, prevents z-fighting)\",\n");
 		S += TEXT("        \"texturePrompt\": \"string (SD prompt for custom texture, optional)\",\n");
 		S += TEXT("        \"textureNegativePrompt\": \"string (SD negative prompt, optional)\",\n");
 		S += TEXT("        \"textureType\": \"particle_sprite | flipbook_4x4 | flipbook_8x8 | noise | gradient\",\n");

@@ -433,7 +433,38 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  - vortexAxis: default (0,0,1)=Z. Set (1,0,0) for horizontal tornado.\n");
 	S += TEXT("  - Use collision + eventSpawn together: sparks hit ground → spawn dust/scorch marks.\n");
 	S += TEXT("  - spawnPerUnit for movement trails (swords, projectiles, vehicles).\n");
-	S += TEXT("  - gpuSim for >1000 particles or heavy physics combos.\n\n");
+	S += TEXT("  - gpuSim for >1000 particles or heavy physics combos.\n");
+	S += TEXT("  - SubUV flipbook: set subImageRows/Columns + subUVPlayRate for animated sprites.\n");
+	S += TEXT("  - Soft particle (bSoftParticle) prevents hard edges where particles intersect geometry.\n");
+	S += TEXT("  - Ribbon taper: ribbonWidthScaleStart=1, ribbonWidthScaleEnd=0 for natural trail fade.\n");
+	S += TEXT("  - Mesh orientation='velocity' for directional debris; 'camera' for billboard mesh.\n");
+	S += TEXT("  - cameraOffset > 0 pushes sprites toward camera (prevents z-fighting with surfaces).\n\n");
+
+	// ===================================================================
+	S += TEXT("[RENDERING QUALITY]\n");
+	S += TEXT("SubUV Animation:\n");
+	S += TEXT("  render.subImageRows/subImageColumns = flipbook grid dimensions\n");
+	S += TEXT("  render.subUVPlayRate = animation speed multiplier (default 1.0)\n");
+	S += TEXT("  render.bSubUVRandomStartFrame = true → each particle starts at a random frame\n");
+	S += TEXT("  Best for: fire, smoke, explosions, energy effects with animated textures\n\n");
+	S += TEXT("Soft Particle / Depth Fade:\n");
+	S += TEXT("  render.bSoftParticle = true → enables soft edges where particles intersect geometry\n");
+	S += TEXT("  render.softParticleFadeDistance = fade range in cm (default 100)\n");
+	S += TEXT("  render.cameraOffset = push toward camera to prevent z-fighting (0=none)\n");
+	S += TEXT("  Best for: smoke, fog, volumetric clouds, ground effects\n\n");
+	S += TEXT("Ribbon Extensions:\n");
+	S += TEXT("  render.ribbonUVMode = stretch | tile_distance | tile_lifetime | distribute\n");
+	S += TEXT("  render.ribbonTessellation = int (0=auto, higher=smoother curves)\n");
+	S += TEXT("  render.ribbonWidthScaleStart / ribbonWidthScaleEnd = taper width (1→0 for trail)\n");
+	S += TEXT("  Best for: sword trails, energy beams, smoke trails, magic ribbons\n\n");
+	S += TEXT("Mesh Renderer Extensions:\n");
+	S += TEXT("  render.meshPath = /Engine/BasicShapes/Cube.Cube (or custom asset path)\n");
+	S += TEXT("  render.meshOrientation = default | velocity | camera\n");
+	S += TEXT("  Best for: debris, shrapnel, crystalline effects, geometric particles\n\n");
+	S += TEXT("Light Renderer Extensions:\n");
+	S += TEXT("  render.lightExponent = falloff exponent (1=default, higher=sharper)\n");
+	S += TEXT("  render.bLightVolumetricScattering = true → affects volumetric fog\n");
+	S += TEXT("  Best for: fireflies, magic orbs, muzzle flash illumination\n\n");
 
 	// ===================================================================
 	S += TEXT("[TEXTURE GENERATION]\n");
