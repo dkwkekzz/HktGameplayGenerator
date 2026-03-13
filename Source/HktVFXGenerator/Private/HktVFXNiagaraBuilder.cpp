@@ -719,18 +719,18 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 			// Soft Particle / Depth Fade — 지오메트리 교차부 부드럽게
 			if (Config.bSoftParticle)
 			{
-				SR->bSoftCutout = true;
-				// Depth Fade 거리는 머티리얼 파라미터이므로 로그로 안내
+				// UE 5.7+: bSoftCutout 제거됨 — 머티리얼의 DepthFade 노드로 구현
 				UE_LOG(LogHktVFXBuilder, Log,
 					TEXT("  Soft Particle enabled (FadeDistance=%.1f). "
 						 "Depth Fade는 머티리얼의 DepthFade 노드로 구현 필요."),
 					Config.SoftParticleFadeDistance);
 			}
 
-			// Camera Offset — 겹침 방지
+			// Camera Offset — 겹침 방지 (UE 5.7+: CameraOffset 제거됨, 모듈로 처리)
 			if (Config.CameraOffset != 0.f)
 			{
-				SR->CameraOffset = Config.CameraOffset;
+				SetParticleParamFloat(System, EmitterIndex,
+					TEXT("CameraOffset"), TEXT("Camera Offset Distance"), Config.CameraOffset);
 			}
 
 			// EmitterTemplate이 지정되면 템플릿 머티리얼 유지 (텍스처 포함)
@@ -780,11 +780,11 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 			}
 			// "stretch" → ScaledUsingRibbonSegmentLength (기본)
 
-			// Tessellation
+			// Tessellation (UE 5.7+: CustomTessellationFactor → TessellationFactor)
 			if (Config.RibbonTessellation > 0)
 			{
 				RR->TessellationMode = ENiagaraRibbonTessellationMode::Custom;
-				RR->CustomTessellationFactor = Config.RibbonTessellation;
+				RR->TessellationFactor = Config.RibbonTessellation;
 			}
 
 			// Ribbon Width Scale — 시작/끝 너비 비율 (테이퍼 효과)
@@ -839,7 +839,7 @@ void FHktVFXNiagaraBuilder::SetupRenderer(UNiagaraSystem* System, int32 EmitterI
 			}
 			else if (Config.MeshOrientation == TEXT("camera"))
 			{
-				MR->FacingMode = ENiagaraMeshFacingMode::CameraFacing;
+				MR->FacingMode = ENiagaraMeshFacingMode::CameraPosition;
 			}
 		}
 	}
