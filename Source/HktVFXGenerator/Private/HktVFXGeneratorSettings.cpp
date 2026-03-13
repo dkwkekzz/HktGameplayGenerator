@@ -164,6 +164,24 @@ UHktVFXGeneratorSettings::UHktVFXGeneratorSettings()
 	ModuleScriptPaths.Add(TEXT("SampleSpline"),
 		FSoftObjectPath(TEXT("/Niagara/Modules/SampleSpline.SampleSpline")));
 
+	// Shape Location 모듈 (파티클 방출 형태: sphere, box, cone, ring, torus 등)
+	ModuleScriptPaths.Add(TEXT("ShapeLocation"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/Location/ShapeLocation.ShapeLocation")));
+
+	// Collision 모듈 (GPU Depth Buffer 충돌)
+	ModuleScriptPaths.Add(TEXT("Collision"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/Collision.Collision")));
+
+	// Event 모듈 (파티클 이벤트 기반 2차 스폰)
+	ModuleScriptPaths.Add(TEXT("GenerateLocationEvent"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/GenerateLocationEvent.GenerateLocationEvent")));
+	ModuleScriptPaths.Add(TEXT("ReceiveLocationEvent"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/ReceiveLocationEvent.ReceiveLocationEvent")));
+
+	// Spawn Per Unit (이동 거리 기반 스폰)
+	ModuleScriptPaths.Add(TEXT("SpawnPerUnit"),
+		FSoftObjectPath(TEXT("/Niagara/Modules/SpawnPerUnit.SpawnPerUnit")));
+
 	// === 기본 머티리얼 (NiagaraExamples) ===
 	AdditiveMaterial =
 		FSoftObjectPath(TEXT("/Game/NiagaraExamples/Materials/MasterMaterials/M_SimpleAdditive.M_SimpleAdditive"));

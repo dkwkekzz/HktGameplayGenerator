@@ -110,12 +110,25 @@ result = unreal.HktVFXGeneratorFunctionLibrary.mcp_build_preset_explosion(
 ### Emitter: init
 | Field | Type | Description |
 |-------|------|-------------|
-| lifetimeMin/Max | float | Particle lifetime (seconds) |
-| sizeMin/Max | float | Particle size (UE units) |
-| spriteRotationMin/Max | float | Initial rotation (degrees) |
-| massMin/Max | float | Mass (force calculation) |
-| velocityMin/Max | {x,y,z} | Initial velocity range |
+| lifetimeMin/Max | float | Particle lifetime — random per particle |
+| sizeMin/Max | float | Particle size — random per particle |
+| spriteRotationMin/Max | float | Initial rotation (degrees) — random per particle |
+| massMin/Max | float | Mass (force calculation) — random per particle |
+| velocityMin/Max | {x,y,z} | Initial velocity range — random per particle |
 | color | {r,g,b,a} | Particle color (HDR: r/g/b > 1.0 for glow) |
+
+### Emitter: shapeLocation (Emission Shape)
+| Field | Type | Description |
+|-------|------|-------------|
+| shape | string | `"sphere"`, `"box"`, `"cylinder"`, `"cone"`, `"ring"`, `"torus"`, `"plane"` |
+| sphereRadius | float | Sphere radius (sphere only) |
+| boxSize | {x,y,z} | Box extents (box only) |
+| cylinderRadius/Height | float | Cylinder dimensions |
+| coneAngle/Length | float | Cone angle (degrees) and length |
+| ringRadius/Width | float | Ring dimensions |
+| torusRadius/SectionRadius | float | Torus dimensions |
+| offset | {x,y,z} | Shape offset from emitter origin |
+| surfaceOnly | bool | true = spawn on surface only |
 
 ### Emitter: update
 | Field | Type | Description |
@@ -142,9 +155,72 @@ result = unreal.HktVFXGeneratorFunctionLibrary.mcp_build_preset_explosion(
 | blendMode | string | `"additive"` (glow), `"translucent"` (alpha) |
 | sortOrder | int | Render order (higher = on top) |
 | alignment | string | `"unaligned"`, `"velocity_aligned"` |
+| facingMode | string | `"default"`, `"velocity"`, `"camera_position"`, `"camera_plane"`, `"custom_axis"` |
 | lightRadiusScale | float | Light renderer radius |
 | lightIntensity | float | Light renderer intensity |
 | ribbonWidth | float | Ribbon renderer width |
+
+### Emitter: collision
+| Field | Type | Description |
+|-------|------|-------------|
+| enabled | bool | Activate collision module |
+| response | string | `"bounce"`, `"kill"`, `"stick"` |
+| restitution | float | Bounciness 0-1 (bounce mode only) |
+| friction | float | Surface friction 0-1 |
+| traceDistance | float | GPU ray trace distance (0=default) |
+
+### Emitter: eventSpawn
+| Field | Type | Description |
+|-------|------|-------------|
+| triggerEvent | string | `"death"` or `"collision"` |
+| spawnCount | int | Secondary particles per event |
+| targetEmitter | string | Target emitter name in same system |
+| velocityScale | float | Inherited velocity multiplier |
+
+### Emitter: spawnPerUnit
+| Field | Type | Description |
+|-------|------|-------------|
+| enabled | bool | Activate distance-based spawning |
+| spawnPerUnit | float | Particles per distance unit |
+| maxFrameSpawn | float | Max particles per frame |
+| movementTolerance | float | Minimum movement threshold |
+
+### Emitter-level
+| Field | Type | Description |
+|-------|------|-------------|
+| gpuSim | bool | GPU simulation (large particle counts) |
+
+### Rendering Quality (render extensions)
+| Field | Type | Description |
+|-------|------|-------------|
+| subImageRows | int | Flipbook row count (0=disabled) |
+| subImageColumns | int | Flipbook column count (0=disabled) |
+| subUVPlayRate | float | SubUV animation speed multiplier (default 1.0) |
+| bSubUVRandomStartFrame | bool | Random start frame per particle |
+| bSoftParticle | bool | Soft edges at geometry intersection |
+| softParticleFadeDistance | float | Depth fade distance in cm (default 100) |
+| cameraOffset | float | Push sprite toward camera (prevents z-fighting) |
+| ribbonUVMode | string | stretch / tile_distance / tile_lifetime / distribute |
+| ribbonTessellation | int | Custom tessellation factor (0=auto) |
+| ribbonWidthScaleStart | float | Ribbon width at start (default 1.0) |
+| ribbonWidthScaleEnd | float | Ribbon width at end (default 1.0) |
+| meshPath | string | Static mesh asset path (e.g. /Engine/BasicShapes/Cube.Cube) |
+| meshOrientation | string | default / velocity / camera |
+| lightExponent | float | Light falloff exponent (default 1.0) |
+| bLightVolumetricScattering | bool | Affects volumetric fog |
+
+### Multi-point Curves (update extensions)
+| Field | Type | Description |
+|-------|------|-------------|
+| colorCurve | array | [{time:0-1, color:{r,g,b,a}}, ...] Multi-point color transition |
+| sizeCurve | array | [{time:0-1, scale:float}, ...] Multi-point size animation |
+| cameraDistanceFadeNear | float | Start fade-out distance from camera |
+| cameraDistanceFadeFar | float | Fully invisible distance from camera |
+
+### Multi-wave Burst (spawn extensions)
+| Field | Type | Description |
+|-------|------|-------------|
+| burstWaves | array | [{count:int, delay:float}, ...] Multiple timed bursts |
 
 ## Settings
 

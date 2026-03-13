@@ -48,6 +48,167 @@ struct HKTVFXGENERATOR_API FHktVFXDataInterfaceBinding
 };
 
 // ============================================================================
+// Shape Location 설정 (파티클 방출 형태)
+// InitializeParticle의 ShapeLocation 모듈로 주입하여
+// 파티클 스폰 위치를 구/박스/콘/링/토러스 등의 형태로 분포.
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXShapeLocationConfig
+{
+	GENERATED_BODY()
+
+	/**
+	 * 방출 형태:
+	 * "sphere"   — 구형 방출 (폭발, 마법 오라)
+	 * "box"      — 박스형 방출 (환경 파티클, 비)
+	 * "cylinder" — 원기둥형 (기둥 이펙트, 포탈)
+	 * "cone"     — 콘형 (머즐 플래시, 분수)
+	 * "ring"     — 링형 (충격파, 소용돌이)
+	 * "torus"    — 토러스형 (도넛 형태)
+	 * "plane"    — 평면형 (바닥 이펙트)
+	 * 비어있으면 ShapeLocation 미사용 (포인트 스폰)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString Shape;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SphereRadius = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector BoxSize = FVector(100.f, 100.f, 100.f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CylinderHeight = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CylinderRadius = 50.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float ConeAngle = 45.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float ConeLength = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RingRadius = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RingWidth = 10.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float TorusRadius = 100.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float TorusSectionRadius = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FVector Offset = FVector::ZeroVector;
+
+	/** true면 표면에서만 스폰, false면 볼륨 내부에서도 스폰 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bSurfaceOnly = false;
+
+	bool IsEnabled() const { return !Shape.IsEmpty(); }
+};
+
+// ============================================================================
+// Collision 설정 (바닥/벽 충돌)
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXCollisionConfig
+{
+	GENERATED_BODY()
+
+	/**
+	 * 충돌 활성화 여부. true면 Collision 모듈을 주입.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bEnabled = false;
+
+	/**
+	 * 충돌 반응:
+	 * "bounce" — 표면에서 바운스 (반사)
+	 * "kill"   — 충돌 시 파티클 사망
+	 * "stick"  — 충돌 지점에 멈춤
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString Response = TEXT("bounce");
+
+	/** 반발 계수 (0 = 완전 비탄성, 1 = 완전 탄성) bounce 모드에서만 유효 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float Restitution = 0.5f;
+
+	/** 마찰 계수 (0 = 마찰 없음, 1 = 최대 마찰) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float Friction = 0.2f;
+
+	/** GPU Ray Trace 거리 (충돌 감지 깊이). 0이면 기본값 사용 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float TraceDistance = 0.f;
+};
+
+// ============================================================================
+// Event-based 2차 스폰 설정
+// 파티클 death/collision 이벤트 → 2차 파티클 생성
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXEventSpawnConfig
+{
+	GENERATED_BODY()
+
+	/**
+	 * 이벤트 트리거 조건:
+	 * "death"     — 파티클 사망 시
+	 * "collision" — 충돌 시 (Collision 모듈 필요)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString TriggerEvent = TEXT("death");
+
+	/** 이벤트당 생성할 2차 파티클 수 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	int32 SpawnCount = 3;
+
+	/**
+	 * 2차 파티클이 참조할 에미터 이름.
+	 * 같은 시스템 내의 다른 에미터 이름을 지정.
+	 * 비어있으면 동일 에미터에서 자체 스폰 (GenerateLocationEvent 방식).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString TargetEmitterName;
+
+	/** 2차 파티클 속도 스케일 (원본 파티클 속도 기준) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float VelocityScale = 0.5f;
+
+	bool IsEnabled() const { return !TriggerEvent.IsEmpty() && SpawnCount > 0; }
+};
+
+// ============================================================================
+// Spawn Per Unit 설정 (이동 거리 기반 스폰)
+// ============================================================================
+
+USTRUCT(BlueprintType)
+struct HKTVFXGENERATOR_API FHktVFXSpawnPerUnitConfig
+{
+	GENERATED_BODY()
+
+	/** 활성화 여부 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bEnabled = false;
+
+	/** 거리 단위당 스폰할 파티클 수 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SpawnPerUnit = 5.f;
+
+	/** 최대 프레임당 스폰 수 (성능 보호) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float MaxFrameSpawn = 100.f;
+
+	/** 이동 허용 역치 (이 거리 미만의 이동은 무시) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float MovementTolerance = 0.1f;
+};
+
+// ============================================================================
 // 에미터 Spawn 설정
 // ============================================================================
 
@@ -71,6 +232,13 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterSpawnConfig
 	// burst 발생 지연 시간 (초)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float BurstDelay = 0.f;
+
+	// 다중 웨이브 burst (비어있으면 단일 burst 사용)
+	// 각 웨이브: {Count, Delay}
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<int32> BurstWaveCounts;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> BurstWaveDelays;
 };
 
 // ============================================================================
@@ -111,6 +279,10 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterInitConfig
 	float MassMin = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float MassMax = 1.f;
+
+	/** 파티클 방출 형태 (Shape Location 모듈) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXShapeLocationConfig ShapeLocation;
 };
 
 // ============================================================================
@@ -187,6 +359,26 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterUpdateConfig
 	// 속도 제한 (0이면 미사용)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float SpeedLimit = 0.f;
+
+	// Color Over Life 커브 키프레임 (비어있으면 기존 2점 보간 사용)
+	// 각 키프레임: {Time(0-1), Color}
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> ColorCurveTimes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<FLinearColor> ColorCurveValues;
+
+	// Size Over Life 커브 키프레임 (비어있으면 기존 start→end 사용)
+	// 각 키프레임: {Time(0-1), Scale}
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> SizeCurveTimes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> SizeCurveValues;
+
+	// Camera Distance Fade (0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CameraDistanceFadeNear = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CameraDistanceFadeFar = 0.f;
 };
 
 // ============================================================================
@@ -231,21 +423,121 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterRenderConfig
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	FString Alignment = TEXT("unaligned");
 
+	/**
+	 * 스프라이트 페이싱 모드:
+	 * "default"          — 카메라를 향함 (기본)
+	 * "velocity"         — 속도 방향으로 향함
+	 * "camera_position"  — 카메라 위치를 향함 (원근 보정)
+	 * "camera_plane"     — 카메라 평면에 평행 (UI용)
+	 * "custom_axis"      — 커스텀 축 정렬
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString FacingMode = TEXT("default");
+
 	// Light renderer
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float LightRadiusScale = 1.f;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float LightIntensity = 1.f;
 
+	// =========================================================================
 	// Ribbon renderer
+	// =========================================================================
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float RibbonWidth = 10.f;
 
-	// SubUV 플립북 (0이면 사용 안함)
+	/**
+	 * 리본 UV 모드:
+	 * "stretch"          — 전체 리본에 텍스처 스트레치 (기본)
+	 * "tile_distance"    — 이동 거리 기반 타일링
+	 * "tile_lifetime"    — 수명 기반 타일링
+	 * "distribute"       — 균등 분배
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString RibbonUVMode;
+
+	/** 리본 테셀레이션 수 (세밀한 곡선, 0=기본값) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	int32 RibbonTessellation = 0;
+
+	/** 리본 너비 스케일 커브 — 시작/끝 (0=시작, 1=끝) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RibbonWidthScaleStart = 1.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float RibbonWidthScaleEnd = 1.f;
+
+	// =========================================================================
+	// Mesh renderer
+	// =========================================================================
+
+	/**
+	 * 메시 렌더러에 사용할 스태틱 메시 에셋 경로.
+	 * 예: "/Engine/BasicShapes/Cube.Cube", "/Game/Meshes/SM_Debris_01.SM_Debris_01"
+	 * 비어있으면 템플릿 기본 메시 사용.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString MeshPath;
+
+	/**
+	 * 메시 방향 모드:
+	 * "velocity"  — 속도 방향으로 정렬
+	 * "camera"    — 카메라를 향함
+	 * "default"   — 기본 방향 (회전 없음)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FString MeshOrientation;
+
+	// =========================================================================
+	// Light renderer (확장)
+	// =========================================================================
+
+	/** 라이트 감쇠 반경 배율 (기본 1, 높을수록 넓은 범위) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float LightExponent = 1.f;
+
+	/** 라이트가 그림자를 생성하는지 여부 (비용 높음) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bLightVolumetricScattering = false;
+
+	// =========================================================================
+	// SubUV 플립북
+	// =========================================================================
+
+	/** SubUV 그리드 크기 (0이면 사용 안함) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	int32 SubImageRows = 0;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	int32 SubImageColumns = 0;
+
+	/** SubUV 재생 속도 (1=수명 동안 1회 재생, 2=2배속, 0=정지) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SubUVPlayRate = 1.f;
+
+	/** SubUV 랜덤 시작 프레임 활성화 (폭발 등에서 동일한 시작 방지) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bSubUVRandomStartFrame = false;
+
+	// =========================================================================
+	// Soft Particle / Depth Fade
+	// =========================================================================
+
+	/**
+	 * 소프트 파티클 활성화 — 지오메트리와의 교차면에서 부드러운 페이드.
+	 * 연기, 안개 등 반투명 파티클이 바닥을 뚫고 보이는 것을 방지.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bSoftParticle = false;
+
+	/** 소프트 파티클 페이드 거리 (월드 유닛, 높을수록 부드러움) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float SoftParticleFadeDistance = 100.f;
+
+	/**
+	 * 카메라 오프셋 거리 — 파티클을 카메라 방향으로 오프셋.
+	 * 양수=카메라 쪽으로, 음수=멀리. 겹침 방지에 유용.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CameraOffset = 0.f;
 
 	// =========================================================================
 	// 텍스처 생성 요청 (외부 SD/이미지 생성 도구용)
@@ -304,6 +596,22 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterConfig
 	/** 이 에미터가 사용하는 데이터 인터페이스 바인딩 목록 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	TArray<FHktVFXDataInterfaceBinding> DataInterfaces;
+
+	/** 충돌 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXCollisionConfig Collision;
+
+	/** 이벤트 기반 2차 스폰 설정 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXEventSpawnConfig EventSpawn;
+
+	/** 이동 거리 기반 스폰 (Spawn Per Unit) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	FHktVFXSpawnPerUnitConfig SpawnPerUnit;
+
+	/** GPU 시뮬레이션 모드 (대규모 파티클 성능 향상) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	bool bGPUSim = false;
 };
 
 // ============================================================================
@@ -390,6 +698,23 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				if ((*SpawnObj)->TryGetNumberField(TEXT("burstCount"), BC))
 					Emitter.Spawn.BurstCount = BC;
 				(*SpawnObj)->TryGetNumberField(TEXT("burstDelay"), Emitter.Spawn.BurstDelay);
+				// Multi-wave burst
+				const TArray<TSharedPtr<FJsonValue>>* WavesArray;
+				if ((*SpawnObj)->TryGetArrayField(TEXT("burstWaves"), WavesArray))
+				{
+					for (const auto& WaveVal : *WavesArray)
+					{
+						const TSharedPtr<FJsonObject>& WaveObj = WaveVal->AsObject();
+						if (WaveObj)
+						{
+							int32 WC = 10; float WD = 0.f;
+							WaveObj->TryGetNumberField(TEXT("count"), WC);
+							WaveObj->TryGetNumberField(TEXT("delay"), WD);
+							Emitter.Spawn.BurstWaveCounts.Add(WC);
+							Emitter.Spawn.BurstWaveDelays.Add(WD);
+						}
+					}
+				}
 			}
 
 			// Init
@@ -410,6 +735,26 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 					Emitter.Init.VelocityMax = ParseJsonVector(*V);
 				if (const TSharedPtr<FJsonObject>* C; (*InitObj)->TryGetObjectField(TEXT("color"), C))
 					Emitter.Init.Color = ParseJsonColor(*C);
+			}
+
+			// ShapeLocation (init 하위)
+			if (const TSharedPtr<FJsonObject>* ShapeObj; EmObj->TryGetObjectField(TEXT("shapeLocation"), ShapeObj))
+			{
+				(*ShapeObj)->TryGetStringField(TEXT("shape"), Emitter.Init.ShapeLocation.Shape);
+				(*ShapeObj)->TryGetNumberField(TEXT("sphereRadius"), Emitter.Init.ShapeLocation.SphereRadius);
+				if (const TSharedPtr<FJsonObject>* BS; (*ShapeObj)->TryGetObjectField(TEXT("boxSize"), BS))
+					Emitter.Init.ShapeLocation.BoxSize = ParseJsonVector(*BS);
+				(*ShapeObj)->TryGetNumberField(TEXT("cylinderHeight"), Emitter.Init.ShapeLocation.CylinderHeight);
+				(*ShapeObj)->TryGetNumberField(TEXT("cylinderRadius"), Emitter.Init.ShapeLocation.CylinderRadius);
+				(*ShapeObj)->TryGetNumberField(TEXT("coneAngle"), Emitter.Init.ShapeLocation.ConeAngle);
+				(*ShapeObj)->TryGetNumberField(TEXT("coneLength"), Emitter.Init.ShapeLocation.ConeLength);
+				(*ShapeObj)->TryGetNumberField(TEXT("ringRadius"), Emitter.Init.ShapeLocation.RingRadius);
+				(*ShapeObj)->TryGetNumberField(TEXT("ringWidth"), Emitter.Init.ShapeLocation.RingWidth);
+				(*ShapeObj)->TryGetNumberField(TEXT("torusRadius"), Emitter.Init.ShapeLocation.TorusRadius);
+				(*ShapeObj)->TryGetNumberField(TEXT("torusSectionRadius"), Emitter.Init.ShapeLocation.TorusSectionRadius);
+				if (const TSharedPtr<FJsonObject>* Off; (*ShapeObj)->TryGetObjectField(TEXT("offset"), Off))
+					Emitter.Init.ShapeLocation.Offset = ParseJsonVector(*Off);
+				(*ShapeObj)->TryGetBoolField(TEXT("surfaceOnly"), Emitter.Init.ShapeLocation.bSurfaceOnly);
 			}
 
 			// Update
@@ -442,6 +787,45 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				if (const TSharedPtr<FJsonObject>* VA; (*UpdObj)->TryGetObjectField(TEXT("vortexAxis"), VA))
 					Emitter.Update.VortexAxis = ParseJsonVector(*VA);
 				(*UpdObj)->TryGetNumberField(TEXT("speedLimit"), Emitter.Update.SpeedLimit);
+				// Color Over Life curve
+				const TArray<TSharedPtr<FJsonValue>>* ColorCurveArray;
+				if ((*UpdObj)->TryGetArrayField(TEXT("colorCurve"), ColorCurveArray))
+				{
+					for (const auto& KeyVal : *ColorCurveArray)
+					{
+						const TSharedPtr<FJsonObject>& KeyObj = KeyVal->AsObject();
+						if (KeyObj)
+						{
+							float T = 0.f;
+							KeyObj->TryGetNumberField(TEXT("time"), T);
+							Emitter.Update.ColorCurveTimes.Add(T);
+							FLinearColor C = FLinearColor::White;
+							if (const TSharedPtr<FJsonObject>* CV; KeyObj->TryGetObjectField(TEXT("color"), CV))
+								C = ParseJsonColor(*CV);
+							Emitter.Update.ColorCurveValues.Add(C);
+						}
+					}
+				}
+				// Size Over Life curve
+				const TArray<TSharedPtr<FJsonValue>>* SizeCurveArray;
+				if ((*UpdObj)->TryGetArrayField(TEXT("sizeCurve"), SizeCurveArray))
+				{
+					for (const auto& KeyVal : *SizeCurveArray)
+					{
+						const TSharedPtr<FJsonObject>& KeyObj = KeyVal->AsObject();
+						if (KeyObj)
+						{
+							float T = 0.f, S = 1.f;
+							KeyObj->TryGetNumberField(TEXT("time"), T);
+							KeyObj->TryGetNumberField(TEXT("scale"), S);
+							Emitter.Update.SizeCurveTimes.Add(T);
+							Emitter.Update.SizeCurveValues.Add(S);
+						}
+					}
+				}
+				// Camera Distance Fade
+				(*UpdObj)->TryGetNumberField(TEXT("cameraDistanceFadeNear"), Emitter.Update.CameraDistanceFadeNear);
+				(*UpdObj)->TryGetNumberField(TEXT("cameraDistanceFadeFar"), Emitter.Update.CameraDistanceFadeFar);
 			}
 
 			// Render
@@ -455,6 +839,7 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				if ((*RenObj)->TryGetNumberField(TEXT("sortOrder"), SO))
 					Emitter.Render.SortOrder = SO;
 				(*RenObj)->TryGetStringField(TEXT("alignment"), Emitter.Render.Alignment);
+				(*RenObj)->TryGetStringField(TEXT("facingMode"), Emitter.Render.FacingMode);
 				(*RenObj)->TryGetNumberField(TEXT("lightRadiusScale"), Emitter.Render.LightRadiusScale);
 				(*RenObj)->TryGetNumberField(TEXT("lightIntensity"), Emitter.Render.LightIntensity);
 				(*RenObj)->TryGetNumberField(TEXT("ribbonWidth"), Emitter.Render.RibbonWidth);
@@ -470,7 +855,60 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				int32 TexRes = 0;
 				if ((*RenObj)->TryGetNumberField(TEXT("textureResolution"), TexRes))
 					Emitter.Render.TextureResolution = TexRes;
+				// Phase 3: Ribbon
+				(*RenObj)->TryGetStringField(TEXT("ribbonUVMode"), Emitter.Render.RibbonUVMode);
+				int32 RibTess = 0;
+				if ((*RenObj)->TryGetNumberField(TEXT("ribbonTessellation"), RibTess))
+					Emitter.Render.RibbonTessellation = RibTess;
+				(*RenObj)->TryGetNumberField(TEXT("ribbonWidthScaleStart"), Emitter.Render.RibbonWidthScaleStart);
+				(*RenObj)->TryGetNumberField(TEXT("ribbonWidthScaleEnd"), Emitter.Render.RibbonWidthScaleEnd);
+				// Phase 3: Mesh
+				(*RenObj)->TryGetStringField(TEXT("meshPath"), Emitter.Render.MeshPath);
+				(*RenObj)->TryGetStringField(TEXT("meshOrientation"), Emitter.Render.MeshOrientation);
+				// Phase 3: Light extended
+				(*RenObj)->TryGetNumberField(TEXT("lightExponent"), Emitter.Render.LightExponent);
+				(*RenObj)->TryGetBoolField(TEXT("lightVolumetricScattering"), Emitter.Render.bLightVolumetricScattering);
+				// Phase 3: SubUV extended
+				(*RenObj)->TryGetNumberField(TEXT("subUVPlayRate"), Emitter.Render.SubUVPlayRate);
+				(*RenObj)->TryGetBoolField(TEXT("subUVRandomStartFrame"), Emitter.Render.bSubUVRandomStartFrame);
+				// Phase 3: Soft Particle / Depth Fade
+				(*RenObj)->TryGetBoolField(TEXT("softParticle"), Emitter.Render.bSoftParticle);
+				(*RenObj)->TryGetNumberField(TEXT("softParticleFadeDistance"), Emitter.Render.SoftParticleFadeDistance);
+				(*RenObj)->TryGetNumberField(TEXT("cameraOffset"), Emitter.Render.CameraOffset);
 			}
+
+			// Collision
+			if (const TSharedPtr<FJsonObject>* ColObj; EmObj->TryGetObjectField(TEXT("collision"), ColObj))
+			{
+				(*ColObj)->TryGetBoolField(TEXT("enabled"), Emitter.Collision.bEnabled);
+				(*ColObj)->TryGetStringField(TEXT("response"), Emitter.Collision.Response);
+				(*ColObj)->TryGetNumberField(TEXT("restitution"), Emitter.Collision.Restitution);
+				(*ColObj)->TryGetNumberField(TEXT("friction"), Emitter.Collision.Friction);
+				(*ColObj)->TryGetNumberField(TEXT("traceDistance"), Emitter.Collision.TraceDistance);
+			}
+
+			// Event Spawn
+			if (const TSharedPtr<FJsonObject>* EvtObj; EmObj->TryGetObjectField(TEXT("eventSpawn"), EvtObj))
+			{
+				(*EvtObj)->TryGetStringField(TEXT("triggerEvent"), Emitter.EventSpawn.TriggerEvent);
+				int32 SC = 0;
+				if ((*EvtObj)->TryGetNumberField(TEXT("spawnCount"), SC))
+					Emitter.EventSpawn.SpawnCount = SC;
+				(*EvtObj)->TryGetStringField(TEXT("targetEmitter"), Emitter.EventSpawn.TargetEmitterName);
+				(*EvtObj)->TryGetNumberField(TEXT("velocityScale"), Emitter.EventSpawn.VelocityScale);
+			}
+
+			// Spawn Per Unit
+			if (const TSharedPtr<FJsonObject>* SpuObj; EmObj->TryGetObjectField(TEXT("spawnPerUnit"), SpuObj))
+			{
+				(*SpuObj)->TryGetBoolField(TEXT("enabled"), Emitter.SpawnPerUnit.bEnabled);
+				(*SpuObj)->TryGetNumberField(TEXT("spawnPerUnit"), Emitter.SpawnPerUnit.SpawnPerUnit);
+				(*SpuObj)->TryGetNumberField(TEXT("maxFrameSpawn"), Emitter.SpawnPerUnit.MaxFrameSpawn);
+				(*SpuObj)->TryGetNumberField(TEXT("movementTolerance"), Emitter.SpawnPerUnit.MovementTolerance);
+			}
+
+			// GPU Sim
+			EmObj->TryGetBoolField(TEXT("gpuSim"), Emitter.bGPUSim);
 
 			// DataInterfaces
 			const TArray<TSharedPtr<FJsonValue>>* DIArray;
@@ -526,6 +964,18 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("rate"), E.Spawn.Rate);
 			W->WriteValue(TEXT("burstCount"), E.Spawn.BurstCount);
 			W->WriteValue(TEXT("burstDelay"), E.Spawn.BurstDelay);
+			if (E.Spawn.BurstWaveCounts.Num() > 0)
+			{
+				W->WriteArrayStart(TEXT("burstWaves"));
+				for (int32 i = 0; i < E.Spawn.BurstWaveCounts.Num(); ++i)
+				{
+					W->WriteObjectStart();
+					W->WriteValue(TEXT("count"), E.Spawn.BurstWaveCounts[i]);
+					W->WriteValue(TEXT("delay"), i < E.Spawn.BurstWaveDelays.Num() ? E.Spawn.BurstWaveDelays[i] : 0.f);
+					W->WriteObjectEnd();
+				}
+				W->WriteArrayEnd();
+			}
 			W->WriteObjectEnd();
 
 			// Init
@@ -557,6 +1007,53 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("a"), E.Init.Color.A);
 			W->WriteObjectEnd();
 			W->WriteObjectEnd(); // init
+
+			// ShapeLocation
+			if (E.Init.ShapeLocation.IsEnabled())
+			{
+				W->WriteObjectStart(TEXT("shapeLocation"));
+				W->WriteValue(TEXT("shape"), E.Init.ShapeLocation.Shape);
+				if (E.Init.ShapeLocation.Shape == TEXT("sphere"))
+					W->WriteValue(TEXT("sphereRadius"), E.Init.ShapeLocation.SphereRadius);
+				if (E.Init.ShapeLocation.Shape == TEXT("box"))
+				{
+					W->WriteObjectStart(TEXT("boxSize"));
+					W->WriteValue(TEXT("x"), E.Init.ShapeLocation.BoxSize.X);
+					W->WriteValue(TEXT("y"), E.Init.ShapeLocation.BoxSize.Y);
+					W->WriteValue(TEXT("z"), E.Init.ShapeLocation.BoxSize.Z);
+					W->WriteObjectEnd();
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("cylinder"))
+				{
+					W->WriteValue(TEXT("cylinderHeight"), E.Init.ShapeLocation.CylinderHeight);
+					W->WriteValue(TEXT("cylinderRadius"), E.Init.ShapeLocation.CylinderRadius);
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("cone"))
+				{
+					W->WriteValue(TEXT("coneAngle"), E.Init.ShapeLocation.ConeAngle);
+					W->WriteValue(TEXT("coneLength"), E.Init.ShapeLocation.ConeLength);
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("ring"))
+				{
+					W->WriteValue(TEXT("ringRadius"), E.Init.ShapeLocation.RingRadius);
+					W->WriteValue(TEXT("ringWidth"), E.Init.ShapeLocation.RingWidth);
+				}
+				if (E.Init.ShapeLocation.Shape == TEXT("torus"))
+				{
+					W->WriteValue(TEXT("torusRadius"), E.Init.ShapeLocation.TorusRadius);
+					W->WriteValue(TEXT("torusSectionRadius"), E.Init.ShapeLocation.TorusSectionRadius);
+				}
+				if (!E.Init.ShapeLocation.Offset.IsNearlyZero(1.f))
+				{
+					W->WriteObjectStart(TEXT("offset"));
+					W->WriteValue(TEXT("x"), E.Init.ShapeLocation.Offset.X);
+					W->WriteValue(TEXT("y"), E.Init.ShapeLocation.Offset.Y);
+					W->WriteValue(TEXT("z"), E.Init.ShapeLocation.Offset.Z);
+					W->WriteObjectEnd();
+				}
+				W->WriteValue(TEXT("surfaceOnly"), E.Init.ShapeLocation.bSurfaceOnly);
+				W->WriteObjectEnd();
+			}
 
 			// Update
 			W->WriteObjectStart(TEXT("update"));
@@ -612,6 +1109,44 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				W->WriteObjectEnd();
 			}
 			W->WriteValue(TEXT("speedLimit"), E.Update.SpeedLimit);
+			// Color Over Life curve
+			if (E.Update.ColorCurveTimes.Num() > 0)
+			{
+				W->WriteArrayStart(TEXT("colorCurve"));
+				for (int32 i = 0; i < E.Update.ColorCurveTimes.Num(); ++i)
+				{
+					W->WriteObjectStart();
+					W->WriteValue(TEXT("time"), E.Update.ColorCurveTimes[i]);
+					W->WriteObjectStart(TEXT("color"));
+					const FLinearColor& C = i < E.Update.ColorCurveValues.Num() ? E.Update.ColorCurveValues[i] : FLinearColor::White;
+					W->WriteValue(TEXT("r"), C.R);
+					W->WriteValue(TEXT("g"), C.G);
+					W->WriteValue(TEXT("b"), C.B);
+					W->WriteValue(TEXT("a"), C.A);
+					W->WriteObjectEnd();
+					W->WriteObjectEnd();
+				}
+				W->WriteArrayEnd();
+			}
+			// Size Over Life curve
+			if (E.Update.SizeCurveTimes.Num() > 0)
+			{
+				W->WriteArrayStart(TEXT("sizeCurve"));
+				for (int32 i = 0; i < E.Update.SizeCurveTimes.Num(); ++i)
+				{
+					W->WriteObjectStart();
+					W->WriteValue(TEXT("time"), E.Update.SizeCurveTimes[i]);
+					W->WriteValue(TEXT("scale"), i < E.Update.SizeCurveValues.Num() ? E.Update.SizeCurveValues[i] : 1.f);
+					W->WriteObjectEnd();
+				}
+				W->WriteArrayEnd();
+			}
+			// Camera Distance Fade
+			if (E.Update.CameraDistanceFadeNear > 0.f || E.Update.CameraDistanceFadeFar > 0.f)
+			{
+				W->WriteValue(TEXT("cameraDistanceFadeNear"), E.Update.CameraDistanceFadeNear);
+				W->WriteValue(TEXT("cameraDistanceFadeFar"), E.Update.CameraDistanceFadeFar);
+			}
 			W->WriteObjectEnd(); // update
 
 			// Render
@@ -624,13 +1159,43 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("blendMode"), E.Render.BlendMode);
 			W->WriteValue(TEXT("sortOrder"), E.Render.SortOrder);
 			W->WriteValue(TEXT("alignment"), E.Render.Alignment);
+			if (E.Render.FacingMode != TEXT("default") && !E.Render.FacingMode.IsEmpty())
+				W->WriteValue(TEXT("facingMode"), E.Render.FacingMode);
 			W->WriteValue(TEXT("lightRadiusScale"), E.Render.LightRadiusScale);
 			W->WriteValue(TEXT("lightIntensity"), E.Render.LightIntensity);
 			W->WriteValue(TEXT("ribbonWidth"), E.Render.RibbonWidth);
+			if (!E.Render.RibbonUVMode.IsEmpty())
+				W->WriteValue(TEXT("ribbonUVMode"), E.Render.RibbonUVMode);
+			if (E.Render.RibbonTessellation > 0)
+				W->WriteValue(TEXT("ribbonTessellation"), E.Render.RibbonTessellation);
+			if (E.Render.RibbonWidthScaleStart != 1.f || E.Render.RibbonWidthScaleEnd != 1.f)
+			{
+				W->WriteValue(TEXT("ribbonWidthScaleStart"), E.Render.RibbonWidthScaleStart);
+				W->WriteValue(TEXT("ribbonWidthScaleEnd"), E.Render.RibbonWidthScaleEnd);
+			}
+			if (!E.Render.MeshPath.IsEmpty())
+				W->WriteValue(TEXT("meshPath"), E.Render.MeshPath);
+			if (!E.Render.MeshOrientation.IsEmpty())
+				W->WriteValue(TEXT("meshOrientation"), E.Render.MeshOrientation);
+			if (E.Render.LightExponent != 1.f)
+				W->WriteValue(TEXT("lightExponent"), E.Render.LightExponent);
+			if (E.Render.bLightVolumetricScattering)
+				W->WriteValue(TEXT("lightVolumetricScattering"), E.Render.bLightVolumetricScattering);
 			if (E.Render.SubImageRows > 0)
 				W->WriteValue(TEXT("subImageRows"), E.Render.SubImageRows);
 			if (E.Render.SubImageColumns > 0)
 				W->WriteValue(TEXT("subImageColumns"), E.Render.SubImageColumns);
+			if (E.Render.SubUVPlayRate != 1.f)
+				W->WriteValue(TEXT("subUVPlayRate"), E.Render.SubUVPlayRate);
+			if (E.Render.bSubUVRandomStartFrame)
+				W->WriteValue(TEXT("subUVRandomStartFrame"), E.Render.bSubUVRandomStartFrame);
+			if (E.Render.bSoftParticle)
+			{
+				W->WriteValue(TEXT("softParticle"), E.Render.bSoftParticle);
+				W->WriteValue(TEXT("softParticleFadeDistance"), E.Render.SoftParticleFadeDistance);
+			}
+			if (E.Render.CameraOffset != 0.f)
+				W->WriteValue(TEXT("cameraOffset"), E.Render.CameraOffset);
 			if (!E.Render.TexturePrompt.IsEmpty())
 			{
 				W->WriteValue(TEXT("texturePrompt"), E.Render.TexturePrompt);
@@ -640,6 +1205,48 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				W->WriteValue(TEXT("textureResolution"), E.Render.TextureResolution);
 			}
 			W->WriteObjectEnd();
+
+			// Collision
+			if (E.Collision.bEnabled)
+			{
+				W->WriteObjectStart(TEXT("collision"));
+				W->WriteValue(TEXT("enabled"), E.Collision.bEnabled);
+				W->WriteValue(TEXT("response"), E.Collision.Response);
+				W->WriteValue(TEXT("restitution"), E.Collision.Restitution);
+				W->WriteValue(TEXT("friction"), E.Collision.Friction);
+				if (E.Collision.TraceDistance > 0.f)
+					W->WriteValue(TEXT("traceDistance"), E.Collision.TraceDistance);
+				W->WriteObjectEnd();
+			}
+
+			// Event Spawn
+			if (E.EventSpawn.IsEnabled())
+			{
+				W->WriteObjectStart(TEXT("eventSpawn"));
+				W->WriteValue(TEXT("triggerEvent"), E.EventSpawn.TriggerEvent);
+				W->WriteValue(TEXT("spawnCount"), E.EventSpawn.SpawnCount);
+				if (!E.EventSpawn.TargetEmitterName.IsEmpty())
+					W->WriteValue(TEXT("targetEmitter"), E.EventSpawn.TargetEmitterName);
+				W->WriteValue(TEXT("velocityScale"), E.EventSpawn.VelocityScale);
+				W->WriteObjectEnd();
+			}
+
+			// Spawn Per Unit
+			if (E.SpawnPerUnit.bEnabled)
+			{
+				W->WriteObjectStart(TEXT("spawnPerUnit"));
+				W->WriteValue(TEXT("enabled"), E.SpawnPerUnit.bEnabled);
+				W->WriteValue(TEXT("spawnPerUnit"), E.SpawnPerUnit.SpawnPerUnit);
+				W->WriteValue(TEXT("maxFrameSpawn"), E.SpawnPerUnit.MaxFrameSpawn);
+				W->WriteValue(TEXT("movementTolerance"), E.SpawnPerUnit.MovementTolerance);
+				W->WriteObjectEnd();
+			}
+
+			// GPU Sim
+			if (E.bGPUSim)
+			{
+				W->WriteValue(TEXT("gpuSim"), E.bGPUSim);
+			}
 
 			// DataInterfaces
 			if (E.DataInterfaces.Num() > 0)
@@ -688,7 +1295,8 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"mode\": \"burst | rate\",\n");
 		S += TEXT("        \"rate\": \"float (particles/sec)\",\n");
 		S += TEXT("        \"burstCount\": \"int\",\n");
-		S += TEXT("        \"burstDelay\": \"float (delay seconds)\"\n");
+		S += TEXT("        \"burstDelay\": \"float (delay seconds)\",\n");
+		S += TEXT("        \"burstWaves\": [{\"count\":\"int\",\"delay\":\"float\"}, ...] (multi-wave burst, optional)\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"init\": {\n");
 		S += TEXT("        \"lifetimeMin\": \"float\", \"lifetimeMax\": \"float\",\n");
@@ -698,6 +1306,17 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"velocityMin\": {\"x\":0,\"y\":0,\"z\":0},\n");
 		S += TEXT("        \"velocityMax\": {\"x\":0,\"y\":0,\"z\":0},\n");
 		S += TEXT("        \"color\": {\"r\":1,\"g\":1,\"b\":1,\"a\":1}\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"shapeLocation\": {\n");
+		S += TEXT("        \"shape\": \"sphere | box | cylinder | cone | ring | torus | plane (empty=point spawn)\",\n");
+		S += TEXT("        \"sphereRadius\": \"float (sphere only)\",\n");
+		S += TEXT("        \"boxSize\": {\"x\":100,\"y\":100,\"z\":100} (box only),\n");
+		S += TEXT("        \"cylinderHeight\": \"float\", \"cylinderRadius\": \"float\",\n");
+		S += TEXT("        \"coneAngle\": \"float (degrees)\", \"coneLength\": \"float\",\n");
+		S += TEXT("        \"ringRadius\": \"float\", \"ringWidth\": \"float\",\n");
+		S += TEXT("        \"torusRadius\": \"float\", \"torusSectionRadius\": \"float\",\n");
+		S += TEXT("        \"offset\": {\"x\":0,\"y\":0,\"z\":0},\n");
+		S += TEXT("        \"surfaceOnly\": \"bool (true=surface only, false=volume fill)\"\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"update\": {\n");
 		S += TEXT("        \"gravity\": {\"x\":0,\"y\":0,\"z\":-980},\n");
@@ -714,7 +1333,11 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"vortexAxis\": {\"x\":0,\"y\":0,\"z\":1} (rotation axis, default Z-up),\n");
 		S += TEXT("        \"windForce\": {\"x\":0,\"y\":0,\"z\":0},\n");
 		S += TEXT("        \"accelerationForce\": {\"x\":0,\"y\":0,\"z\":0} (constant accel, independent from gravity),\n");
-		S += TEXT("        \"speedLimit\": \"float (0=no limit)\"\n");
+		S += TEXT("        \"speedLimit\": \"float (0=no limit)\",\n");
+		S += TEXT("        \"colorCurve\": [{\"time\":0,\"color\":{\"r\":1,\"g\":0.5,\"b\":0}},{\"time\":1,\"color\":{\"r\":0.2,\"g\":0,\"b\":0}}] (multi-point, optional),\n");
+		S += TEXT("        \"sizeCurve\": [{\"time\":0,\"scale\":0.5},{\"time\":0.5,\"scale\":2.0},{\"time\":1,\"scale\":0.1}] (multi-point, optional),\n");
+		S += TEXT("        \"cameraDistanceFadeNear\": \"float (start fade-out distance)\",\n");
+		S += TEXT("        \"cameraDistanceFadeFar\": \"float (fully faded distance)\"\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"render\": {\n");
 		S += TEXT("        \"rendererType\": \"sprite | ribbon | light | mesh\",\n");
@@ -723,16 +1346,50 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"blendMode\": \"additive | translucent\",\n");
 		S += TEXT("        \"sortOrder\": \"int\",\n");
 		S += TEXT("        \"alignment\": \"unaligned | velocity_aligned\",\n");
+		S += TEXT("        \"facingMode\": \"default | velocity | camera_position | camera_plane | custom_axis\",\n");
 		S += TEXT("        \"lightRadiusScale\": \"float (light only)\",\n");
 		S += TEXT("        \"lightIntensity\": \"float (light only)\",\n");
+		S += TEXT("        \"lightExponent\": \"float (attenuation falloff, default 1)\",\n");
+		S += TEXT("        \"lightVolumetricScattering\": \"bool (volumetric fog interaction, expensive)\",\n");
 		S += TEXT("        \"ribbonWidth\": \"float (ribbon only)\",\n");
+		S += TEXT("        \"ribbonUVMode\": \"stretch | tile_distance | tile_lifetime | distribute\",\n");
+		S += TEXT("        \"ribbonTessellation\": \"int (curve smoothness, 0=default)\",\n");
+		S += TEXT("        \"ribbonWidthScaleStart\": \"float (width at ribbon start)\",\n");
+		S += TEXT("        \"ribbonWidthScaleEnd\": \"float (width at ribbon end, <1=taper)\",\n");
+		S += TEXT("        \"meshPath\": \"/Game/... or /Engine/BasicShapes/... (mesh renderer asset)\",\n");
+		S += TEXT("        \"meshOrientation\": \"velocity | camera | default\",\n");
 		S += TEXT("        \"subImageRows\": \"int (flipbook rows, 0=none)\",\n");
 		S += TEXT("        \"subImageColumns\": \"int (flipbook cols, 0=none)\",\n");
+		S += TEXT("        \"subUVPlayRate\": \"float (1=lifetime, 2=2x speed, 0=static)\",\n");
+		S += TEXT("        \"subUVRandomStartFrame\": \"bool (randomize start frame)\",\n");
+		S += TEXT("        \"softParticle\": \"bool (depth fade at geometry intersection)\",\n");
+		S += TEXT("        \"softParticleFadeDistance\": \"float (fade distance in world units)\",\n");
+		S += TEXT("        \"cameraOffset\": \"float (offset toward camera, prevents z-fighting)\",\n");
 		S += TEXT("        \"texturePrompt\": \"string (SD prompt for custom texture, optional)\",\n");
 		S += TEXT("        \"textureNegativePrompt\": \"string (SD negative prompt, optional)\",\n");
 		S += TEXT("        \"textureType\": \"particle_sprite | flipbook_4x4 | flipbook_8x8 | noise | gradient\",\n");
 		S += TEXT("        \"textureResolution\": \"int (0=none, 128/256/512/1024)\"\n");
 		S += TEXT("      },\n");
+		S += TEXT("      \"collision\": {\n");
+		S += TEXT("        \"enabled\": \"bool (activate collision module)\",\n");
+		S += TEXT("        \"response\": \"bounce | kill | stick\",\n");
+		S += TEXT("        \"restitution\": \"float (0-1, bounciness, bounce mode only)\",\n");
+		S += TEXT("        \"friction\": \"float (0-1)\",\n");
+		S += TEXT("        \"traceDistance\": \"float (GPU ray trace distance, 0=default)\"\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"eventSpawn\": {\n");
+		S += TEXT("        \"triggerEvent\": \"death | collision\",\n");
+		S += TEXT("        \"spawnCount\": \"int (particles per event)\",\n");
+		S += TEXT("        \"targetEmitter\": \"string (target emitter name in same system, optional)\",\n");
+		S += TEXT("        \"velocityScale\": \"float (inherited velocity multiplier)\"\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"spawnPerUnit\": {\n");
+		S += TEXT("        \"enabled\": \"bool\",\n");
+		S += TEXT("        \"spawnPerUnit\": \"float (particles per distance unit)\",\n");
+		S += TEXT("        \"maxFrameSpawn\": \"float (max particles per frame)\",\n");
+		S += TEXT("        \"movementTolerance\": \"float (min movement threshold)\"\n");
+		S += TEXT("      },\n");
+		S += TEXT("      \"gpuSim\": \"bool (GPU simulation for large particle counts)\",\n");
 		S += TEXT("      \"dataInterfaces\": [\n");
 		S += TEXT("        {\n");
 		S += TEXT("          \"type\": \"skeletal_mesh | spline\",\n");
