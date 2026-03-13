@@ -232,6 +232,13 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterSpawnConfig
 	// burst 발생 지연 시간 (초)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float BurstDelay = 0.f;
+
+	// 다중 웨이브 burst (비어있으면 단일 burst 사용)
+	// 각 웨이브: {Count, Delay}
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<int32> BurstWaveCounts;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> BurstWaveDelays;
 };
 
 // ============================================================================
@@ -352,6 +359,26 @@ struct HKTVFXGENERATOR_API FHktVFXEmitterUpdateConfig
 	// 속도 제한 (0이면 미사용)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
 	float SpeedLimit = 0.f;
+
+	// Color Over Life 커브 키프레임 (비어있으면 기존 2점 보간 사용)
+	// 각 키프레임: {Time(0-1), Color}
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> ColorCurveTimes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<FLinearColor> ColorCurveValues;
+
+	// Size Over Life 커브 키프레임 (비어있으면 기존 start→end 사용)
+	// 각 키프레임: {Time(0-1), Scale}
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> SizeCurveTimes;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	TArray<float> SizeCurveValues;
+
+	// Camera Distance Fade (0이면 미사용)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CameraDistanceFadeNear = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HKT|VFX")
+	float CameraDistanceFadeFar = 0.f;
 };
 
 // ============================================================================
@@ -671,6 +698,23 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				if ((*SpawnObj)->TryGetNumberField(TEXT("burstCount"), BC))
 					Emitter.Spawn.BurstCount = BC;
 				(*SpawnObj)->TryGetNumberField(TEXT("burstDelay"), Emitter.Spawn.BurstDelay);
+				// Multi-wave burst
+				const TArray<TSharedPtr<FJsonValue>>* WavesArray;
+				if ((*SpawnObj)->TryGetArrayField(TEXT("burstWaves"), WavesArray))
+				{
+					for (const auto& WaveVal : *WavesArray)
+					{
+						const TSharedPtr<FJsonObject>& WaveObj = WaveVal->AsObject();
+						if (WaveObj)
+						{
+							int32 WC = 10; float WD = 0.f;
+							WaveObj->TryGetNumberField(TEXT("count"), WC);
+							WaveObj->TryGetNumberField(TEXT("delay"), WD);
+							Emitter.Spawn.BurstWaveCounts.Add(WC);
+							Emitter.Spawn.BurstWaveDelays.Add(WD);
+						}
+					}
+				}
 			}
 
 			// Init
@@ -743,6 +787,45 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				if (const TSharedPtr<FJsonObject>* VA; (*UpdObj)->TryGetObjectField(TEXT("vortexAxis"), VA))
 					Emitter.Update.VortexAxis = ParseJsonVector(*VA);
 				(*UpdObj)->TryGetNumberField(TEXT("speedLimit"), Emitter.Update.SpeedLimit);
+				// Color Over Life curve
+				const TArray<TSharedPtr<FJsonValue>>* ColorCurveArray;
+				if ((*UpdObj)->TryGetArrayField(TEXT("colorCurve"), ColorCurveArray))
+				{
+					for (const auto& KeyVal : *ColorCurveArray)
+					{
+						const TSharedPtr<FJsonObject>& KeyObj = KeyVal->AsObject();
+						if (KeyObj)
+						{
+							float T = 0.f;
+							KeyObj->TryGetNumberField(TEXT("time"), T);
+							Emitter.Update.ColorCurveTimes.Add(T);
+							FLinearColor C = FLinearColor::White;
+							if (const TSharedPtr<FJsonObject>* CV; KeyObj->TryGetObjectField(TEXT("color"), CV))
+								C = ParseJsonColor(*CV);
+							Emitter.Update.ColorCurveValues.Add(C);
+						}
+					}
+				}
+				// Size Over Life curve
+				const TArray<TSharedPtr<FJsonValue>>* SizeCurveArray;
+				if ((*UpdObj)->TryGetArrayField(TEXT("sizeCurve"), SizeCurveArray))
+				{
+					for (const auto& KeyVal : *SizeCurveArray)
+					{
+						const TSharedPtr<FJsonObject>& KeyObj = KeyVal->AsObject();
+						if (KeyObj)
+						{
+							float T = 0.f, S = 1.f;
+							KeyObj->TryGetNumberField(TEXT("time"), T);
+							KeyObj->TryGetNumberField(TEXT("scale"), S);
+							Emitter.Update.SizeCurveTimes.Add(T);
+							Emitter.Update.SizeCurveValues.Add(S);
+						}
+					}
+				}
+				// Camera Distance Fade
+				(*UpdObj)->TryGetNumberField(TEXT("cameraDistanceFadeNear"), Emitter.Update.CameraDistanceFadeNear);
+				(*UpdObj)->TryGetNumberField(TEXT("cameraDistanceFadeFar"), Emitter.Update.CameraDistanceFadeFar);
 			}
 
 			// Render
@@ -881,6 +964,18 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 			W->WriteValue(TEXT("rate"), E.Spawn.Rate);
 			W->WriteValue(TEXT("burstCount"), E.Spawn.BurstCount);
 			W->WriteValue(TEXT("burstDelay"), E.Spawn.BurstDelay);
+			if (E.Spawn.BurstWaveCounts.Num() > 0)
+			{
+				W->WriteArrayStart(TEXT("burstWaves"));
+				for (int32 i = 0; i < E.Spawn.BurstWaveCounts.Num(); ++i)
+				{
+					W->WriteObjectStart();
+					W->WriteValue(TEXT("count"), E.Spawn.BurstWaveCounts[i]);
+					W->WriteValue(TEXT("delay"), i < E.Spawn.BurstWaveDelays.Num() ? E.Spawn.BurstWaveDelays[i] : 0.f);
+					W->WriteObjectEnd();
+				}
+				W->WriteArrayEnd();
+			}
 			W->WriteObjectEnd();
 
 			// Init
@@ -1014,6 +1109,44 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 				W->WriteObjectEnd();
 			}
 			W->WriteValue(TEXT("speedLimit"), E.Update.SpeedLimit);
+			// Color Over Life curve
+			if (E.Update.ColorCurveTimes.Num() > 0)
+			{
+				W->WriteArrayStart(TEXT("colorCurve"));
+				for (int32 i = 0; i < E.Update.ColorCurveTimes.Num(); ++i)
+				{
+					W->WriteObjectStart();
+					W->WriteValue(TEXT("time"), E.Update.ColorCurveTimes[i]);
+					W->WriteObjectStart(TEXT("color"));
+					const FLinearColor& C = i < E.Update.ColorCurveValues.Num() ? E.Update.ColorCurveValues[i] : FLinearColor::White;
+					W->WriteValue(TEXT("r"), C.R);
+					W->WriteValue(TEXT("g"), C.G);
+					W->WriteValue(TEXT("b"), C.B);
+					W->WriteValue(TEXT("a"), C.A);
+					W->WriteObjectEnd();
+					W->WriteObjectEnd();
+				}
+				W->WriteArrayEnd();
+			}
+			// Size Over Life curve
+			if (E.Update.SizeCurveTimes.Num() > 0)
+			{
+				W->WriteArrayStart(TEXT("sizeCurve"));
+				for (int32 i = 0; i < E.Update.SizeCurveTimes.Num(); ++i)
+				{
+					W->WriteObjectStart();
+					W->WriteValue(TEXT("time"), E.Update.SizeCurveTimes[i]);
+					W->WriteValue(TEXT("scale"), i < E.Update.SizeCurveValues.Num() ? E.Update.SizeCurveValues[i] : 1.f);
+					W->WriteObjectEnd();
+				}
+				W->WriteArrayEnd();
+			}
+			// Camera Distance Fade
+			if (E.Update.CameraDistanceFadeNear > 0.f || E.Update.CameraDistanceFadeFar > 0.f)
+			{
+				W->WriteValue(TEXT("cameraDistanceFadeNear"), E.Update.CameraDistanceFadeNear);
+				W->WriteValue(TEXT("cameraDistanceFadeFar"), E.Update.CameraDistanceFadeFar);
+			}
 			W->WriteObjectEnd(); // update
 
 			// Render
@@ -1162,7 +1295,8 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"mode\": \"burst | rate\",\n");
 		S += TEXT("        \"rate\": \"float (particles/sec)\",\n");
 		S += TEXT("        \"burstCount\": \"int\",\n");
-		S += TEXT("        \"burstDelay\": \"float (delay seconds)\"\n");
+		S += TEXT("        \"burstDelay\": \"float (delay seconds)\",\n");
+		S += TEXT("        \"burstWaves\": [{\"count\":\"int\",\"delay\":\"float\"}, ...] (multi-wave burst, optional)\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"init\": {\n");
 		S += TEXT("        \"lifetimeMin\": \"float\", \"lifetimeMax\": \"float\",\n");
@@ -1199,7 +1333,11 @@ struct HKTVFXGENERATOR_API FHktVFXNiagaraConfig
 		S += TEXT("        \"vortexAxis\": {\"x\":0,\"y\":0,\"z\":1} (rotation axis, default Z-up),\n");
 		S += TEXT("        \"windForce\": {\"x\":0,\"y\":0,\"z\":0},\n");
 		S += TEXT("        \"accelerationForce\": {\"x\":0,\"y\":0,\"z\":0} (constant accel, independent from gravity),\n");
-		S += TEXT("        \"speedLimit\": \"float (0=no limit)\"\n");
+		S += TEXT("        \"speedLimit\": \"float (0=no limit)\",\n");
+		S += TEXT("        \"colorCurve\": [{\"time\":0,\"color\":{\"r\":1,\"g\":0.5,\"b\":0}},{\"time\":1,\"color\":{\"r\":0.2,\"g\":0,\"b\":0}}] (multi-point, optional),\n");
+		S += TEXT("        \"sizeCurve\": [{\"time\":0,\"scale\":0.5},{\"time\":0.5,\"scale\":2.0},{\"time\":1,\"scale\":0.1}] (multi-point, optional),\n");
+		S += TEXT("        \"cameraDistanceFadeNear\": \"float (start fade-out distance)\",\n");
+		S += TEXT("        \"cameraDistanceFadeFar\": \"float (fully faded distance)\"\n");
 		S += TEXT("      },\n");
 		S += TEXT("      \"render\": {\n");
 		S += TEXT("        \"rendererType\": \"sprite | ribbon | light | mesh\",\n");

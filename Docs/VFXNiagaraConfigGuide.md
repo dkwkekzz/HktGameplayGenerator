@@ -209,6 +209,19 @@ result = unreal.HktVFXGeneratorFunctionLibrary.mcp_build_preset_explosion(
 | lightExponent | float | Light falloff exponent (default 1.0) |
 | bLightVolumetricScattering | bool | Affects volumetric fog |
 
+### Multi-point Curves (update extensions)
+| Field | Type | Description |
+|-------|------|-------------|
+| colorCurve | array | [{time:0-1, color:{r,g,b,a}}, ...] Multi-point color transition |
+| sizeCurve | array | [{time:0-1, scale:float}, ...] Multi-point size animation |
+| cameraDistanceFadeNear | float | Start fade-out distance from camera |
+| cameraDistanceFadeFar | float | Fully invisible distance from camera |
+
+### Multi-wave Burst (spawn extensions)
+| Field | Type | Description |
+|-------|------|-------------|
+| burstWaves | array | [{count:int, delay:float}, ...] Multiple timed bursts |
+
 ## Settings
 
 Project Settings > Plugins > Hkt VFX Generator:

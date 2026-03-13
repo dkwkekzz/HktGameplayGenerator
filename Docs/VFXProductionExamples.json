@@ -963,5 +963,166 @@
         }
       }
     ]
+  },
+
+  {
+    "_comment": "Example 13: Staged Firework — Multi-wave burst + colorCurve (Priority 2)",
+    "_features": ["burstWaves", "colorCurve", "shapeLocation:sphere", "gpuSim"],
+    "systemName": "StagedFirework",
+    "emitters": [
+      {
+        "name": "Launch",
+        "spawn": {"mode": "burst", "burstCount": 1},
+        "init": {
+          "lifetimeMin": 0.8, "lifetimeMax": 1.0,
+          "sizeMin": 3, "sizeMax": 5,
+          "velocityMin": {"x": -10, "y": -10, "z": 600},
+          "velocityMax": {"x": 10, "y": 10, "z": 800},
+          "color": {"r": 1, "g": 0.8, "b": 0.3, "a": 1}
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -400},
+          "opacityEnd": 0
+        },
+        "render": {
+          "rendererType": "sprite",
+          "blendMode": "additive",
+          "sortOrder": 10,
+          "facingMode": "velocity"
+        },
+        "eventSpawn": {
+          "triggerEvent": "death",
+          "spawnCount": 1,
+          "targetEmitter": "Burst"
+        }
+      },
+      {
+        "name": "Burst",
+        "spawn": {
+          "mode": "burst",
+          "burstWaves": [
+            {"count": 60, "delay": 0},
+            {"count": 40, "delay": 0.15},
+            {"count": 20, "delay": 0.3}
+          ]
+        },
+        "init": {
+          "lifetimeMin": 1.0, "lifetimeMax": 2.5,
+          "sizeMin": 4, "sizeMax": 10,
+          "velocityMin": {"x": -350, "y": -350, "z": -200},
+          "velocityMax": {"x": 350, "y": 350, "z": 350},
+          "color": {"r": 1, "g": 0.5, "b": 0.1, "a": 1}
+        },
+        "shapeLocation": {
+          "shape": "sphere",
+          "sphereRadius": 20,
+          "surfaceOnly": true
+        },
+        "update": {
+          "gravity": {"x": 0, "y": 0, "z": -300},
+          "drag": 2,
+          "colorCurve": [
+            {"time": 0, "color": {"r": 3, "g": 2, "b": 0.5, "a": 1}},
+            {"time": 0.4, "color": {"r": 1, "g": 0.3, "b": 0.1, "a": 1}},
+            {"time": 1, "color": {"r": 0.1, "g": 0, "b": 0, "a": 0}}
+          ]
+        },
+        "render": {
+          "rendererType": "sprite",
+          "emitterTemplate": "spark",
+          "sortOrder": 8
+        }
+      },
+      {
+        "name": "BurstLight",
+        "spawn": {"mode": "burst", "burstCount": 1},
+        "init": {
+          "lifetimeMin": 0.5, "lifetimeMax": 1.0,
+          "color": {"r": 3, "g": 2, "b": 0.5, "a": 1}
+        },
+        "update": {"opacityEnd": 0},
+        "render": {
+          "rendererType": "light",
+          "lightRadiusScale": 8,
+          "lightIntensity": 3,
+          "lightExponent": 1.5
+        }
+      }
+    ]
+  },
+
+  {
+    "_comment": "Example 14: Ambient Forest Dust — cameraDistanceFade + sizeCurve (Priority 2)",
+    "_features": ["cameraDistanceFade", "sizeCurve", "looping", "shapeLocation:box"],
+    "systemName": "AmbientForestDust",
+    "looping": true,
+    "warmupTime": 3,
+    "emitters": [
+      {
+        "name": "DustMotes",
+        "spawn": {"mode": "rate", "rate": 20},
+        "init": {
+          "lifetimeMin": 4, "lifetimeMax": 8,
+          "sizeMin": 2, "sizeMax": 5,
+          "velocityMin": {"x": -15, "y": -15, "z": -5},
+          "velocityMax": {"x": 15, "y": 15, "z": 10},
+          "color": {"r": 0.9, "g": 0.85, "b": 0.7, "a": 0.4}
+        },
+        "shapeLocation": {
+          "shape": "box",
+          "boxSize": {"x": 500, "y": 500, "z": 300}
+        },
+        "update": {
+          "noiseStrength": 15,
+          "noiseFrequency": 0.5,
+          "drag": 1,
+          "sizeCurve": [
+            {"time": 0, "scale": 0},
+            {"time": 0.15, "scale": 1},
+            {"time": 0.85, "scale": 1},
+            {"time": 1, "scale": 0}
+          ],
+          "cameraDistanceFadeNear": 800,
+          "cameraDistanceFadeFar": 2000
+        },
+        "render": {
+          "rendererType": "sprite",
+          "emitterTemplate": "hanging_particulates",
+          "blendMode": "translucent",
+          "sortOrder": 0,
+          "bSoftParticle": true,
+          "softParticleFadeDistance": 30
+        }
+      },
+      {
+        "name": "Pollen",
+        "spawn": {"mode": "rate", "rate": 5},
+        "init": {
+          "lifetimeMin": 6, "lifetimeMax": 12,
+          "sizeMin": 1, "sizeMax": 3,
+          "velocityMin": {"x": -10, "y": -10, "z": 5},
+          "velocityMax": {"x": 10, "y": 10, "z": 20},
+          "color": {"r": 1, "g": 0.95, "b": 0.6, "a": 0.6}
+        },
+        "shapeLocation": {
+          "shape": "box",
+          "boxSize": {"x": 400, "y": 400, "z": 200}
+        },
+        "update": {
+          "noiseStrength": 8,
+          "noiseFrequency": 0.3,
+          "opacityStart": 0, "opacityEnd": 0,
+          "cameraDistanceFadeNear": 600,
+          "cameraDistanceFadeFar": 1500
+        },
+        "render": {
+          "rendererType": "sprite",
+          "emitterTemplate": "hanging_particulates",
+          "blendMode": "additive",
+          "sortOrder": 2,
+          "cameraOffset": 2
+        }
+      }
+    ]
   }
 ]

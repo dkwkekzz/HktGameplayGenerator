@@ -467,6 +467,130 @@ FString UHktVFXGeneratorFunctionLibrary::McpGetVFXPromptGuide()
 	S += TEXT("  Best for: fireflies, magic orbs, muzzle flash illumination\n\n");
 
 	// ===================================================================
+	S += TEXT("[MULTI-POINT CURVES]\n");
+	S += TEXT("Color Over Life (multi-point):\n");
+	S += TEXT("  update.colorCurve = [{\"time\":0,\"color\":{\"r\":1,\"g\":0.8,\"b\":0}}, {\"time\":0.5,\"color\":{\"r\":1,\"g\":0.2,\"b\":0}}, {\"time\":1,\"color\":{\"r\":0.1,\"g\":0,\"b\":0}}]\n");
+	S += TEXT("  Replaces useColorOverLife+colorEnd for richer color transitions.\n");
+	S += TEXT("  Currently maps first→last keyframe to ScaleColor start/end.\n");
+	S += TEXT("  For true multi-phase color: layer emitters with different lifetimes+colors.\n");
+	S += TEXT("  Best for: fire (orange→red→black), magic (blue→purple→white)\n\n");
+	S += TEXT("Size Over Life (multi-point):\n");
+	S += TEXT("  update.sizeCurve = [{\"time\":0,\"scale\":0.5}, {\"time\":0.3,\"scale\":2.0}, {\"time\":1,\"scale\":0.1}]\n");
+	S += TEXT("  Replaces sizeScaleStart/End for more detailed size animation.\n");
+	S += TEXT("  Currently maps first→last keyframe to ScaleSpriteSize start/end.\n");
+	S += TEXT("  Best for: explosions (small→big→shrink), heartbeat pulse\n\n");
+
+	// ===================================================================
+	S += TEXT("[MULTI-WAVE BURST]\n");
+	S += TEXT("Spawn multiple bursts at different times from one emitter:\n\n");
+	S += TEXT("  \"spawn\": { \"mode\": \"burst\", \"burstWaves\": [\n");
+	S += TEXT("    {\"count\": 20, \"delay\": 0},\n");
+	S += TEXT("    {\"count\": 15, \"delay\": 0.2},\n");
+	S += TEXT("    {\"count\": 10, \"delay\": 0.5}\n");
+	S += TEXT("  ]}\n\n");
+	S += TEXT("  When burstWaves is set, burstCount/burstDelay are ignored.\n");
+	S += TEXT("  Each wave spawns 'count' particles at 'delay' seconds.\n");
+	S += TEXT("  Best for: staged explosions, fireworks, multi-phase bursts\n\n");
+
+	// ===================================================================
+	S += TEXT("[CAMERA DISTANCE FADE]\n");
+	S += TEXT("Fade particles based on camera distance (LOD alternative):\n\n");
+	S += TEXT("  update.cameraDistanceFadeNear = 500   (start fading at 500 units)\n");
+	S += TEXT("  update.cameraDistanceFadeFar = 2000   (fully invisible at 2000 units)\n\n");
+	S += TEXT("  Auto-injects CameraDistanceFade module.\n");
+	S += TEXT("  Best for: ambient effects (fireflies, dust, snow) that should disappear at distance\n\n");
+
+	// ===================================================================
+	S += TEXT("[EFFECT COMPLEXITY TIERS]\n");
+	S += TEXT("Match your design to the right complexity level:\n\n");
+	S += TEXT("  Tier 1 — Simple (1 emitter)\n");
+	S += TEXT("    Single burst/rate, one renderer. E.g.: muzzle flash, simple spark\n");
+	S += TEXT("  Tier 2 — Standard (2-3 emitters)\n");
+	S += TEXT("    Mixed spawn modes, basic physics. E.g.: campfire (flame+embers+smoke)\n");
+	S += TEXT("  Tier 3 — Rich (3-5 emitters)\n");
+	S += TEXT("    Collision, eventSpawn, shapeLocation. E.g.: explosion with debris+dust+light\n");
+	S += TEXT("  Tier 4 — Complex (5-8 emitters)\n");
+	S += TEXT("    Multi-layer with vortex, attraction, GPU sim. E.g.: portal, tornado\n\n");
+	S += TEXT("  Rule: Start with the LOWEST tier that achieves the effect.\n");
+	S += TEXT("  More emitters = more cost. 3-5 emitters covers 90% of production VFX.\n\n");
+
+	// ===================================================================
+	S += TEXT("[LIMITATIONS — DO NOT ATTEMPT]\n");
+	S += TEXT("The system CANNOT do these — do NOT include in your config:\n\n");
+	S += TEXT("  ✗ Static mesh surface spawning (no StaticMesh data interface)\n");
+	S += TEXT("  ✗ Physics field interaction (no Chaos physics binding)\n");
+	S += TEXT("  ✗ Audio-driven parameters or audio event triggers\n");
+	S += TEXT("  ✗ Custom HLSL or blueprint logic inside modules\n");
+	S += TEXT("  ✗ LOD / distance-based quality scaling\n");
+	S += TEXT("  ✗ Procedural mesh generation\n");
+	S += TEXT("  ✗ Dynamic material parameter curves (only fixed material override)\n");
+	S += TEXT("  ✗ Multi-point color/size curves (only start→end linear interpolation)\n");
+	S += TEXT("  ✗ Volume renderer or 2D renderer\n");
+	S += TEXT("  ✗ Ribbon renderer + GPU sim (incompatible)\n\n");
+	S += TEXT("  Workarounds:\n");
+	S += TEXT("    - Need ground spawn? Use shapeLocation=plane or low cone instead\n");
+	S += TEXT("    - Need mesh surface spawn? Use skeletalMesh data interface\n");
+	S += TEXT("    - Need complex color transitions? Layer multiple emitters with different colors\n");
+	S += TEXT("    - Need oscillation? Use vortex + attraction combo\n\n");
+
+	// ===================================================================
+	S += TEXT("[ANTI-PATTERNS — COMMON MISTAKES]\n");
+	S += TEXT("  ✗ Circular eventSpawn: A→B and B→A causes infinite spawn loop\n");
+	S += TEXT("  ✗ eventSpawn targetEmitter referencing non-existent emitter name\n");
+	S += TEXT("  ✗ gpuSim=true with rendererType='ribbon' (GPU sim breaks ribbons)\n");
+	S += TEXT("  ✗ spawnPerUnit without looping=true (needs continuous spawning)\n");
+	S += TEXT("  ✗ collision without gravity or velocity (particles won't reach surfaces)\n");
+	S += TEXT("  ✗ SubUV rows/columns without matching flipbook material/texture\n");
+	S += TEXT("  ✗ meshPath pointing to non-existent asset (silently fails)\n");
+	S += TEXT("  ✗ Setting burstCount=0 with mode='burst' (no particles spawn)\n");
+	S += TEXT("  ✗ Very high burstCount (>500) without gpuSim=true (CPU bottleneck)\n");
+	S += TEXT("  ✗ opacityStart=0 without changing it later (invisible particles)\n");
+	S += TEXT("  ✗ colorOverLife without visible color difference (wasteful computation)\n\n");
+
+	// ===================================================================
+	S += TEXT("[TEMPLATE SELECTION MATRIX]\n");
+	S += TEXT("Quick-pick guide — choose the BEST template for your effect:\n\n");
+	S += TEXT("  Effect Type          → Best Template         | Built-in Modules\n");
+	S += TEXT("  ──────────────────────────────────────────────────────────────────\n");
+	S += TEXT("  Explosion flash      → core                  | SubUV, ScaleColor\n");
+	S += TEXT("  Explosion burst      → explosion             | SubUV, ScaleColor\n");
+	S += TEXT("  Spark/ember          → spark                 | Velocity, ScaleColor\n");
+	S += TEXT("  Bouncing debris      → spark + collision     | Velocity, ScaleColor\n");
+	S += TEXT("  Smoke puff           → smoke                 | SubUV, Scale, Curl\n");
+	S += TEXT("  Muzzle flash         → muzzle_flash          | SubUV, ScaleColor\n");
+	S += TEXT("  Water spray          → fountain              | SpawnRate, Gravity\n");
+	S += TEXT("  Floating dust        → hanging_particulates  | SpawnRate, CurlNoise\n");
+	S += TEXT("  Wind-blown leaves    → blowing_particles     | SpawnRate, CurlNoise\n");
+	S += TEXT("  Confetti             → confetti_burst        | Gravity, Rotation, Drag\n");
+	S += TEXT("  Mesh debris          → upward_mesh_burst     | Gravity, MeshScale\n");
+	S += TEXT("  Energy trail         → ribbon                | SpawnRate, Ribbon\n");
+	S += TEXT("  Electric arc         → arc                   | Beam, Arc\n");
+	S += TEXT("  Point light          → minimal + light       | (none, pure light)\n");
+	S += TEXT("  Any + custom forces  → ANY + auto-inject     | VortexVelocity, etc.\n\n");
+
+	// ===================================================================
+	S += TEXT("[PARAMETER SAFE RANGES]\n");
+	S += TEXT("Recommended value ranges for natural-looking effects:\n\n");
+	S += TEXT("  Parameter              | Low (subtle)  | Medium       | High (dramatic) | Extreme\n");
+	S += TEXT("  ─────────────────────────────────────────────────────────────────────────────────\n");
+	S += TEXT("  burstCount             | 5-15          | 20-50        | 50-200          | 500+ (gpuSim!)\n");
+	S += TEXT("  rate                   | 5-15          | 15-50        | 50-200          | 500+ (gpuSim!)\n");
+	S += TEXT("  lifetime               | 0.05-0.3      | 0.3-1.5      | 1.5-4.0         | 5.0+\n");
+	S += TEXT("  size                   | 1-10          | 10-50        | 50-200          | 200+\n");
+	S += TEXT("  velocity               | 20-100        | 100-400      | 400-1000        | 1000+\n");
+	S += TEXT("  gravity.z              | -300          | -600         | -980            | -1500\n");
+	S += TEXT("  drag                   | 0.2-0.5       | 1-3          | 3-8             | 10+\n");
+	S += TEXT("  noiseStrength          | 5-20          | 20-80        | 80-300          | 500+\n");
+	S += TEXT("  vortexStrength         | 30-100        | 100-300      | 300-800         | 1000+\n");
+	S += TEXT("  attractionStrength     | 20-80         | 80-300       | 300-1000        | 2000+\n");
+	S += TEXT("  ribbonWidth            | 2-5           | 5-20         | 20-60           | 80+\n");
+	S += TEXT("  ribbonTessellation     | 2-4           | 4-8          | 8-16            | 16+\n");
+	S += TEXT("  subUVPlayRate          | 0.5           | 1.0          | 2.0-4.0         | 8.0+\n");
+	S += TEXT("  cameraOffset           | 1-3           | 3-10         | 10-30           | 50+\n");
+	S += TEXT("  softParticleFadeDistance| 20-50         | 50-100       | 100-300         | 500+\n");
+	S += TEXT("  lightExponent          | 0.5           | 1.0          | 2.0-4.0         | 8.0+\n\n");
+
+	// ===================================================================
 	S += TEXT("[TEXTURE GENERATION]\n");
 	S += TEXT("When a VFX needs a custom texture (not available in NiagaraExamples), add:\n");
 	S += TEXT("  render.texturePrompt = SD prompt for texture generation\n");

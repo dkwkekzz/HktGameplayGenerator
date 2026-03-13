@@ -250,14 +250,55 @@ void FHktVFXNiagaraBuilder::SetupSpawnModule(UNiagaraSystem* System, int32 Emitt
 {
 	if (Config.Mode == TEXT("burst"))
 	{
-		// SpawnBurst_Instantaneous 모듈 (burst 템플릿)
-		SetEmitterParamInt(System, EmitterIndex,
-			TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Count"), Config.BurstCount);
-
-		if (Config.BurstDelay > 0.f)
+		if (Config.BurstWaveCounts.Num() > 0)
 		{
-			SetEmitterParamFloat(System, EmitterIndex,
-				TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Time"), Config.BurstDelay);
+			// 다중 웨이브 burst — 첫 번째 웨이브는 기존 SpawnBurst_Instantaneous 사용
+			SetEmitterParamInt(System, EmitterIndex,
+				TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Count"),
+				Config.BurstWaveCounts[0]);
+			if (Config.BurstWaveDelays.Num() > 0 && Config.BurstWaveDelays[0] > 0.f)
+			{
+				SetEmitterParamFloat(System, EmitterIndex,
+					TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Time"),
+					Config.BurstWaveDelays[0]);
+			}
+
+			// 추가 웨이브 — EmitterState SpawnBurst 모듈을 동적 주입
+			for (int32 i = 1; i < Config.BurstWaveCounts.Num(); ++i)
+			{
+				FString WaveModuleName = FString::Printf(TEXT("SpawnBurst_Wave%d"), i);
+				const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+				FString SpawnBurstPath = TEXT("/Niagara/Modules/Emitter/SpawnBurst_Instantaneous.SpawnBurst_Instantaneous");
+				if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("SpawnBurst_Instantaneous")))
+				{
+					if (Path->IsValid()) SpawnBurstPath = Path->GetAssetPathString();
+				}
+
+				AddModuleToEmitter(System, EmitterIndex,
+					ENiagaraScriptUsage::EmitterUpdateScript, SpawnBurstPath);
+
+				float WaveDelay = i < Config.BurstWaveDelays.Num() ? Config.BurstWaveDelays[i] : 0.f;
+				SetEmitterParamInt(System, EmitterIndex,
+					TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Count"),
+					Config.BurstWaveCounts[i]);
+				SetEmitterParamFloat(System, EmitterIndex,
+					TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Time"), WaveDelay);
+
+				UE_LOG(LogHktVFXBuilder, Log, TEXT("  Burst Wave %d: count=%d, delay=%.2f"),
+					i, Config.BurstWaveCounts[i], WaveDelay);
+			}
+		}
+		else
+		{
+			// 단일 burst (기존 로직)
+			SetEmitterParamInt(System, EmitterIndex,
+				TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Count"), Config.BurstCount);
+
+			if (Config.BurstDelay > 0.f)
+			{
+				SetEmitterParamFloat(System, EmitterIndex,
+					TEXT("SpawnBurst_Instantaneous"), TEXT("Spawn Time"), Config.BurstDelay);
+			}
 		}
 	}
 	else if (Config.Mode == TEXT("rate"))
@@ -504,6 +545,91 @@ void FHktVFXNiagaraBuilder::SetupUpdateModules(UNiagaraSystem* System, int32 Emi
 	{
 		SetParticleParamVec3(System, EmitterIndex,
 			TEXT("Acceleration Force"), TEXT("Acceleration"), Config.AccelerationForce);
+	}
+
+	// --- Color Over Life 커브 (다점) ---
+	// ScaleColor 모듈의 Color Scale 커브를 RapidIteration으로 설정.
+	// Niagara의 ScaleColor는 2점(Start/End) 보간이므로, 다점 커브는
+	// 첫 점=Start, 마지막 점=End로 매핑하고 중간점은 로그로 기록.
+	if (Config.ColorCurveTimes.Num() >= 2)
+	{
+		// 첫 점 → Scale RGBA (시작 알파 포함)
+		const FLinearColor& First = Config.ColorCurveValues[0];
+		FVector4 StartRGBA(First.R, First.G, First.B, First.A);
+		SetParticleParamVec4(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("Scale RGBA"), StartRGBA);
+
+		// 마지막 점 → Scale RGB (종료 색상)
+		int32 LastIdx = Config.ColorCurveTimes.Num() - 1;
+		const FLinearColor& Last = Config.ColorCurveValues.IsValidIndex(LastIdx)
+			? Config.ColorCurveValues[LastIdx] : FLinearColor::Black;
+		FVector ScaleRGB(Last.R, Last.G, Last.B);
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("ScaleColor"), TEXT("Scale RGB"), ScaleRGB);
+
+		if (Config.ColorCurveTimes.Num() > 2)
+		{
+			UE_LOG(LogHktVFXBuilder, Log,
+				TEXT("  ColorCurve: %d keyframes → mapped to start/end (intermediate points ignored by ScaleColor module). "
+					 "For full multi-point curves, layer separate emitters per color phase."),
+				Config.ColorCurveTimes.Num());
+		}
+	}
+
+	// --- Size Over Life 커브 (다점) ---
+	// ScaleSpriteSize/ScaleMeshSize는 2점 보간만 지원하므로
+	// 첫 점=Start, 마지막 점=End로 매핑.
+	if (Config.SizeCurveTimes.Num() >= 2)
+	{
+		int32 LastIdx = Config.SizeCurveTimes.Num() - 1;
+		float StartScale = Config.SizeCurveValues[0];
+		float EndScale = Config.SizeCurveValues.IsValidIndex(LastIdx)
+			? Config.SizeCurveValues[LastIdx] : 1.f;
+
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Scale Sprite Size"), TEXT("Scale Factor"),
+			FVector(EndScale, EndScale, 0.f));
+		SetParticleParamVec3(System, EmitterIndex,
+			TEXT("Scale Mesh Size"), TEXT("Scale Factor"),
+			FVector(EndScale, EndScale, EndScale));
+
+		if (Config.SizeCurveTimes.Num() > 2)
+		{
+			UE_LOG(LogHktVFXBuilder, Log,
+				TEXT("  SizeCurve: %d keyframes → mapped to start/end. "
+					 "For pulsing effects, use multiple short-lived emitters."),
+				Config.SizeCurveTimes.Num());
+		}
+	}
+
+	// --- Camera Distance Fade ---
+	// CameraDistanceFade 모듈을 주입하여 카메라 거리에 따른 페이드 아웃
+	if (Config.CameraDistanceFadeNear > 0.f || Config.CameraDistanceFadeFar > 0.f)
+	{
+		const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+		FString CameraFadePath = TEXT("/Niagara/Modules/Scalability/CameraDistanceFade.CameraDistanceFade");
+		if (const FSoftObjectPath* Path = Settings->ModuleScriptPaths.Find(TEXT("CameraDistanceFade")))
+		{
+			if (Path->IsValid()) CameraFadePath = Path->GetAssetPathString();
+		}
+
+		AddModuleToEmitter(System, EmitterIndex,
+			ENiagaraScriptUsage::ParticleUpdateScript, CameraFadePath);
+
+		if (Config.CameraDistanceFadeNear > 0.f)
+		{
+			SetParticleParamFloat(System, EmitterIndex,
+				TEXT("CameraDistanceFade"), TEXT("Near Fade Distance"), Config.CameraDistanceFadeNear);
+		}
+		if (Config.CameraDistanceFadeFar > 0.f)
+		{
+			SetParticleParamFloat(System, EmitterIndex,
+				TEXT("CameraDistanceFade"), TEXT("Far Fade Distance"), Config.CameraDistanceFadeFar);
+		}
+
+		UE_LOG(LogHktVFXBuilder, Log,
+			TEXT("  CameraDistanceFade: near=%.0f, far=%.0f"),
+			Config.CameraDistanceFadeNear, Config.CameraDistanceFadeFar);
 	}
 }
 

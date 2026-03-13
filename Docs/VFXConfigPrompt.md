@@ -270,6 +270,141 @@ Light Renderer Extensions:
   render.bLightVolumetricScattering = true → affects volumetric fog
   Best for: fireflies, magic orbs, muzzle flash illumination
 
+=== MULTI-POINT CURVES ===
+
+Color Over Life (multi-point):
+  update.colorCurve = [{"time":0,"color":{"r":1,"g":0.8,"b":0}}, {"time":0.5,"color":{"r":1,"g":0.2,"b":0}}, {"time":1,"color":{"r":0.1,"g":0,"b":0}}]
+  Replaces useColorOverLife+colorEnd for richer color transitions.
+  Maps first→last keyframe to ScaleColor start/end.
+  For true multi-phase: layer emitters with different lifetimes+colors.
+  Best for: fire (orange→red→black), magic (blue→purple→white)
+
+Size Over Life (multi-point):
+  update.sizeCurve = [{"time":0,"scale":0.5}, {"time":0.3,"scale":2.0}, {"time":1,"scale":0.1}]
+  Replaces sizeScaleStart/End for more detailed size animation.
+  Maps first→last keyframe to ScaleSpriteSize start/end.
+  Best for: explosions (small→big→shrink), heartbeat pulse
+
+=== MULTI-WAVE BURST ===
+
+Spawn multiple bursts at different times from one emitter:
+
+  "spawn": { "mode": "burst", "burstWaves": [
+    {"count": 20, "delay": 0},
+    {"count": 15, "delay": 0.2},
+    {"count": 10, "delay": 0.5}
+  ]}
+
+  When burstWaves is set, burstCount/burstDelay are ignored.
+  Each wave spawns 'count' particles at 'delay' seconds.
+  Best for: staged explosions, fireworks, multi-phase bursts
+
+=== CAMERA DISTANCE FADE ===
+
+Fade particles based on camera distance (LOD alternative):
+
+  update.cameraDistanceFadeNear = 500   (start fading at 500 units)
+  update.cameraDistanceFadeFar = 2000   (fully invisible at 2000 units)
+
+  Auto-injects CameraDistanceFade module.
+  Best for: ambient effects (fireflies, dust, snow) that should disappear at distance
+
+=== EFFECT COMPLEXITY TIERS ===
+
+Match your design to the right complexity level:
+
+  Tier 1 — Simple (1 emitter)
+    Single burst/rate, one renderer. E.g.: muzzle flash, simple spark
+  Tier 2 — Standard (2-3 emitters)
+    Mixed spawn modes, basic physics. E.g.: campfire (flame+embers+smoke)
+  Tier 3 — Rich (3-5 emitters)
+    Collision, eventSpawn, shapeLocation. E.g.: explosion with debris+dust+light
+  Tier 4 — Complex (5-8 emitters)
+    Multi-layer with vortex, attraction, GPU sim. E.g.: portal, tornado
+
+  Rule: Start with the LOWEST tier that achieves the effect.
+  More emitters = more cost. 3-5 emitters covers 90% of production VFX.
+
+=== LIMITATIONS — DO NOT ATTEMPT ===
+
+The system CANNOT do these — do NOT include in your config:
+
+  ✗ Static mesh surface spawning (no StaticMesh data interface)
+  ✗ Physics field interaction (no Chaos physics binding)
+  ✗ Audio-driven parameters or audio event triggers
+  ✗ Custom HLSL or blueprint logic inside modules
+  ✗ LOD / distance-based quality scaling
+  ✗ Procedural mesh generation
+  ✗ Dynamic material parameter curves (only fixed material override)
+  ✗ Multi-point color/size curves (only start→end linear interpolation)
+  ✗ Volume renderer or 2D renderer
+  ✗ Ribbon renderer + GPU sim (incompatible)
+
+  Workarounds:
+    - Need ground spawn? Use shapeLocation=plane or low cone instead
+    - Need mesh surface spawn? Use skeletalMesh data interface
+    - Need complex color transitions? Layer multiple emitters with different colors
+    - Need oscillation? Use vortex + attraction combo
+
+=== ANTI-PATTERNS — COMMON MISTAKES ===
+
+  ✗ Circular eventSpawn: A→B and B→A causes infinite spawn loop
+  ✗ eventSpawn targetEmitter referencing non-existent emitter name
+  ✗ gpuSim=true with rendererType='ribbon' (GPU sim breaks ribbons)
+  ✗ spawnPerUnit without looping=true (needs continuous spawning)
+  ✗ collision without gravity or velocity (particles won't reach surfaces)
+  ✗ SubUV rows/columns without matching flipbook material/texture
+  ✗ meshPath pointing to non-existent asset (silently fails)
+  ✗ Setting burstCount=0 with mode='burst' (no particles spawn)
+  ✗ Very high burstCount (>500) without gpuSim=true (CPU bottleneck)
+  ✗ opacityStart=0 without changing it later (invisible particles)
+  ✗ colorOverLife without visible color difference (wasteful computation)
+
+=== TEMPLATE SELECTION MATRIX ===
+
+Quick-pick guide — choose the BEST template for your effect:
+
+  Effect Type          → Best Template         | Built-in Modules
+  ──────────────────────────────────────────────────────────────────
+  Explosion flash      → core                  | SubUV, ScaleColor
+  Explosion burst      → explosion             | SubUV, ScaleColor
+  Spark/ember          → spark                 | Velocity, ScaleColor
+  Bouncing debris      → spark + collision     | Velocity, ScaleColor
+  Smoke puff           → smoke                 | SubUV, Scale, Curl
+  Muzzle flash         → muzzle_flash          | SubUV, ScaleColor
+  Water spray          → fountain              | SpawnRate, Gravity
+  Floating dust        → hanging_particulates  | SpawnRate, CurlNoise
+  Wind-blown leaves    → blowing_particles     | SpawnRate, CurlNoise
+  Confetti             → confetti_burst        | Gravity, Rotation, Drag
+  Mesh debris          → upward_mesh_burst     | Gravity, MeshScale
+  Energy trail         → ribbon                | SpawnRate, Ribbon
+  Electric arc         → arc                   | Beam, Arc
+  Point light          → minimal + light       | (none, pure light)
+  Any + custom forces  → ANY + auto-inject     | VortexVelocity, etc.
+
+=== PARAMETER SAFE RANGES ===
+
+Recommended value ranges for natural-looking effects:
+
+  Parameter              | Low (subtle)  | Medium       | High (dramatic) | Extreme
+  ─────────────────────────────────────────────────────────────────────────────────
+  burstCount             | 5-15          | 20-50        | 50-200          | 500+ (gpuSim!)
+  rate                   | 5-15          | 15-50        | 50-200          | 500+ (gpuSim!)
+  lifetime               | 0.05-0.3      | 0.3-1.5      | 1.5-4.0         | 5.0+
+  size                   | 1-10          | 10-50        | 50-200          | 200+
+  velocity               | 20-100        | 100-400      | 400-1000        | 1000+
+  gravity.z              | -300          | -600         | -980            | -1500
+  drag                   | 0.2-0.5       | 1-3          | 3-8             | 10+
+  noiseStrength          | 5-20          | 20-80        | 80-300          | 500+
+  vortexStrength         | 30-100        | 100-300      | 300-800         | 1000+
+  attractionStrength     | 20-80         | 80-300       | 300-1000        | 2000+
+  ribbonWidth            | 2-5           | 5-20         | 20-60           | 80+
+  ribbonTessellation     | 2-4           | 4-8          | 8-16            | 16+
+  subUVPlayRate          | 0.5           | 1.0          | 2.0-4.0         | 8.0+
+  cameraOffset           | 1-3           | 3-10         | 10-30           | 50+
+  softParticleFadeDistance| 20-50         | 50-100       | 100-300         | 500+
+  lightExponent          | 0.5           | 1.0          | 2.0-4.0         | 8.0+
+
 === JSON SCHEMA ===
 
 {
@@ -283,7 +418,8 @@ Light Renderer Extensions:
         "mode": "burst | rate",
         "rate": "float (particles/sec, for rate mode)",
         "burstCount": "int (for burst mode)",
-        "burstDelay": "float (delay seconds)"
+        "burstDelay": "float (delay seconds)",
+        "burstWaves": [{"count":"int","delay":"float"}, "..."]
       },
       "init": {
         "lifetimeMin": "float", "lifetimeMax": "float (random distribution per particle)",
@@ -316,7 +452,11 @@ Light Renderer Extensions:
         "noiseStrength": "float (0=none)", "noiseFrequency": "float",
         "attractionStrength": "float (0=none)", "attractionRadius": "float",
         "attractionPosition": {"x":0,"y":0,"z":0},
-        "vortexStrength": "float (0=none)", "vortexRadius": "float"
+        "vortexStrength": "float (0=none)", "vortexRadius": "float",
+        "colorCurve": [{"time":0,"color":{"r":1,"g":0.5,"b":0}},{"time":1,"color":{"r":0,\"g\":0,\"b\":0}}],
+        "sizeCurve": [{"time":0,"scale":0.5},{"time":0.5,"scale":2},{"time":1,"scale":0.1}],
+        "cameraDistanceFadeNear": "float (start fade distance)",
+        "cameraDistanceFadeFar": "float (fully faded distance)"
       },
       "render": {
         "rendererType": "sprite | ribbon | light | mesh",
