@@ -49,12 +49,28 @@ UNiagaraSystem* FHktVFXNiagaraBuilder::BuildNiagaraSystem(
 	FString SystemName = FString::Printf(TEXT("NS_%s"), *Config.SystemName);
 	FString PackagePath = OutputDirectory / SystemName;
 
+	// 기존 에셋이 존재하면 삭제 후 덮어쓰기 (크래시 방지)
+	if (UPackage* ExistingPackage = FindPackage(nullptr, *PackagePath))
+	{
+		if (UNiagaraSystem* ExistingSystem = FindObject<UNiagaraSystem>(ExistingPackage, *SystemName))
+		{
+			UE_LOG(LogHktVFXBuilder, Warning,
+				TEXT("Existing NiagaraSystem found at %s — overwriting"), *PackagePath);
+			ExistingSystem->ClearFlags(RF_Public | RF_Standalone);
+			ExistingSystem->SetFlags(RF_Transient);
+			ExistingSystem->Rename(nullptr, GetTransientPackage(), REN_DontCreateRedirectors | REN_NonTransactional);
+		}
+		// 패키지 리셋 — 새로운 에셋 생성 가능하도록
+		ExistingPackage->FullyLoad();
+	}
+
 	UPackage* Package = CreatePackage(*PackagePath);
 	if (!Package)
 	{
 		UE_LOG(LogHktVFXBuilder, Error, TEXT("Failed to create package: %s"), *PackagePath);
 		return nullptr;
 	}
+	Package->FullyLoad();
 
 	UNiagaraSystemFactoryNew* SystemFactory = NewObject<UNiagaraSystemFactoryNew>();
 	UNiagaraSystem* System = Cast<UNiagaraSystem>(SystemFactory->FactoryCreateNew(
