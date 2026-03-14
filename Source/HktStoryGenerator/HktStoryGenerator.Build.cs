@@ -3,16 +3,16 @@
 using UnrealBuildTool;
 using System.IO;
 
-public class HktVFXGenerator : ModuleRules
+public class HktStoryGenerator : ModuleRules
 {
-	public HktVFXGenerator(ReadOnlyTargetRules Target) : base(Target)
+	public HktStoryGenerator(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// HktVFX, HktGeneratorCore Public 헤더 접근
 		PublicIncludePaths.AddRange(
 			new string[] {
-				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktVFX", "Public"),
+				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktCore", "Public"),
+				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktAsset", "Public"),
 				Path.Combine(PluginDirectory, "Source", "HktGeneratorCore", "Public"),
 			}
 		);
@@ -24,11 +24,9 @@ public class HktVFXGenerator : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"GameplayTags",
+				"HktCore",
 				"HktAsset",
-				"HktVFX",
 				"HktGeneratorCore",
-				"HktTextureGenerator",
-				"Niagara",
 				"Json",
 				"JsonUtilities",
 			}
@@ -40,11 +38,7 @@ public class HktVFXGenerator : ModuleRules
 				"UnrealEd",
 				"EditorSubsystem",
 				"DeveloperSettings",
-				"NiagaraEditor",
 				"AssetRegistry",
-				"AssetTools",
-				"RenderCore",
-				"Projects"
 			}
 		);
 	}

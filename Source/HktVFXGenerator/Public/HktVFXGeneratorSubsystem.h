@@ -62,4 +62,7 @@ private:
 	FString ResolveOutputDir(const FString& OutputDir) const;
 
 	FHktVFXNiagaraBuilder Builder;
+
+	UPROPERTY()
+	TObjectPtr<class UHktVFXGeneratorHandler> VFXHandler;
 };

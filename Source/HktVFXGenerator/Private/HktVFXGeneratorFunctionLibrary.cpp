@@ -3,6 +3,8 @@
 #include "HktVFXGeneratorFunctionLibrary.h"
 #include "HktVFXGeneratorSubsystem.h"
 #include "HktVFXGeneratorSettings.h"
+#include "HktTextureIntent.h"
+#include "HktTextureGeneratorSubsystem.h"
 #include "NiagaraSystem.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
@@ -67,39 +69,91 @@ FString UHktVFXGeneratorFunctionLibrary::McpBuildNiagaraSystem(
 
 	UE_LOG(LogHktVFXMcp, Log, TEXT("MCP: Built Niagara system: %s"), *Result->GetPathName());
 
-	// Config를 파싱하여 텍스처 생성 요청 수집
+	// Config를 파싱하여 텍스처 생성 요청 수집 → HktTextureGenerator에 위임
 	FHktVFXNiagaraConfig ParsedConfig;
 	FHktVFXNiagaraConfig::FromJson(JsonConfig, ParsedConfig);
 
+	// VFX 에미터의 TexturePrompt → FHktTextureRequest 변환
+	TArray<FHktTextureRequest> TextureRequests;
+	for (const auto& E : ParsedConfig.Emitters)
+	{
+		if (E.Render.TexturePrompt.IsEmpty()) continue;
+
+		FHktTextureRequest Req;
+		Req.Name = E.Name;
+
+		// TextureType → EHktTextureUsage 변환
+		if (E.Render.TextureType == TEXT("flipbook_4x4"))
+			Req.Intent.Usage = EHktTextureUsage::Flipbook4x4;
+		else if (E.Render.TextureType == TEXT("flipbook_8x8"))
+			Req.Intent.Usage = EHktTextureUsage::Flipbook8x8;
+		else if (E.Render.TextureType == TEXT("noise"))
+			Req.Intent.Usage = EHktTextureUsage::Noise;
+		else if (E.Render.TextureType == TEXT("gradient"))
+			Req.Intent.Usage = EHktTextureUsage::Gradient;
+		else
+			Req.Intent.Usage = EHktTextureUsage::ParticleSprite;
+
+		Req.Intent.Prompt = E.Render.TexturePrompt;
+		Req.Intent.NegativePrompt = E.Render.TextureNegativePrompt;
+		Req.Intent.Resolution = E.Render.TextureResolution > 0 ? E.Render.TextureResolution : 256;
+		Req.Intent.bAlphaChannel = true;
+
+		TextureRequests.Add(MoveTemp(Req));
+	}
+
+	// HktTextureGenerator에 배치 생성 위임
+	TArray<FHktTextureResult> TextureResults;
+	if (TextureRequests.Num() > 0)
+	{
+		UHktTextureGeneratorSubsystem* TexSubsystem = GEditor
+			? GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>()
+			: nullptr;
+
+		if (TexSubsystem)
+		{
+			TextureResults = TexSubsystem->GenerateBatch(TextureRequests, OutputDir);
+		}
+	}
+
+	// 응답 JSON 구성
 	FString Output;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
 	Writer->WriteObjectStart();
 	Writer->WriteValue(TEXT("success"), true);
 	Writer->WriteValue(TEXT("assetPath"), Result->GetPathName());
 
-	// 텍스처 생성 요청이 있으면 포함
-	bool bHasTextureRequests = false;
-	for (const auto& E : ParsedConfig.Emitters)
-	{
-		if (!E.Render.TexturePrompt.IsEmpty())
-		{
-			bHasTextureRequests = true;
-			break;
-		}
-	}
-	if (bHasTextureRequests)
+	// 텍스처 결과 포함 (생성 완료 + pending 모두)
+	if (TextureRequests.Num() > 0)
 	{
 		Writer->WriteArrayStart(TEXT("textureRequests"));
-		for (const auto& E : ParsedConfig.Emitters)
+		for (int32 i = 0; i < TextureRequests.Num(); ++i)
 		{
-			if (E.Render.TexturePrompt.IsEmpty()) continue;
+			const FHktTextureRequest& Req = TextureRequests[i];
 			Writer->WriteObjectStart();
-			Writer->WriteValue(TEXT("emitterName"), E.Name);
-			Writer->WriteValue(TEXT("prompt"), E.Render.TexturePrompt);
-			if (!E.Render.TextureNegativePrompt.IsEmpty())
-				Writer->WriteValue(TEXT("negativePrompt"), E.Render.TextureNegativePrompt);
-			Writer->WriteValue(TEXT("type"), E.Render.TextureType.IsEmpty() ? TEXT("particle_sprite") : E.Render.TextureType);
-			Writer->WriteValue(TEXT("resolution"), E.Render.TextureResolution > 0 ? E.Render.TextureResolution : 256);
+			Writer->WriteValue(TEXT("emitterName"), Req.Name);
+			Writer->WriteValue(TEXT("assetKey"), Req.Intent.GetAssetKey());
+
+			// 이미 생성 완료되었는지 확인
+			const FHktTextureResult* TexResult = (i < TextureResults.Num()) ? &TextureResults[i] : nullptr;
+			if (TexResult && TexResult->IsSuccess())
+			{
+				Writer->WriteValue(TEXT("status"), TEXT("ready"));
+				Writer->WriteValue(TEXT("texturePath"), TexResult->AssetPath);
+			}
+			else
+			{
+				Writer->WriteValue(TEXT("status"), TEXT("pending"));
+				Writer->WriteValue(TEXT("prompt"), Req.Intent.Prompt);
+				if (!Req.Intent.NegativePrompt.IsEmpty())
+					Writer->WriteValue(TEXT("negativePrompt"), Req.Intent.NegativePrompt);
+				Writer->WriteValue(TEXT("type"), Req.Intent.Usage == EHktTextureUsage::Flipbook4x4 ? TEXT("flipbook_4x4")
+					: Req.Intent.Usage == EHktTextureUsage::Flipbook8x8 ? TEXT("flipbook_8x8")
+					: Req.Intent.Usage == EHktTextureUsage::Noise ? TEXT("noise")
+					: Req.Intent.Usage == EHktTextureUsage::Gradient ? TEXT("gradient")
+					: TEXT("particle_sprite"));
+				Writer->WriteValue(TEXT("resolution"), Req.Intent.GetEffectiveResolution());
+			}
 			Writer->WriteObjectEnd();
 		}
 		Writer->WriteArrayEnd();

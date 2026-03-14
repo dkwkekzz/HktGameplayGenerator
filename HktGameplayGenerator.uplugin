@@ -16,7 +16,37 @@
 	"Installed": false,
 	"Modules": [
 		{
+			"Name": "HktTextureGenerator",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "HktGeneratorCore",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
 			"Name": "HktVFXGenerator",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "HktMeshGenerator",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "HktAnimGenerator",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "HktItemGenerator",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "HktStoryGenerator",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}

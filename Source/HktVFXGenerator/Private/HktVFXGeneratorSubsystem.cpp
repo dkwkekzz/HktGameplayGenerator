@@ -2,6 +2,8 @@
 
 #include "HktVFXGeneratorSubsystem.h"
 #include "HktVFXGeneratorSettings.h"
+#include "HktVFXGeneratorHandler.h"
+#include "HktGeneratorRouter.h"
 #include "NiagaraSystem.h"
 #include "NiagaraEmitter.h"
 #include "NiagaraScript.h"
@@ -13,6 +15,14 @@ DEFINE_LOG_CATEGORY_STATIC(LogHktVFXGenerator, Log, All);
 void UHktVFXGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+
+	// Handler 생성 및 Router 등록
+	if (UHktGeneratorRouter* Router = GEditor->GetEditorSubsystem<UHktGeneratorRouter>())
+	{
+		VFXHandler = NewObject<UHktVFXGeneratorHandler>(this);
+		Router->RegisterHandler(TScriptInterface<IHktGeneratorHandler>(VFXHandler));
+		UE_LOG(LogHktVFXGenerator, Log, TEXT("VFXGeneratorHandler registered with Router"));
+	}
 
 	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
 	UE_LOG(LogHktVFXGenerator, Log, TEXT("HktVFXGeneratorSubsystem Initialized (templates: %d, outputDir: %s)"),
