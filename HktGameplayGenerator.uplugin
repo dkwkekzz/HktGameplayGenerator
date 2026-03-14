@@ -49,6 +49,16 @@
 			"Name": "HktStoryGenerator",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "HktMcpBridge",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "HktMcpBridgeEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
 		}
 	],
 	"Plugins": [
@@ -58,6 +68,14 @@
 		},
 		{
 			"Name": "HktGameplay",
+			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "EditorScriptingUtilities",
 			"Enabled": true
 		}
 	]
