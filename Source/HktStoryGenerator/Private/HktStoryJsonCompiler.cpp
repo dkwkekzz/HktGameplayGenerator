@@ -5,9 +5,12 @@
 #include "HktStoryTypes.h"
 #include "HktCoreProperties.h"
 #include "GameplayTagsManager.h"
+#include "GameplayTagsSettings.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktStoryJsonCompiler, Log, All);
 
@@ -32,6 +35,48 @@ int32 FHktStoryJsonCompiler::ParseRegister(const FString& RegStr)
 	return -1;
 }
 
+/**
+ * 프로젝트 DefaultGameplayTags.ini에 태그를 영속화.
+ * 에디터 재시작 시에도 태그가 유지되도록 보장.
+ *
+ * UE Config 시스템의 +Array= 형식을 사용하여 기존 엔트리에 추가.
+ */
+static void PersistTagToProjectConfig(const FString& TagName)
+{
+	const FString IniPath = FPaths::ProjectConfigDir() / TEXT("DefaultGameplayTags.ini");
+	const FString Section = TEXT("/Script/GameplayTags.GameplayTagsSettings");
+	const FString Key = TEXT("GameplayTagList");
+	const FString Entry = FString::Printf(TEXT("(Tag=\"%s\",DevComment=\"Auto-registered by HktStoryGenerator\")"), *TagName);
+
+	// 이미 등록되어 있는지 확인 (중복 방지)
+	TArray<FString> Existing;
+	GConfig->GetArray(*Section, *Key, Existing, IniPath);
+	for (const FString& E : Existing)
+	{
+		if (E.Contains(TagName))
+		{
+			return; // 이미 존재
+		}
+	}
+
+	// 배열에 추가 후 INI에 기록
+	Existing.Add(Entry);
+	GConfig->SetArray(*Section, *Key, Existing, IniPath);
+	GConfig->Flush(false, IniPath);
+
+	UE_LOG(LogHktStoryJsonCompiler, Log, TEXT("Persisted tag to %s: %s"), *IniPath, *TagName);
+}
+
+/**
+ * GameplayTag가 유효한지 확인하고, 없으면 동적 등록 + INI 영속화.
+ *
+ * 동작 방식:
+ * 1. RequestGameplayTag로 기존 태그 조회
+ * 2. 없으면 AddNativeGameplayTag로 현재 세션에 등록
+ *    - DoneAddingNativeTags 이후에도 태그 트리에 추가됨 (valid tag 반환)
+ *    - NetIndex 미할당 (에디터 전용이므로 리플리케이션 무관)
+ * 3. DefaultGameplayTags.ini에 기록하여 에디터 재시작 시에도 유지
+ */
 static FGameplayTag EnsureTagRegistered(const FString& TagName)
 {
 	FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
@@ -40,20 +85,24 @@ static FGameplayTag EnsureTagRegistered(const FString& TagName)
 		return Tag;
 	}
 
-	// Tag not in ini — register it dynamically so the compiler can reference it
+	// 현재 세션에 등록 — AddNativeGameplayTag는 DoneAddingNativeTags 이후에도
+	// AddTagTableRow를 통해 트리에 노드를 생성하고 valid tag를 반환함.
+	// NetIndex는 할당되지 않으나 에디터 전용 플러그인이므로 리플리케이션 불필요.
 	UGameplayTagsManager& Manager = UGameplayTagsManager::Get();
-	Manager.AddNativeGameplayTag(FName(*TagName), TEXT("Auto-registered by StoryJsonCompiler"));
+	Tag = Manager.AddNativeGameplayTag(FName(*TagName), TEXT("Auto-registered by StoryJsonCompiler"));
 
-	// Re-request after registration
-	Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
 	if (Tag.IsValid())
 	{
 		UE_LOG(LogHktStoryJsonCompiler, Log, TEXT("Auto-registered GameplayTag: %s"), *TagName);
+
+		// INI에 영속화 — 에디터 재시작 시에도 태그가 유지됨
+		PersistTagToProjectConfig(TagName);
 	}
 	else
 	{
 		UE_LOG(LogHktStoryJsonCompiler, Warning, TEXT("Failed to auto-register GameplayTag: %s"), *TagName);
 	}
+
 	return Tag;
 }
 
