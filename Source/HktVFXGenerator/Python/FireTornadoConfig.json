@@ -1,0 +1,195 @@
+{
+  "_meta": {
+    "description": "FireTornado — monolith niagara_query 과정을 HktVFXGenerator JSON config로 변환",
+    "source": "monolith MCP niagara_query sequence",
+    "original_asset": "/Game/HktGameplay/Generated/FireTornado"
+  },
+  "examples": [
+    {
+      "_id": "fire_tornado",
+      "_description": "Fire Tornado — 불 토네이도 (4 에미터: FireCore, Smoke, Embers, InnerGlow)",
+      "_category": "environment",
+      "_quality": "production",
+      "_tags": [
+        "looping",
+        "rate",
+        "vortex",
+        "material_override",
+        "shapeLocation"
+      ],
+      "config": {
+        "systemName": "FireTornado",
+        "looping": true,
+        "warmupTime": 2.0,
+        "emitters": [
+          {
+            "name": "FireCore",
+            "spawn": {
+              "mode": "rate",
+              "rate": 60
+            },
+            "init": {
+              "lifetimeMin": 1.0,
+              "lifetimeMax": 2.5,
+              "sizeMin": 30,
+              "sizeMax": 80,
+              "color": {
+                "r": 1.0,
+                "g": 0.4,
+                "b": 0.05,
+                "a": 1.0
+              }
+            },
+            "shapeLocation": {
+              "shape": "cylinder",
+              "cylinderRadius": 60,
+              "cylinderHeight": 20
+            },
+            "update": {
+              "accelerationForce": {
+                "x": 0,
+                "y": 0,
+                "z": 400
+              },
+              "vortexStrength": 800,
+              "vortexAxis": {
+                "x": 0,
+                "y": 0,
+                "z": 1
+              },
+              "vortexRadius": 500,
+              "attractionStrength": 200,
+              "opacityEnd": 0,
+              "useColorOverLife": true,
+              "colorEnd": {
+                "r": 0.3,
+                "g": 0.05,
+                "b": 0.0,
+                "a": 0.0
+              }
+            },
+            "render": {
+              "emitterTemplate": "smoke",
+              "materialPath": "/Game/NiagaraExamples/Materials/MI_Flames",
+              "blendMode": "additive",
+              "sortOrder": 7
+            }
+          },
+          {
+            "name": "Smoke",
+            "spawn": {
+              "mode": "rate",
+              "rate": 25
+            },
+            "init": {
+              "lifetimeMin": 2.0,
+              "lifetimeMax": 4.0,
+              "sizeMin": 60,
+              "sizeMax": 120,
+              "color": {
+                "r": 0.15,
+                "g": 0.08,
+                "b": 0.03,
+                "a": 0.6
+              }
+            },
+            "update": {
+              "accelerationForce": {
+                "x": 0,
+                "y": 0,
+                "z": 200
+              },
+              "vortexStrength": 400,
+              "vortexAxis": {
+                "x": 0,
+                "y": 0,
+                "z": 1
+              },
+              "attractionStrength": 100,
+              "sizeScaleEnd": 2.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "smoke",
+              "sortOrder": 1
+            }
+          },
+          {
+            "name": "Embers",
+            "spawn": {
+              "mode": "rate",
+              "rate": 40
+            },
+            "init": {
+              "lifetimeMin": 1.0,
+              "lifetimeMax": 3.0,
+              "sizeMin": 2,
+              "sizeMax": 8,
+              "velocityMin": {
+                "x": 0,
+                "y": 0,
+                "z": 400
+              },
+              "velocityMax": {
+                "x": 0,
+                "y": 0,
+                "z": 400
+              },
+              "color": {
+                "r": 5.0,
+                "g": 2.0,
+                "b": 0.2,
+                "a": 1.0
+              }
+            },
+            "update": {
+              "vortexStrength": 600,
+              "vortexAxis": {
+                "x": 0,
+                "y": 0,
+                "z": 1
+              },
+              "attractionStrength": 150,
+              "drag": 0.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "blendMode": "additive",
+              "sortOrder": 9
+            }
+          },
+          {
+            "name": "InnerGlow",
+            "spawn": {
+              "mode": "rate",
+              "rate": 15
+            },
+            "init": {
+              "lifetimeMin": 0.5,
+              "lifetimeMax": 1.0,
+              "sizeMin": 100,
+              "sizeMax": 200,
+              "color": {
+                "r": 8.0,
+                "g": 4.0,
+                "b": 0.5,
+                "a": 0.8
+              }
+            },
+            "update": {
+              "sizeScaleEnd": 1.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "core",
+              "materialPath": "/Game/NiagaraExamples/Materials/MI_SmokePuffLight_8x8_Emissive",
+              "blendMode": "additive",
+              "sortOrder": 3
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
