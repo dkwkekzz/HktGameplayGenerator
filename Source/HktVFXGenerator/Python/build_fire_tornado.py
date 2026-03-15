@@ -155,3 +155,5 @@ if __name__ == "__main__":
         _monolith_comparison()
         print("--- JSON Config ---")
         print(get_config_json())
+
+    build()
