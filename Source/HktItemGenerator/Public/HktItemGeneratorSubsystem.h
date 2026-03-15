@@ -1,5 +1,5 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
-// Item Generator EditorSubsystem — Equipment 에셋 생성 API
+// Item Generator EditorSubsystem — Entity.Item 에셋 생성 API
 
 #pragma once
 
@@ -46,7 +46,7 @@ struct HKTITEMGENERATOR_API FHktItemGenerationRequest
 /**
  * UHktItemGeneratorSubsystem
  *
- * Equipment 에셋 생성 EditorSubsystem.
+ * Entity.Item 에셋 생성 EditorSubsystem.
  * 아이템 = StaticMesh + ItemIcon(Texture) + Material Instance
  * ItemIcon은 HktTextureGenerator에 위임.
  */

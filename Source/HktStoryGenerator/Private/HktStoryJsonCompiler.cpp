@@ -259,8 +259,8 @@ bool FHktStoryJsonCompiler::ApplyStep(
 	if (Op == TEXT("PlaySound")) { Builder.PlaySound(GetTag(TEXT("tag"))); return true; }
 	if (Op == TEXT("PlaySoundAtLocation")) { Builder.PlaySoundAtLocation(GetReg(TEXT("pos")), GetTag(TEXT("tag"))); return true; }
 
-	// ========== Equipment ==========
-	if (Op == TEXT("SpawnEquipment")) { Builder.SpawnEquipment(GetReg(TEXT("owner")), GetInt(TEXT("slot")), GetTag(TEXT("equipTag"))); return true; }
+	// ========== Item (Entity.Item.*) ==========
+	if (Op == TEXT("SpawnItem")) { Builder.SpawnEquipment(GetReg(TEXT("owner")), GetInt(TEXT("slot")), GetTag(TEXT("itemTag"))); return true; }
 
 	// ========== Tags ==========
 	if (Op == TEXT("AddTag")) { Builder.AddTag(GetReg(TEXT("entity")), GetTag(TEXT("tag"))); return true; }
@@ -420,7 +420,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		TEXT("ApplyDamage"), TEXT("ApplyDamageConst"), TEXT("ApplyEffect"), TEXT("RemoveEffect"),
 		TEXT("PlayVFX"), TEXT("PlayVFXAttached"),
 		TEXT("PlaySound"), TEXT("PlaySoundAtLocation"),
-		TEXT("SpawnEquipment"),
+		TEXT("SpawnItem"),
 		TEXT("AddTag"), TEXT("RemoveTag"), TEXT("HasTag"), TEXT("CountByTag"),
 		TEXT("GetWorldTime"), TEXT("RandomInt"), TEXT("HasPlayerInGroup"), TEXT("CountByOwner"), TEXT("FindByOwner"),
 		TEXT("Log"),
@@ -448,7 +448,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		}
 
 		// Collect referenced tags
-		for (const FString& TagField : { TEXT("tag"), TEXT("classTag"), TEXT("effectTag"), TEXT("equipTag") })
+		for (const FString& TagField : { TEXT("tag"), TEXT("classTag"), TEXT("effectTag"), TEXT("itemTag") })
 		{
 			FString TagStr;
 			if ((*StepObj)->TryGetStringField(TagField, TagStr))
@@ -531,8 +531,8 @@ FString FHktStoryJsonCompiler::GetStorySchema()
       "PlaySound": { "tag": "tag — Sound tag" },
       "PlaySoundAtLocation": { "pos": "register (3 consecutive)", "tag": "tag" }
     },
-    "equipment": {
-      "SpawnEquipment": { "owner": "register", "slot": "int", "equipTag": "tag — Equipment tag" }
+    "item": {
+      "SpawnItem": { "owner": "register", "slot": "int", "itemTag": "tag — Entity.Item tag" }
     },
     "tags": {
       "AddTag": { "entity": "register", "tag": "tag" },
@@ -596,7 +596,7 @@ FString FHktStoryJsonCompiler::GetStorySchema()
     "VFX.*": "VFXGenerator에서 자동 생성 가능",
     "Entity.*": "MeshGenerator에서 자동 생성 가능",
     "Anim.*": "AnimGenerator에서 자동 생성 가능",
-    "Equipment.*": "ItemGenerator에서 자동 생성 가능",
+    "Entity.Item.*": "ItemGenerator에서 자동 생성 가능",
     "Sound.*": "사운드 에셋 (수동 등록 필요)",
     "Effect.*": "게임플레이 이펙트 (수동 등록 필요)"
   }
@@ -684,8 +684,8 @@ FString FHktStoryJsonCompiler::GetStoryExamples()
         "AnimIdle": "Anim.FullBody.Locomotion.Idle",
         "VFX_Spawn": "VFX.SpawnEffect",
         "Sound_Spawn": "Sound.Spawn",
-        "Weapon_Sword": "Equipment.Weapon.Sword",
-        "Shield": "Equipment.Shield"
+        "Weapon_Sword": "Entity.Item.Weapon.Sword",
+        "Shield": "Entity.Item.Shield"
       },
       "steps": [
         { "op": "SpawnEntity", "classTag": "PlayerEntity" },
@@ -698,8 +698,8 @@ FString FHktStoryJsonCompiler::GetStoryExamples()
         { "op": "PlaySound", "tag": "Sound_Spawn" },
         { "op": "AddTag", "entity": "Self", "tag": "AnimSpawn" },
         { "op": "WaitSeconds", "seconds": 0.5 },
-        { "op": "SpawnEquipment", "owner": "Self", "slot": 0, "equipTag": "Weapon_Sword" },
-        { "op": "SpawnEquipment", "owner": "Self", "slot": 1, "equipTag": "Shield" },
+        { "op": "SpawnItem", "owner": "Self", "slot": 0, "itemTag": "Weapon_Sword" },
+        { "op": "SpawnItem", "owner": "Self", "slot": 1, "itemTag": "Shield" },
         { "op": "AddTag", "entity": "Self", "tag": "AnimIntro" },
         { "op": "WaitAnimEnd", "entity": "Self" },
         { "op": "RemoveTag", "entity": "Self", "tag": "AnimSpawn" },

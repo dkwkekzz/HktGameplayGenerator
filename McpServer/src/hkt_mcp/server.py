@@ -692,7 +692,7 @@ async def list_tools() -> list[Tool]:
     tools.extend([
         Tool(
             name="request_item",
-            description="Request item/equipment generation. Returns convention path + mesh/icon generation prompts.",
+            description="Request item (Entity.Item.*) generation. Returns convention path + mesh/icon generation prompts.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -730,7 +730,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_socket_mappings",
-            description="Get equipment attachment socket mappings for character skeleton.",
+            description="Get item attachment socket mappings for character skeleton.",
             inputSchema={"type": "object", "properties": {}}
         ),
     ])

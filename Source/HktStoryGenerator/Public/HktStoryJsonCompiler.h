@@ -54,7 +54,7 @@ struct HKTSTORYGENERATOR_API FHktStoryCompileResult
  *   Combat: ApplyDamage, ApplyDamageConst, ApplyEffect, RemoveEffect
  *   VFX: PlayVFX, PlayVFXAttached
  *   Audio: PlaySound, PlaySoundAtLocation
- *   Equipment: SpawnEquipment
+ *   Item: SpawnItem
  *   Tags: AddTag, RemoveTag, HasTag, CountByTag
  *   Query: GetWorldTime, RandomInt, HasPlayerInGroup, CountByOwner, FindByOwner
  *   Utility: Log

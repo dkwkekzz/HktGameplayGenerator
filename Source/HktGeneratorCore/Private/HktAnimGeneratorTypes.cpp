@@ -84,17 +84,17 @@ bool FHktItemIntent::FromTag(const FGameplayTag& Tag, FHktItemIntent& OutIntent)
 	if (!Tag.IsValid()) return false;
 
 	FString TagStr = Tag.ToString();
-	if (!TagStr.StartsWith(TEXT("Equipment."))) return false;
+	if (!TagStr.StartsWith(TEXT("Entity.Item."))) return false;
 
-	// Equipment.{Category}.{SubType}[.{Element}]
+	// Entity.Item.{Category}.{SubType}[.{Element}]
 	TArray<FString> Parts;
 	TagStr.ParseIntoArray(Parts, TEXT("."));
 
 	OutIntent.ItemTag = Tag;
 
-	if (Parts.Num() >= 2) OutIntent.Category = Parts[1]; // Weapon, Armor, Accessory
-	if (Parts.Num() >= 3) OutIntent.SubType = Parts[2];  // Sword, Shield, Ring
-	if (Parts.Num() >= 4) OutIntent.Element = Parts[3];  // Fire, Ice, etc.
+	if (Parts.Num() >= 3) OutIntent.Category = Parts[2]; // Weapon, Armor, Accessory
+	if (Parts.Num() >= 4) OutIntent.SubType = Parts[3];  // Sword, Shield, Ring
+	if (Parts.Num() >= 5) OutIntent.Element = Parts[4];  // Fire, Ice, etc.
 
 	return true;
 }

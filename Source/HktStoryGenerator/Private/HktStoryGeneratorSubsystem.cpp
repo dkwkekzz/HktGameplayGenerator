@@ -143,7 +143,7 @@ FString UHktStoryGeneratorSubsystem::McpAnalyzeDependencies(const FString& JsonS
 	TArray<FGameplayTag> MissingTags = FindMissingAssetTags(ValidateResult.ReferencedTags);
 
 	// 카테고리별 분류
-	TArray<TSharedPtr<FJsonValue>> VFXDeps, EntityDeps, AnimDeps, EquipDeps, OtherDeps;
+	TArray<TSharedPtr<FJsonValue>> VFXDeps, EntityDeps, AnimDeps, ItemDeps, OtherDeps;
 
 	for (const FGameplayTag& Tag : MissingTags)
 	{
@@ -156,6 +156,11 @@ FString UHktStoryGeneratorSubsystem::McpAnalyzeDependencies(const FString& JsonS
 			Dep->SetStringField(TEXT("generator"), TEXT("VFXGenerator"));
 			VFXDeps.Add(MakeShared<FJsonValueObject>(Dep));
 		}
+		else if (TagStr.StartsWith(TEXT("Entity.Item.")))
+		{
+			Dep->SetStringField(TEXT("generator"), TEXT("ItemGenerator"));
+			ItemDeps.Add(MakeShared<FJsonValueObject>(Dep));
+		}
 		else if (TagStr.StartsWith(TEXT("Entity.")))
 		{
 			Dep->SetStringField(TEXT("generator"), TEXT("MeshGenerator"));
@@ -165,11 +170,6 @@ FString UHktStoryGeneratorSubsystem::McpAnalyzeDependencies(const FString& JsonS
 		{
 			Dep->SetStringField(TEXT("generator"), TEXT("AnimGenerator"));
 			AnimDeps.Add(MakeShared<FJsonValueObject>(Dep));
-		}
-		else if (TagStr.StartsWith(TEXT("Equipment.")))
-		{
-			Dep->SetStringField(TEXT("generator"), TEXT("ItemGenerator"));
-			EquipDeps.Add(MakeShared<FJsonValueObject>(Dep));
 		}
 		else
 		{
@@ -187,7 +187,7 @@ FString UHktStoryGeneratorSubsystem::McpAnalyzeDependencies(const FString& JsonS
 	if (VFXDeps.Num() > 0) ByCategory->SetArrayField(TEXT("vfx"), VFXDeps);
 	if (EntityDeps.Num() > 0) ByCategory->SetArrayField(TEXT("entity"), EntityDeps);
 	if (AnimDeps.Num() > 0) ByCategory->SetArrayField(TEXT("anim"), AnimDeps);
-	if (EquipDeps.Num() > 0) ByCategory->SetArrayField(TEXT("equipment"), EquipDeps);
+	if (ItemDeps.Num() > 0) ByCategory->SetArrayField(TEXT("item"), ItemDeps);
 	if (OtherDeps.Num() > 0) ByCategory->SetArrayField(TEXT("other"), OtherDeps);
 	Result->SetObjectField(TEXT("missingByCategory"), ByCategory);
 
@@ -231,7 +231,7 @@ TArray<FGameplayTag> UHktStoryGeneratorSubsystem::FindMissingAssetTags(const TAr
 	TArray<FGameplayTag> Missing;
 
 	// Generator가 처리할 수 있는 태그 prefix만 체크
-	static const TArray<FString> GeneratorPrefixes = { TEXT("VFX."), TEXT("Entity."), TEXT("Anim."), TEXT("Equipment.") };
+	static const TArray<FString> GeneratorPrefixes = { TEXT("VFX."), TEXT("Entity."), TEXT("Anim.") };
 
 	for (const FGameplayTag& Tag : ReferencedTags)
 	{

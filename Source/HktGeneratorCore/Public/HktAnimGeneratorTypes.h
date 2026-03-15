@@ -94,7 +94,7 @@ struct HKTGENERATORCORE_API FHktItemIntent
 {
 	GENERATED_BODY()
 
-	/** 원본 태그 (Equipment.Weapon.Sword.Fire) */
+	/** 원본 태그 (Entity.Item.Weapon.Sword.Fire) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Intent")
 	FGameplayTag ItemTag;
 
