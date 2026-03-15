@@ -73,21 +73,22 @@ class UnrealRemoteExecution:
             self._session = None
         self._connected = False
     
-    async def call_function(self, function_name: str, **parameters) -> dict:
+    async def call_function(self, function_name: str, object_path: str | None = None, **parameters) -> dict:
         """
-        Call a function on UHktMcpFunctionLibrary
-        
+        Call a function on a BlueprintFunctionLibrary via Remote Control API
+
         Args:
             function_name: Name of the function (e.g., "McpListAssets")
+            object_path: CDO object path override. Defaults to HktMcpFunctionLibrary.
             **parameters: Function parameters as keyword arguments matching C++ argument names
-            
+
         Returns:
             Dict with result: {"success": bool, "data": Any, "error": str}
         """
         url = f"{self._base_url}/remote/object/call"
-        
+
         payload = {
-            "objectPath": self.FUNCTION_LIBRARY_PATH,
+            "objectPath": object_path or self.FUNCTION_LIBRARY_PATH,
             "functionName": function_name,
             "parameters": parameters,
             "generateTransaction": True

@@ -6,12 +6,28 @@ Tool categories:
 - level_tools: Level editing (actors, transforms)
 - query_tools: Content querying (classes, properties, structure)
 - runtime_tools: Runtime control (PIE, console commands, game state)
+- vfx_tools: VFX/Niagara generation
+- story_tools: Story/ability script compilation
+- texture_tools: Texture generation and import
+- anim_tools: Animation generation and import
+- mesh_tools: Character mesh generation and import
+- item_tools: Item/equipment generation and import
 """
 
 from . import asset_tools
 from . import level_tools
 from . import query_tools
 from . import runtime_tools
+from . import vfx_tools
+from . import story_tools
+from . import texture_tools
+from . import anim_tools
+from . import mesh_tools
+from . import item_tools
 
-__all__ = ["asset_tools", "level_tools", "query_tools", "runtime_tools"]
+__all__ = [
+    "asset_tools", "level_tools", "query_tools", "runtime_tools",
+    "vfx_tools", "story_tools", "texture_tools",
+    "anim_tools", "mesh_tools", "item_tools",
+]
 

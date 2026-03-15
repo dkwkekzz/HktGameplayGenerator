@@ -29,18 +29,19 @@ class EditorBridge:
         """Not used in Remote Control mode"""
         pass
 
-    async def call_method(self, method_name: str, **kwargs) -> Any:
+    async def call_method(self, method_name: str, object_path: str | None = None, **kwargs) -> Any:
         """
-        Call a method on the generic remote execution client.
-        
+        Call a method on a BlueprintFunctionLibrary via Remote Control API.
+
         Args:
             method_name: Name of the Blueprint function (e.g., "McpListAssets")
+            object_path: CDO object path override. Defaults to HktMcpFunctionLibrary.
             **kwargs: Arguments to pass to the function (must match C++ parameter names)
-            
+
         Returns:
             The 'data' portion of the response if successful, or raises Exception/returns None.
         """
-        result = await self._remote.call_function(method_name, **kwargs)
+        result = await self._remote.call_function(method_name, object_path=object_path, **kwargs)
         
         if result.get("success"):
             return result.get("data")
