@@ -4,6 +4,7 @@
 #include "HktStoryBuilder.h"
 #include "HktStoryTypes.h"
 #include "HktCoreProperties.h"
+#include "GameplayTagsManager.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -31,6 +32,31 @@ int32 FHktStoryJsonCompiler::ParseRegister(const FString& RegStr)
 	return -1;
 }
 
+static FGameplayTag EnsureTagRegistered(const FString& TagName)
+{
+	FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+	if (Tag.IsValid())
+	{
+		return Tag;
+	}
+
+	// Tag not in ini — register it dynamically so the compiler can reference it
+	UGameplayTagsManager& Manager = UGameplayTagsManager::Get();
+	Manager.AddNativeGameplayTag(FName(*TagName), TEXT("Auto-registered by StoryJsonCompiler"));
+
+	// Re-request after registration
+	Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+	if (Tag.IsValid())
+	{
+		UE_LOG(LogHktStoryJsonCompiler, Log, TEXT("Auto-registered GameplayTag: %s"), *TagName);
+	}
+	else
+	{
+		UE_LOG(LogHktStoryJsonCompiler, Warning, TEXT("Failed to auto-register GameplayTag: %s"), *TagName);
+	}
+	return Tag;
+}
+
 FGameplayTag FHktStoryJsonCompiler::ResolveTag(const FString& TagStr, const TMap<FString, FGameplayTag>& TagAliases)
 {
 	// First check aliases
@@ -38,8 +64,8 @@ FGameplayTag FHktStoryJsonCompiler::ResolveTag(const FString& TagStr, const TMap
 	{
 		return *Found;
 	}
-	// Direct tag name
-	return FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
+	// Direct tag name — auto-register if missing
+	return EnsureTagRegistered(TagStr);
 }
 
 uint16 FHktStoryJsonCompiler::ParsePropertyId(const FString& PropStr)
@@ -220,7 +246,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::CompileAndRegister(const FString& 
 		return Result;
 	}
 
-	// Story tag
+	// Story tag — auto-register if missing
 	FString StoryTagStr;
 	if (!Root->TryGetStringField(TEXT("storyTag"), StoryTagStr) || StoryTagStr.IsEmpty())
 	{
@@ -228,8 +254,9 @@ FHktStoryCompileResult FHktStoryJsonCompiler::CompileAndRegister(const FString& 
 		return Result;
 	}
 	Result.StoryTag = StoryTagStr;
+	EnsureTagRegistered(StoryTagStr);
 
-	// Parse tag aliases
+	// Parse tag aliases — auto-register missing tags
 	TMap<FString, FGameplayTag> TagAliases;
 	const TSharedPtr<FJsonObject>* TagsObj;
 	if (Root->TryGetObjectField(TEXT("tags"), TagsObj))
@@ -237,12 +264,12 @@ FHktStoryCompileResult FHktStoryJsonCompiler::CompileAndRegister(const FString& 
 		for (const auto& Pair : (*TagsObj)->Values)
 		{
 			FString TagName = Pair.Value->AsString();
-			FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+			FGameplayTag Tag = EnsureTagRegistered(TagName);
 			if (!Tag.IsValid())
 			{
-				Result.Warnings.Add(FString::Printf(TEXT("Tag '%s' (%s) not registered in GameplayTags"), *Pair.Key, *TagName));
+				Result.Warnings.Add(FString::Printf(TEXT("Tag '%s' (%s) could not be registered"), *Pair.Key, *TagName));
 			}
-			TagAliases.Add(Pair.Key, FGameplayTag::RequestGameplayTag(FName(*TagName), false));
+			TagAliases.Add(Pair.Key, Tag);
 		}
 	}
 
@@ -310,15 +337,16 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		return Result;
 	}
 	Result.StoryTag = StoryTagStr;
+	EnsureTagRegistered(StoryTagStr);
 
-	// Parse tag aliases for validation
+	// Parse tag aliases for validation — auto-register missing tags
 	TMap<FString, FGameplayTag> TagAliases;
 	const TSharedPtr<FJsonObject>* TagsObj;
 	if (Root->TryGetObjectField(TEXT("tags"), TagsObj))
 	{
 		for (const auto& Pair : (*TagsObj)->Values)
 		{
-			TagAliases.Add(Pair.Key, FGameplayTag::RequestGameplayTag(FName(*Pair.Value->AsString()), false));
+			TagAliases.Add(Pair.Key, EnsureTagRegistered(Pair.Value->AsString()));
 		}
 	}
 
