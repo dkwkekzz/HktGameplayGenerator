@@ -26,6 +26,9 @@ class McpConfig:
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
+    # Pipeline monitor
+    pipeline_data_path: str = ".pipeline_data"
+
     # Timeouts
     rpc_timeout: float = 30.0
     connection_timeout: float = 10.0
