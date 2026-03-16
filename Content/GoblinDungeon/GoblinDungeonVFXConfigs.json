@@ -1,0 +1,400 @@
+{
+  "_meta": {
+    "description": "Goblin Dungeon — VFX Config Collection",
+    "content": "고블린 던전에 필요한 모든 VFX 에셋의 HktVFXGenerator JSON Config",
+    "tags": [
+      "VFX.DungeonTorch",
+      "VFX.PoisonCloud",
+      "VFX.GoblinRageAura",
+      "VFX.TreasureSparkle",
+      "VFX.DungeonPortal"
+    ]
+  },
+  "configs": [
+    {
+      "_id": "dungeon_torch",
+      "_description": "던전 횃불 — 벽면 조명용 루핑 VFX (따뜻한 주황 불꽃 + 연기 + 불씨)",
+      "_tag": "VFX.DungeonTorch",
+      "config": {
+        "systemName": "DungeonTorch",
+        "looping": true,
+        "warmupTime": 1.0,
+        "emitters": [
+          {
+            "name": "FlameCore",
+            "spawn": { "mode": "rate", "rate": 30 },
+            "init": {
+              "lifetimeMin": 0.3,
+              "lifetimeMax": 0.8,
+              "sizeMin": 10,
+              "sizeMax": 25,
+              "color": { "r": 3.0, "g": 1.5, "b": 0.2, "a": 1.0 }
+            },
+            "shapeLocation": {
+              "shape": "cylinder",
+              "cylinderRadius": 5,
+              "cylinderHeight": 3
+            },
+            "update": {
+              "accelerationForce": { "x": 0, "y": 0, "z": 80 },
+              "sizeScaleEnd": 0.3,
+              "opacityEnd": 0,
+              "useColorOverLife": true,
+              "colorEnd": { "r": 1.0, "g": 0.2, "b": 0.0, "a": 0.0 }
+            },
+            "render": {
+              "emitterTemplate": "core",
+              "blendMode": "additive",
+              "sortOrder": 5
+            }
+          },
+          {
+            "name": "TorchSmoke",
+            "spawn": { "mode": "rate", "rate": 8 },
+            "init": {
+              "lifetimeMin": 1.0,
+              "lifetimeMax": 2.5,
+              "sizeMin": 8,
+              "sizeMax": 20,
+              "color": { "r": 0.1, "g": 0.08, "b": 0.06, "a": 0.3 }
+            },
+            "update": {
+              "accelerationForce": { "x": 0, "y": 0, "z": 40 },
+              "sizeScaleEnd": 3.0,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "smoke",
+              "sortOrder": 1
+            }
+          },
+          {
+            "name": "Sparks",
+            "spawn": { "mode": "rate", "rate": 5 },
+            "init": {
+              "lifetimeMin": 0.5,
+              "lifetimeMax": 1.5,
+              "sizeMin": 1,
+              "sizeMax": 3,
+              "velocityMin": { "x": -20, "y": -20, "z": 50 },
+              "velocityMax": { "x": 20, "y": 20, "z": 120 },
+              "color": { "r": 5.0, "g": 2.5, "b": 0.3, "a": 1.0 }
+            },
+            "update": {
+              "drag": 1.0,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "blendMode": "additive",
+              "sortOrder": 8
+            }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "poison_cloud",
+      "_description": "독 안개 함정 — 바닥에서 피어오르는 녹색 독 구름",
+      "_tag": "VFX.PoisonCloud",
+      "config": {
+        "systemName": "PoisonCloud",
+        "looping": true,
+        "warmupTime": 1.5,
+        "emitters": [
+          {
+            "name": "PoisonFog",
+            "spawn": { "mode": "rate", "rate": 15 },
+            "init": {
+              "lifetimeMin": 2.0,
+              "lifetimeMax": 4.0,
+              "sizeMin": 80,
+              "sizeMax": 150,
+              "color": { "r": 0.1, "g": 0.8, "b": 0.05, "a": 0.4 }
+            },
+            "shapeLocation": {
+              "shape": "cylinder",
+              "cylinderRadius": 200,
+              "cylinderHeight": 10
+            },
+            "update": {
+              "accelerationForce": { "x": 0, "y": 0, "z": 30 },
+              "sizeScaleEnd": 2.0,
+              "opacityEnd": 0,
+              "useColorOverLife": true,
+              "colorEnd": { "r": 0.05, "g": 0.3, "b": 0.02, "a": 0.0 }
+            },
+            "render": {
+              "emitterTemplate": "smoke",
+              "sortOrder": 2
+            }
+          },
+          {
+            "name": "PoisonBubbles",
+            "spawn": { "mode": "rate", "rate": 8 },
+            "init": {
+              "lifetimeMin": 0.5,
+              "lifetimeMax": 1.5,
+              "sizeMin": 3,
+              "sizeMax": 10,
+              "velocityMin": { "x": -10, "y": -10, "z": 20 },
+              "velocityMax": { "x": 10, "y": 10, "z": 60 },
+              "color": { "r": 0.2, "g": 2.0, "b": 0.1, "a": 0.8 }
+            },
+            "shapeLocation": {
+              "shape": "cylinder",
+              "cylinderRadius": 150,
+              "cylinderHeight": 5
+            },
+            "update": {
+              "drag": 0.8,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "blendMode": "additive",
+              "sortOrder": 5
+            }
+          },
+          {
+            "name": "PoisonGlow",
+            "spawn": { "mode": "rate", "rate": 5 },
+            "init": {
+              "lifetimeMin": 1.0,
+              "lifetimeMax": 2.0,
+              "sizeMin": 120,
+              "sizeMax": 200,
+              "color": { "r": 0.05, "g": 0.5, "b": 0.02, "a": 0.15 }
+            },
+            "update": {
+              "sizeScaleEnd": 1.3,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "core",
+              "blendMode": "additive",
+              "sortOrder": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "goblin_rage_aura",
+      "_description": "고블린 킹 분노 오라 — 적색 에너지 파동 + 불꽃 파편",
+      "_tag": "VFX.GoblinRageAura",
+      "config": {
+        "systemName": "GoblinRageAura",
+        "looping": true,
+        "warmupTime": 0.5,
+        "emitters": [
+          {
+            "name": "RageWave",
+            "spawn": { "mode": "rate", "rate": 3 },
+            "init": {
+              "lifetimeMin": 0.8,
+              "lifetimeMax": 1.5,
+              "sizeMin": 50,
+              "sizeMax": 80,
+              "color": { "r": 3.0, "g": 0.1, "b": 0.05, "a": 0.6 }
+            },
+            "update": {
+              "sizeScaleEnd": 3.0,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "core",
+              "blendMode": "additive",
+              "sortOrder": 3
+            }
+          },
+          {
+            "name": "RageSparks",
+            "spawn": { "mode": "rate", "rate": 25 },
+            "init": {
+              "lifetimeMin": 0.3,
+              "lifetimeMax": 0.8,
+              "sizeMin": 2,
+              "sizeMax": 5,
+              "velocityMin": { "x": -100, "y": -100, "z": 50 },
+              "velocityMax": { "x": 100, "y": 100, "z": 200 },
+              "color": { "r": 5.0, "g": 0.5, "b": 0.1, "a": 1.0 }
+            },
+            "update": {
+              "drag": 2.0,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "blendMode": "additive",
+              "sortOrder": 7
+            }
+          },
+          {
+            "name": "DarkMist",
+            "spawn": { "mode": "rate", "rate": 10 },
+            "init": {
+              "lifetimeMin": 1.0,
+              "lifetimeMax": 2.0,
+              "sizeMin": 40,
+              "sizeMax": 80,
+              "color": { "r": 0.3, "g": 0.02, "b": 0.02, "a": 0.4 }
+            },
+            "shapeLocation": {
+              "shape": "cylinder",
+              "cylinderRadius": 40,
+              "cylinderHeight": 60
+            },
+            "update": {
+              "accelerationForce": { "x": 0, "y": 0, "z": 50 },
+              "sizeScaleEnd": 1.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "smoke",
+              "sortOrder": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "treasure_sparkle",
+      "_description": "보물상자 반짝임 — 금빛 파티클 + 빛줄기",
+      "_tag": "VFX.TreasureSparkle",
+      "config": {
+        "systemName": "TreasureSparkle",
+        "looping": true,
+        "warmupTime": 0.5,
+        "emitters": [
+          {
+            "name": "GoldSparkle",
+            "spawn": { "mode": "rate", "rate": 15 },
+            "init": {
+              "lifetimeMin": 0.5,
+              "lifetimeMax": 1.5,
+              "sizeMin": 2,
+              "sizeMax": 6,
+              "velocityMin": { "x": -15, "y": -15, "z": 10 },
+              "velocityMax": { "x": 15, "y": 15, "z": 40 },
+              "color": { "r": 4.0, "g": 3.0, "b": 0.5, "a": 1.0 }
+            },
+            "shapeLocation": {
+              "shape": "box",
+              "boxExtent": { "x": 30, "y": 20, "z": 15 }
+            },
+            "update": {
+              "drag": 1.0,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "blendMode": "additive",
+              "sortOrder": 5
+            }
+          },
+          {
+            "name": "GoldGlow",
+            "spawn": { "mode": "rate", "rate": 3 },
+            "init": {
+              "lifetimeMin": 1.0,
+              "lifetimeMax": 2.0,
+              "sizeMin": 30,
+              "sizeMax": 50,
+              "color": { "r": 2.0, "g": 1.5, "b": 0.2, "a": 0.2 }
+            },
+            "update": {
+              "sizeScaleEnd": 1.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "core",
+              "blendMode": "additive",
+              "sortOrder": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "_id": "dungeon_portal",
+      "_description": "던전 입구 포탈 — 어두운 보라색 소용돌이",
+      "_tag": "VFX.DungeonPortal",
+      "config": {
+        "systemName": "DungeonPortal",
+        "looping": true,
+        "warmupTime": 1.0,
+        "emitters": [
+          {
+            "name": "PortalRing",
+            "spawn": { "mode": "rate", "rate": 40 },
+            "init": {
+              "lifetimeMin": 1.0,
+              "lifetimeMax": 2.0,
+              "sizeMin": 5,
+              "sizeMax": 15,
+              "color": { "r": 0.5, "g": 0.05, "b": 2.0, "a": 0.8 }
+            },
+            "shapeLocation": {
+              "shape": "cylinder",
+              "cylinderRadius": 100,
+              "cylinderHeight": 5
+            },
+            "update": {
+              "vortexStrength": 500,
+              "vortexAxis": { "x": 0, "y": 1, "z": 0 },
+              "attractionStrength": 150,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "spark",
+              "blendMode": "additive",
+              "sortOrder": 5
+            }
+          },
+          {
+            "name": "PortalCore",
+            "spawn": { "mode": "rate", "rate": 8 },
+            "init": {
+              "lifetimeMin": 0.5,
+              "lifetimeMax": 1.0,
+              "sizeMin": 80,
+              "sizeMax": 120,
+              "color": { "r": 0.3, "g": 0.02, "b": 1.5, "a": 0.3 }
+            },
+            "update": {
+              "sizeScaleEnd": 0.5,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "core",
+              "blendMode": "additive",
+              "sortOrder": 2
+            }
+          },
+          {
+            "name": "PortalDust",
+            "spawn": { "mode": "rate", "rate": 12 },
+            "init": {
+              "lifetimeMin": 1.5,
+              "lifetimeMax": 3.0,
+              "sizeMin": 20,
+              "sizeMax": 50,
+              "color": { "r": 0.1, "g": 0.02, "b": 0.15, "a": 0.3 }
+            },
+            "update": {
+              "vortexStrength": 200,
+              "vortexAxis": { "x": 0, "y": 1, "z": 0 },
+              "sizeScaleEnd": 2.0,
+              "opacityEnd": 0
+            },
+            "render": {
+              "emitterTemplate": "smoke",
+              "sortOrder": 1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

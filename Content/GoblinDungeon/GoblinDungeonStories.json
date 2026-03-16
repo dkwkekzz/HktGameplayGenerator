@@ -1,0 +1,462 @@
+{
+  "_meta": {
+    "description": "Goblin Dungeon — Story/Flow JSON Collection",
+    "content": "고블린 던전에 필요한 모든 게임 로직 Story JSON",
+    "pipeline": "McpValidateStory → McpAnalyzeDependencies → [Generate Assets] → McpBuildStory",
+    "stories": [
+      "Flow.Dungeon.Goblin.WaveSpawner    — 3웨이브 고블린 스포너",
+      "Flow.Dungeon.Goblin.BossFight      — 고블린 킹 보스전",
+      "Story.Dungeon.Goblin.PoisonTrap    — 독 함정",
+      "Story.Dungeon.Goblin.TreasureChest — 보물상자 개방",
+      "Ability.Goblin.Attack.Basic        — 고블린 기본 공격",
+      "Ability.Goblin.Attack.Arrow        — 고블린 궁수 화살",
+      "Ability.GoblinKing.Roar            — 고블린 킹 분노 포효"
+    ]
+  },
+  "stories": [
+    {
+      "_id": "goblin_wave_spawner",
+      "_description": "3웨이브 고블린 던전 스포너: Wave1 졸병x4 → Wave2 졸병x3+궁수x2 → Wave3 보스",
+      "story": {
+        "storyTag": "Flow.Dungeon.Goblin.WaveSpawner",
+        "cancelOnDuplicate": true,
+        "tags": {
+          "Grunt": "Entity.NPC.Goblin.Grunt",
+          "Archer": "Entity.NPC.Goblin.Archer",
+          "Boss": "Entity.NPC.Goblin.King",
+          "NPC_Tag": "Entity.NPC",
+          "Hostile": "NPC.Hostile",
+          "VFX_Spawn": "VFX.DungeonPortal",
+          "Sound_Wave": "Sound.DungeonWaveHorn",
+          "Sound_BossIntro": "Sound.GoblinKingRoar"
+        },
+        "steps": [
+          { "op": "Log", "message": "=== Goblin Dungeon: Wave 1 ===" },
+          { "op": "PlaySound", "tag": "Sound_Wave" },
+          { "op": "WaitSeconds", "seconds": 1.5 },
+
+          { "op": "LoadConst", "dst": "R0", "value": 0 },
+          { "op": "LoadConst", "dst": "R1", "value": 4 },
+          { "op": "LoadConst", "dst": "R2", "value": 0 },
+
+          { "op": "Label", "name": "w1_loop" },
+          { "op": "CmpGe", "dst": "Flag", "src1": "R2", "src2": "R1" },
+          { "op": "JumpIf", "cond": "Flag", "label": "w1_wait" },
+
+          { "op": "SpawnEntity", "classTag": "Grunt" },
+          { "op": "LoadConst", "dst": "R3", "value": 1 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "IsNPC", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 80 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Health", "src": "R3" },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "MaxHealth", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 12 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "AttackPower", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 5 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Defense", "src": "R3" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "NPC_Tag" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "Hostile" },
+          { "op": "GetPosition", "dst": "R3", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R3" },
+          { "op": "PlayVFXAttached", "entity": "Spawned", "tag": "VFX_Spawn" },
+
+          { "op": "AddImm", "dst": "R2", "src": "R2", "imm": 1 },
+          { "op": "WaitSeconds", "seconds": 0.8 },
+          { "op": "Jump", "label": "w1_loop" },
+
+          { "op": "Label", "name": "w1_wait" },
+          { "op": "CountByTag", "dst": "R3", "tag": "Hostile" },
+          { "op": "CmpEq", "dst": "Flag", "src1": "R3", "src2": "R0" },
+          { "op": "JumpIf", "cond": "Flag", "label": "w2_start" },
+          { "op": "WaitSeconds", "seconds": 2.0 },
+          { "op": "Jump", "label": "w1_wait" },
+
+          { "op": "Label", "name": "w2_start" },
+          { "op": "Log", "message": "=== Goblin Dungeon: Wave 2 ===" },
+          { "op": "PlaySound", "tag": "Sound_Wave" },
+          { "op": "WaitSeconds", "seconds": 2.0 },
+
+          { "op": "LoadConst", "dst": "R1", "value": 3 },
+          { "op": "LoadConst", "dst": "R2", "value": 0 },
+          { "op": "Label", "name": "w2_grunt_loop" },
+          { "op": "CmpGe", "dst": "Flag", "src1": "R2", "src2": "R1" },
+          { "op": "JumpIf", "cond": "Flag", "label": "w2_archers" },
+          { "op": "SpawnEntity", "classTag": "Grunt" },
+          { "op": "LoadConst", "dst": "R3", "value": 1 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "IsNPC", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 100 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Health", "src": "R3" },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "MaxHealth", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 15 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "AttackPower", "src": "R3" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "NPC_Tag" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "Hostile" },
+          { "op": "GetPosition", "dst": "R3", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R3" },
+          { "op": "AddImm", "dst": "R2", "src": "R2", "imm": 1 },
+          { "op": "WaitSeconds", "seconds": 0.6 },
+          { "op": "Jump", "label": "w2_grunt_loop" },
+
+          { "op": "Label", "name": "w2_archers" },
+          { "op": "LoadConst", "dst": "R1", "value": 2 },
+          { "op": "LoadConst", "dst": "R2", "value": 0 },
+          { "op": "Label", "name": "w2_archer_loop" },
+          { "op": "CmpGe", "dst": "Flag", "src1": "R2", "src2": "R1" },
+          { "op": "JumpIf", "cond": "Flag", "label": "w2_wait" },
+          { "op": "SpawnEntity", "classTag": "Archer" },
+          { "op": "LoadConst", "dst": "R3", "value": 1 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "IsNPC", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 60 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Health", "src": "R3" },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "MaxHealth", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 20 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "AttackPower", "src": "R3" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "NPC_Tag" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "Hostile" },
+          { "op": "GetPosition", "dst": "R3", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R3" },
+          { "op": "AddImm", "dst": "R2", "src": "R2", "imm": 1 },
+          { "op": "WaitSeconds", "seconds": 0.6 },
+          { "op": "Jump", "label": "w2_archer_loop" },
+
+          { "op": "Label", "name": "w2_wait" },
+          { "op": "CountByTag", "dst": "R3", "tag": "Hostile" },
+          { "op": "CmpEq", "dst": "Flag", "src1": "R3", "src2": "R0" },
+          { "op": "JumpIf", "cond": "Flag", "label": "w3_start" },
+          { "op": "WaitSeconds", "seconds": 2.0 },
+          { "op": "Jump", "label": "w2_wait" },
+
+          { "op": "Label", "name": "w3_start" },
+          { "op": "Log", "message": "=== Goblin Dungeon: BOSS WAVE ===" },
+          { "op": "PlaySound", "tag": "Sound_BossIntro" },
+          { "op": "WaitSeconds", "seconds": 3.0 },
+
+          { "op": "SpawnEntity", "classTag": "Boss" },
+          { "op": "LoadConst", "dst": "R3", "value": 1 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "IsNPC", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 500 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Health", "src": "R3" },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "MaxHealth", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 35 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "AttackPower", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 15 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Defense", "src": "R3" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "NPC_Tag" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "Hostile" },
+          { "op": "GetPosition", "dst": "R3", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R3" },
+          { "op": "PlayVFXAttached", "entity": "Spawned", "tag": "VFX_Spawn" },
+
+          { "op": "Label", "name": "w3_wait" },
+          { "op": "CountByTag", "dst": "R3", "tag": "Hostile" },
+          { "op": "CmpEq", "dst": "Flag", "src1": "R3", "src2": "R0" },
+          { "op": "JumpIf", "cond": "Flag", "label": "dungeon_clear" },
+          { "op": "WaitSeconds", "seconds": 2.0 },
+          { "op": "Jump", "label": "w3_wait" },
+
+          { "op": "Label", "name": "dungeon_clear" },
+          { "op": "Log", "message": "=== Goblin Dungeon CLEARED! ===" },
+          { "op": "Halt" }
+        ]
+      }
+    },
+    {
+      "_id": "goblin_boss_fight",
+      "_description": "고블린 킹 보스전 AI — HP 50% 이하 시 분노 모드 (공격력 2배 + 오라 VFX + 호위 소환)",
+      "story": {
+        "storyTag": "Flow.Dungeon.Goblin.BossFight",
+        "cancelOnDuplicate": true,
+        "tags": {
+          "AnimIdle": "Anim.FullBody.Locomotion.Idle",
+          "AnimAttack": "Anim.UpperBody.Combat.Attack",
+          "AnimRoar": "Anim.Montage.GoblinRoar",
+          "VFX_Rage": "VFX.GoblinRageAura",
+          "VFX_Hit": "VFX.HitSpark",
+          "Sound_Roar": "Sound.GoblinKingRoar",
+          "Sound_Hit": "Sound.Hit",
+          "Effect_Rage": "Effect.Rage",
+          "Hostile": "NPC.Hostile",
+          "NPC_Tag": "Entity.NPC",
+          "Grunt": "Entity.NPC.Goblin.Grunt",
+          "Enraged": "NPC.Enraged"
+        },
+        "steps": [
+          { "op": "AddTag", "entity": "Self", "tag": "AnimIdle" },
+
+          { "op": "Label", "name": "ai_loop" },
+          { "op": "WaitSeconds", "seconds": 1.5 },
+
+          { "op": "LoadEntityProperty", "dst": "R0", "entity": "Self", "property": "Health" },
+          { "op": "LoadEntityProperty", "dst": "R1", "entity": "Self", "property": "MaxHealth" },
+          { "op": "LoadConst", "dst": "R2", "value": 2 },
+          { "op": "Div", "dst": "R3", "src1": "R1", "src2": "R2" },
+          { "op": "CmpLe", "dst": "Flag", "src1": "R0", "src2": "R3" },
+          { "op": "JumpIfNot", "cond": "Flag", "label": "normal_attack" },
+
+          { "op": "HasTag", "dst": "R4", "entity": "Self", "tag": "Enraged" },
+          { "op": "JumpIf", "cond": "R4", "label": "enraged_attack" },
+
+          { "op": "Log", "message": "Goblin King enters RAGE mode!" },
+          { "op": "AddTag", "entity": "Self", "tag": "Enraged" },
+          { "op": "AddTag", "entity": "Self", "tag": "AnimRoar" },
+          { "op": "PlayVFXAttached", "entity": "Self", "tag": "VFX_Rage" },
+          { "op": "PlaySound", "tag": "Sound_Roar" },
+          { "op": "ApplyEffect", "target": "Self", "effectTag": "Effect_Rage" },
+
+          { "op": "LoadEntityProperty", "dst": "R5", "entity": "Self", "property": "AttackPower" },
+          { "op": "Mul", "dst": "R5", "src1": "R5", "src2": "R2" },
+          { "op": "SaveEntityProperty", "entity": "Self", "property": "AttackPower", "src": "R5" },
+
+          { "op": "WaitSeconds", "seconds": 2.0 },
+
+          { "op": "LoadConst", "dst": "R6", "value": 2 },
+          { "op": "LoadConst", "dst": "R7", "value": 0 },
+          { "op": "Label", "name": "summon_loop" },
+          { "op": "CmpGe", "dst": "Flag", "src1": "R7", "src2": "R6" },
+          { "op": "JumpIf", "cond": "Flag", "label": "summon_done" },
+          { "op": "SpawnEntity", "classTag": "Grunt" },
+          { "op": "LoadConst", "dst": "R3", "value": 1 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "IsNPC", "src": "R3" },
+          { "op": "LoadConst", "dst": "R3", "value": 50 },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Health", "src": "R3" },
+          { "op": "SaveEntityProperty", "entity": "Spawned", "property": "MaxHealth", "src": "R3" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "NPC_Tag" },
+          { "op": "AddTag", "entity": "Spawned", "tag": "Hostile" },
+          { "op": "GetPosition", "dst": "R3", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R3" },
+          { "op": "AddImm", "dst": "R7", "src": "R7", "imm": 1 },
+          { "op": "Jump", "label": "summon_loop" },
+
+          { "op": "Label", "name": "summon_done" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimRoar" },
+          { "op": "Jump", "label": "ai_loop" },
+
+          { "op": "Label", "name": "enraged_attack" },
+          { "op": "AddTag", "entity": "Self", "tag": "AnimAttack" },
+          { "op": "WaitAnimEnd", "entity": "Self" },
+          { "op": "GetDistance", "dst": "R0", "entity1": "Self", "entity2": "Target" },
+          { "op": "LoadConst", "dst": "R1", "value": 250 },
+          { "op": "CmpLe", "dst": "Flag", "src1": "R0", "src2": "R1" },
+          { "op": "JumpIfNot", "cond": "Flag", "label": "chase_target" },
+          { "op": "LoadEntityProperty", "dst": "R2", "entity": "Self", "property": "AttackPower" },
+          { "op": "ApplyDamage", "target": "Target", "amount": "R2" },
+          { "op": "PlayVFXAttached", "entity": "Target", "tag": "VFX_Hit" },
+          { "op": "PlaySound", "tag": "Sound_Hit" },
+          { "op": "ForEachInRadius", "center": "Self", "radius": 200 },
+          { "op": "ApplyDamageConst", "target": "Iter", "amount": 15 },
+          { "op": "EndForEach" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimAttack" },
+          { "op": "Jump", "label": "ai_loop" },
+
+          { "op": "Label", "name": "normal_attack" },
+          { "op": "AddTag", "entity": "Self", "tag": "AnimAttack" },
+          { "op": "WaitAnimEnd", "entity": "Self" },
+          { "op": "GetDistance", "dst": "R0", "entity1": "Self", "entity2": "Target" },
+          { "op": "LoadConst", "dst": "R1", "value": 200 },
+          { "op": "CmpLe", "dst": "Flag", "src1": "R0", "src2": "R1" },
+          { "op": "JumpIfNot", "cond": "Flag", "label": "chase_target" },
+          { "op": "LoadEntityProperty", "dst": "R2", "entity": "Self", "property": "AttackPower" },
+          { "op": "ApplyDamage", "target": "Target", "amount": "R2" },
+          { "op": "PlayVFXAttached", "entity": "Target", "tag": "VFX_Hit" },
+          { "op": "PlaySound", "tag": "Sound_Hit" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimAttack" },
+          { "op": "Jump", "label": "ai_loop" },
+
+          { "op": "Label", "name": "chase_target" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimAttack" },
+          { "op": "GetPosition", "dst": "R3", "entity": "Target" },
+          { "op": "MoveToward", "entity": "Self", "targetPos": "R3", "force": 300 },
+          { "op": "WaitSeconds", "seconds": 0.5 },
+          { "op": "Jump", "label": "ai_loop" },
+
+          { "op": "Halt" }
+        ]
+      }
+    },
+    {
+      "_id": "poison_trap",
+      "_description": "독 함정 — 플레이어 접근 시 독안개 발동, 범위 내 지속 데미지",
+      "story": {
+        "storyTag": "Story.Dungeon.Goblin.PoisonTrap",
+        "tags": {
+          "VFX_Poison": "VFX.PoisonCloud",
+          "Sound_Trap": "Sound.TrapActivate",
+          "Effect_Poison": "Effect.Poison",
+          "Hostile": "NPC.Hostile"
+        },
+        "steps": [
+          { "op": "Log", "message": "Poison trap activated!" },
+          { "op": "GetPosition", "dst": "R0", "entity": "Self" },
+          { "op": "PlayVFX", "pos": "R0", "tag": "VFX_Poison" },
+          { "op": "PlaySoundAtLocation", "pos": "R0", "tag": "Sound_Trap" },
+
+          { "op": "LoadConst", "dst": "R3", "value": 5 },
+          { "op": "LoadConst", "dst": "R4", "value": 0 },
+
+          { "op": "Label", "name": "tick_loop" },
+          { "op": "CmpGe", "dst": "Flag", "src1": "R4", "src2": "R3" },
+          { "op": "JumpIf", "cond": "Flag", "label": "trap_end" },
+
+          { "op": "ForEachInRadius", "center": "Self", "radius": 300 },
+          { "op": "HasTag", "dst": "R5", "entity": "Iter", "tag": "Hostile" },
+          { "op": "JumpIf", "cond": "R5", "label": "skip_damage" },
+          { "op": "ApplyDamageConst", "target": "Iter", "amount": 8 },
+          { "op": "ApplyEffect", "target": "Iter", "effectTag": "Effect_Poison" },
+          { "op": "Label", "name": "skip_damage" },
+          { "op": "EndForEach" },
+
+          { "op": "AddImm", "dst": "R4", "src": "R4", "imm": 1 },
+          { "op": "WaitSeconds", "seconds": 1.5 },
+          { "op": "Jump", "label": "tick_loop" },
+
+          { "op": "Label", "name": "trap_end" },
+          { "op": "Log", "message": "Poison trap expired" },
+          { "op": "Halt" }
+        ]
+      }
+    },
+    {
+      "_id": "treasure_chest",
+      "_description": "보물상자 — 상호작용 시 아이템 드랍 + VFX + 사운드",
+      "story": {
+        "storyTag": "Story.Dungeon.Goblin.TreasureChest",
+        "tags": {
+          "VFX_Sparkle": "VFX.TreasureSparkle",
+          "VFX_Open": "VFX.TreasureOpen",
+          "Sound_Open": "Sound.ChestOpen",
+          "Sound_Loot": "Sound.LootPickup",
+          "Loot_Sword": "Entity.Item.Weapon.Sword.Goblin",
+          "Loot_Potion": "Entity.Item.Consumable.HealthPotion",
+          "AnimOpen": "Anim.FullBody.Action.ChestOpen"
+        },
+        "steps": [
+          { "op": "PlayVFXAttached", "entity": "Self", "tag": "VFX_Sparkle" },
+
+          { "op": "WaitCollision", "entity": "Self" },
+
+          { "op": "Log", "message": "Treasure chest opened!" },
+          { "op": "AddTag", "entity": "Self", "tag": "AnimOpen" },
+          { "op": "GetPosition", "dst": "R0", "entity": "Self" },
+          { "op": "PlayVFX", "pos": "R0", "tag": "VFX_Open" },
+          { "op": "PlaySound", "tag": "Sound_Open" },
+          { "op": "WaitSeconds", "seconds": 0.5 },
+
+          { "op": "LoadConst", "dst": "R3", "value": 2 },
+          { "op": "RandomInt", "dst": "R4", "modulus": "R3" },
+          { "op": "CmpEq", "dst": "Flag", "src1": "R4", "src2": "R0" },
+          { "op": "JumpIfNot", "cond": "Flag", "label": "drop_potion" },
+
+          { "op": "SpawnEntity", "classTag": "Loot_Sword" },
+          { "op": "GetPosition", "dst": "R5", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R5" },
+          { "op": "PlaySound", "tag": "Sound_Loot" },
+          { "op": "Jump", "label": "chest_done" },
+
+          { "op": "Label", "name": "drop_potion" },
+          { "op": "SpawnEntity", "classTag": "Loot_Potion" },
+          { "op": "GetPosition", "dst": "R5", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R5" },
+          { "op": "PlaySound", "tag": "Sound_Loot" },
+
+          { "op": "Label", "name": "chest_done" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimOpen" },
+          { "op": "Halt" }
+        ]
+      }
+    },
+    {
+      "_id": "goblin_basic_attack",
+      "_description": "고블린 졸병 기본 공격 — 근접 타격 + 데미지 + VFX",
+      "story": {
+        "storyTag": "Ability.Goblin.Attack.Basic",
+        "tags": {
+          "AnimAttack": "Anim.UpperBody.Combat.GoblinSlash",
+          "VFX_Hit": "VFX.HitSpark",
+          "Sound_Swing": "Sound.GoblinSwing",
+          "Sound_Hit": "Sound.Hit"
+        },
+        "steps": [
+          { "op": "AddTag", "entity": "Self", "tag": "AnimAttack" },
+          { "op": "WaitAnimEnd", "entity": "Self" },
+          { "op": "PlaySound", "tag": "Sound_Swing" },
+          { "op": "GetDistance", "dst": "R0", "entity1": "Self", "entity2": "Target" },
+          { "op": "LoadConst", "dst": "R1", "value": 180 },
+          { "op": "CmpLe", "dst": "Flag", "src1": "R0", "src2": "R1" },
+          { "op": "JumpIfNot", "cond": "Flag", "label": "miss" },
+          { "op": "LoadEntityProperty", "dst": "R2", "entity": "Self", "property": "AttackPower" },
+          { "op": "ApplyDamage", "target": "Target", "amount": "R2" },
+          { "op": "PlayVFXAttached", "entity": "Target", "tag": "VFX_Hit" },
+          { "op": "PlaySound", "tag": "Sound_Hit" },
+          { "op": "Label", "name": "miss" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimAttack" },
+          { "op": "Halt" }
+        ]
+      }
+    },
+    {
+      "_id": "goblin_arrow_attack",
+      "_description": "고블린 궁수 화살 — 투사체 스폰 + 비행 + 충돌 데미지",
+      "story": {
+        "storyTag": "Ability.Goblin.Attack.Arrow",
+        "tags": {
+          "Arrow": "Entity.Projectile.GoblinArrow",
+          "AnimShoot": "Anim.UpperBody.Combat.BowShoot",
+          "VFX_Hit": "VFX.ArrowHit",
+          "Sound_Shoot": "Sound.BowRelease",
+          "Sound_Hit": "Sound.ArrowImpact"
+        },
+        "steps": [
+          { "op": "AddTag", "entity": "Self", "tag": "AnimShoot" },
+          { "op": "WaitSeconds", "seconds": 0.8 },
+          { "op": "SpawnEntity", "classTag": "Arrow" },
+          { "op": "GetPosition", "dst": "R0", "entity": "Self" },
+          { "op": "SetPosition", "entity": "Spawned", "src": "R0" },
+          { "op": "MoveForward", "entity": "Spawned", "force": 800 },
+          { "op": "PlaySound", "tag": "Sound_Shoot" },
+          { "op": "WaitCollision", "entity": "Spawned" },
+          { "op": "DestroyEntity", "entity": "Spawned" },
+          { "op": "LoadEntityProperty", "dst": "R2", "entity": "Self", "property": "AttackPower" },
+          { "op": "ApplyDamage", "target": "Hit", "amount": "R2" },
+          { "op": "PlayVFXAttached", "entity": "Hit", "tag": "VFX_Hit" },
+          { "op": "PlaySound", "tag": "Sound_Hit" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimShoot" },
+          { "op": "Halt" }
+        ]
+      }
+    },
+    {
+      "_id": "goblin_king_roar",
+      "_description": "고블린 킹 포효 — 범위 내 플레이어 약화 + 아군 버프",
+      "story": {
+        "storyTag": "Ability.GoblinKing.Roar",
+        "tags": {
+          "AnimRoar": "Anim.Montage.GoblinRoar",
+          "VFX_Roar": "VFX.GoblinRageAura",
+          "Sound_Roar": "Sound.GoblinKingRoar",
+          "Effect_Fear": "Effect.Fear",
+          "Effect_Rally": "Effect.Rally",
+          "Hostile": "NPC.Hostile"
+        },
+        "steps": [
+          { "op": "AddTag", "entity": "Self", "tag": "AnimRoar" },
+          { "op": "PlayVFXAttached", "entity": "Self", "tag": "VFX_Roar" },
+          { "op": "PlaySound", "tag": "Sound_Roar" },
+          { "op": "WaitSeconds", "seconds": 1.0 },
+
+          { "op": "ForEachInRadius", "center": "Self", "radius": 500 },
+          { "op": "HasTag", "dst": "R0", "entity": "Iter", "tag": "Hostile" },
+          { "op": "JumpIf", "cond": "R0", "label": "buff_ally" },
+          { "op": "ApplyEffect", "target": "Iter", "effectTag": "Effect_Fear" },
+          { "op": "Jump", "label": "next_entity" },
+          { "op": "Label", "name": "buff_ally" },
+          { "op": "ApplyEffect", "target": "Iter", "effectTag": "Effect_Rally" },
+          { "op": "Label", "name": "next_entity" },
+          { "op": "EndForEach" },
+
+          { "op": "WaitAnimEnd", "entity": "Self" },
+          { "op": "RemoveTag", "entity": "Self", "tag": "AnimRoar" },
+          { "op": "Halt" }
+        ]
+      }
+    }
+  ]
+}

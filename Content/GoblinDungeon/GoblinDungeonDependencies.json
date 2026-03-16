@@ -1,0 +1,170 @@
+{
+  "_meta": {
+    "description": "Goblin Dungeon — 전체 의존성 목록",
+    "usage": "McpAnalyzeDependencies 결과를 미리 정리한 참조 문서. 빌드 전 모든 리소스가 생성되었는지 체크리스트로 활용."
+  },
+  "dependencies": {
+    "Entity": {
+      "_description": "Mesh Generator로 생성할 캐릭터/오브젝트",
+      "tags": [
+        {
+          "tag": "Entity.NPC.Goblin.Grunt",
+          "intent": {
+            "entityTag": "Entity.NPC.Goblin.Grunt",
+            "name": "GoblinGrunt",
+            "skeletonType": "Humanoid",
+            "styleKeywords": ["fantasy", "goblin", "green_skin", "small", "ragged_armor", "club"]
+          }
+        },
+        {
+          "tag": "Entity.NPC.Goblin.Archer",
+          "intent": {
+            "entityTag": "Entity.NPC.Goblin.Archer",
+            "name": "GoblinArcher",
+            "skeletonType": "Humanoid",
+            "styleKeywords": ["fantasy", "goblin", "green_skin", "small", "leather_hood", "short_bow"]
+          }
+        },
+        {
+          "tag": "Entity.NPC.Goblin.King",
+          "intent": {
+            "entityTag": "Entity.NPC.Goblin.King",
+            "name": "GoblinKing",
+            "skeletonType": "Humanoid",
+            "styleKeywords": ["fantasy", "goblin", "green_skin", "large", "crown", "heavy_armor", "great_axe", "boss"]
+          }
+        },
+        {
+          "tag": "Entity.Projectile.GoblinArrow",
+          "intent": {
+            "entityTag": "Entity.Projectile.GoblinArrow",
+            "name": "GoblinArrow",
+            "skeletonType": "None",
+            "styleKeywords": ["crude", "wooden", "goblin_crafted", "arrow"]
+          }
+        }
+      ]
+    },
+    "Item": {
+      "_description": "Item Generator로 생성할 드랍 아이템",
+      "tags": [
+        {
+          "tag": "Entity.Item.Weapon.Sword.Goblin",
+          "intent": {
+            "itemTag": "Entity.Item.Weapon.Sword.Goblin",
+            "category": "Weapon",
+            "subType": "Sword",
+            "element": "None",
+            "rarity": 0.2,
+            "styleKeywords": ["crude", "rusty", "goblin_forged", "jagged"]
+          }
+        },
+        {
+          "tag": "Entity.Item.Consumable.HealthPotion",
+          "intent": {
+            "itemTag": "Entity.Item.Consumable.HealthPotion",
+            "category": "Consumable",
+            "subType": "Potion",
+            "element": "None",
+            "rarity": 0.3,
+            "styleKeywords": ["red_liquid", "glass_bottle", "healing"]
+          }
+        }
+      ]
+    },
+    "Anim": {
+      "_description": "Animation Generator로 생성할 애니메이션",
+      "tags": [
+        {
+          "tag": "Anim.UpperBody.Combat.GoblinSlash",
+          "intent": {
+            "animTag": "Anim.UpperBody.Combat.GoblinSlash",
+            "layer": "UpperBody",
+            "type": "Combat",
+            "name": "GoblinSlash",
+            "skeletonType": "Humanoid",
+            "styleKeywords": ["wild", "fast", "crude_swing"]
+          }
+        },
+        {
+          "tag": "Anim.UpperBody.Combat.BowShoot",
+          "intent": {
+            "animTag": "Anim.UpperBody.Combat.BowShoot",
+            "layer": "UpperBody",
+            "type": "Combat",
+            "name": "BowShoot",
+            "skeletonType": "Humanoid",
+            "styleKeywords": ["draw_bow", "release_arrow", "short_bow"]
+          }
+        },
+        {
+          "tag": "Anim.Montage.GoblinRoar",
+          "intent": {
+            "animTag": "Anim.Montage.GoblinRoar",
+            "layer": "Montage",
+            "type": "Montage",
+            "name": "GoblinRoar",
+            "skeletonType": "Humanoid",
+            "styleKeywords": ["chest_pound", "roar", "intimidating", "boss_intro"]
+          }
+        },
+        {
+          "tag": "Anim.FullBody.Action.ChestOpen",
+          "intent": {
+            "animTag": "Anim.FullBody.Action.ChestOpen",
+            "layer": "FullBody",
+            "type": "Action",
+            "name": "ChestOpen",
+            "skeletonType": "Custom",
+            "styleKeywords": ["lid_open", "treasure_chest"]
+          }
+        }
+      ]
+    },
+    "VFX": {
+      "_description": "VFX Generator로 생성할 이펙트 (GoblinDungeonVFXConfigs.json에 Config 정의됨)",
+      "tags": [
+        "VFX.DungeonTorch",
+        "VFX.PoisonCloud",
+        "VFX.GoblinRageAura",
+        "VFX.TreasureSparkle",
+        "VFX.DungeonPortal",
+        "VFX.HitSpark",
+        "VFX.ArrowHit",
+        "VFX.TreasureOpen"
+      ]
+    },
+    "Sound": {
+      "_description": "수동 등록 필요한 사운드 에셋",
+      "tags": [
+        "Sound.DungeonWaveHorn",
+        "Sound.GoblinKingRoar",
+        "Sound.Hit",
+        "Sound.GoblinSwing",
+        "Sound.BowRelease",
+        "Sound.ArrowImpact",
+        "Sound.TrapActivate",
+        "Sound.ChestOpen",
+        "Sound.LootPickup"
+      ]
+    },
+    "Effect": {
+      "_description": "수동 등록 필요한 게임플레이 이펙트",
+      "tags": [
+        "Effect.Poison",
+        "Effect.Rage",
+        "Effect.Fear",
+        "Effect.Rally"
+      ]
+    }
+  },
+  "buildOrder": [
+    "1. VFX — McpBuildNiagaraSystem() × 5 (GoblinDungeonVFXConfigs.json 참조)",
+    "2. Entity Mesh — McpRequestCharacterMesh() × 4 (Grunt, Archer, King, Arrow)",
+    "3. Item Mesh — McpRequestItem() × 2 (GoblinSword, HealthPotion)",
+    "4. Animation — McpRequestAnimation() × 4 (GoblinSlash, BowShoot, GoblinRoar, ChestOpen)",
+    "5. Sound — 수동 등록 × 9",
+    "6. Effect — 수동 등록 × 4",
+    "7. Story Build — McpBuildStory() × 7 (GoblinDungeonStories.json 참조)"
+  ]
+}
