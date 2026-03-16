@@ -1,5 +1,5 @@
 """
-Item Generator Tools - MCP tools for item/equipment generation and import
+Item Generator Tools - MCP tools for item (Entity.Item.*) generation and import
 
 Calls UHktItemGeneratorFunctionLibrary via Remote Control API.
 
@@ -8,7 +8,7 @@ Workflow:
 2. Agent generates 3D mesh + icon image externally
 3. import_item_mesh   -> Import mesh into UE5
 4. (icon via texture_tools.import_texture)
-5. get_socket_mappings -> Equipment attachment socket info
+5. get_socket_mappings -> Item attachment socket info
 """
 
 import json
@@ -58,7 +58,7 @@ async def list_generated_items(bridge: EditorBridge, directory: str = "") -> str
 
 
 async def get_socket_mappings(bridge: EditorBridge) -> str:
-    """Get equipment attachment socket mappings"""
+    """Get item attachment socket mappings"""
     logger.info("Getting socket mappings")
     data = await bridge.call_method("McpGetSocketMappings", object_path=OBJECT_PATH)
     return json.dumps({"success": data is not None, "data": data}, indent=2)

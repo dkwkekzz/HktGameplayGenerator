@@ -1,5 +1,5 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
-// Item Generator Handler — "Equipment.*" Tag miss 처리
+// Item Generator Handler — "Entity.Item.*" Tag miss 처리
 
 #pragma once
 
@@ -11,7 +11,7 @@
 /**
  * UHktItemGeneratorHandler
  *
- * "Equipment.*" 태그에 대한 IHktGeneratorHandler 구현.
+ * "Entity.Item.*" 태그에 대한 IHktGeneratorHandler 구현.
  * FHktItemIntent로 파싱 → MCP Agent에게 메시+아이콘 생성 위임.
  */
 UCLASS()

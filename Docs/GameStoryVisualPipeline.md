@@ -40,7 +40,7 @@ Story에서 Tag 정의 → [자동] Convention/Generator가 해결 → Presentat
               │ "VFX.*"    → VFX     │
               │ "Entity.*" → Char    │
               │ "Anim.*"   → Anim    │
-              │ "Equipment.*"→ Item  │
+              │ "Entity.Item.*"→Item │
               └──────────┬──────────┘
                          │
          ┌───────┬───────┼───────┬────────┐
@@ -86,7 +86,7 @@ HktGameplayGenerator/
 │   │   ├── FHktVFXAutoResolver        (VFX Tag → FHktVFXIntent 파싱)
 │   │   ├── FHktAnimIntent             (Anim Tag → Layer/Type/Name 파싱)
 │   │   ├── FHktCharacterIntent        (Entity Tag → Name/Skeleton 파싱)
-│   │   └── FHktItemIntent             (Equipment Tag → Category/SubType 파싱)
+│   │   └── FHktItemIntent             (Entity.Item Tag → Category/SubType 파싱)
 │   │
 │   ├── HktVFXGenerator/        ← VFX 생성 (완료)
 │   │   ├── FHktVFXNiagaraBuilder      (Config → Niagara System)
@@ -107,7 +107,7 @@ HktGameplayGenerator/
 │   │
 │   ├── HktItemGenerator/       ← 아이템 생성 (완료)
 │   │   ├── UHktItemGeneratorSubsystem (MCP 아이템 생성 API)
-│   │   ├── UHktItemGeneratorHandler   (IHktGeneratorHandler — "Equipment.*")
+│   │   ├── UHktItemGeneratorHandler   (IHktGeneratorHandler — "Entity.Item.*")
 │   │   ├── UHktItemGeneratorSettings  (소켓 매핑, 머티리얼 맵)
 │   │   └── UHktItemGeneratorFunctionLibrary (MCP API)
 │   │
@@ -163,7 +163,7 @@ Project Settings > HktGameplay > HktAsset
       { TagPrefix: "Entity.Character.", PathPattern: "{Root}/Characters/{Leaf}/BP_{Leaf}" },
       { TagPrefix: "Entity.",           PathPattern: "{Root}/Entities/{Leaf}/BP_{Leaf}" },
       { TagPrefix: "VFX.",              PathPattern: "{Root}/VFX/{TagPath}" },
-      { TagPrefix: "Equipment.",        PathPattern: "{Root}/Items/{Category}/SM_{Leaf}" },
+      { TagPrefix: "Entity.Item.",       PathPattern: "{Root}/Items/{Category}/SM_{Leaf}" },
       { TagPrefix: "Anim.",             PathPattern: "{Root}/Animations/{TagPath}" },
     ]
 ```
@@ -184,7 +184,7 @@ Project Settings > HktGameplay > HktAsset
 | `Entity.Character.{Name}` | `{Root}/Characters/{Leaf}/BP_{Leaf}` | `/Game/Generated/Characters/Goblin/BP_Goblin` |
 | `Entity.{Type}.{Name}` | `{Root}/Entities/{Leaf}/BP_{Leaf}` | `/Game/Generated/Entities/Tower/BP_Tower` |
 | `VFX.{...}` | `{Root}/VFX/{TagPath}` | `/Game/Generated/VFX/VFX_Explosion_Fire` |
-| `Equipment.{Cat}.{Sub}` | `{Root}/Items/{Category}/SM_{Leaf}` | `/Game/Generated/Items/Weapon/SM_Sword` |
+| `Entity.Item.{Cat}.{Sub}` | `{Root}/Items/{Category}/SM_{Leaf}` | `/Game/Generated/Items/Weapon/SM_Sword` |
 | `Anim.{...}` | `{Root}/Animations/{TagPath}` | `/Game/Generated/Animations/Anim_FullBody_Run` |
 
 ### 해결 순서 (UHktAssetSubsystem::ResolvePath)
@@ -322,7 +322,9 @@ Anim.Montage.Intro              → Layer=Montage,   One-shot Montage
 
 **흐름:**
 ```
-Story: .SpawnEquipment(Self, 0, "Equipment.Weapon.Sword.Fire")
+SpawnEntity("Entity.Item.Weapon.Sword.Fire")
++ SaveEntityProperty(Spawned, "Owner", Self)
++ SaveEntityProperty(Spawned, "Slot", 0)
     ↓
 FHktItemIntent::FromTag()
     → Category=Weapon, SubType=Sword, Element=Fire
@@ -403,7 +405,7 @@ UHktGeneratorRouter (EditorSubsystem)
         ├── VFXGeneratorHandler     — "VFX.*" 처리
         ├── MeshGeneratorHandler    — "Entity.*" 처리
         ├── AnimGeneratorHandler    — "Anim.*" 처리
-        ├── ItemGeneratorHandler    — "Equipment.*" 처리
+        ├── ItemGeneratorHandler    — "Entity.Item.*" 처리
         │
         (StoryGenerator는 Handler 아님 — Tag 생산자 역할)
         └── StoryGeneratorSubsystem — JSON→Story 컴파일 + 의존 분석
@@ -462,7 +464,7 @@ class IHktGeneratorHandler
 | **HktItemGenerator** | `Build.cs` | 모듈 빌드 |
 | | `Public/IHktItemGeneratorModule.h` | 모듈 인터페이스 |
 | | `Public/HktItemGeneratorSubsystem.h` | EditorSubsystem + FHktItemGenerationRequest |
-| | `Public/HktItemGeneratorHandler.h` | IHktGeneratorHandler — "Equipment.*" |
+| | `Public/HktItemGeneratorHandler.h` | IHktGeneratorHandler — "Entity.Item.*" |
 | | `Public/HktItemGeneratorSettings.h` | DeveloperSettings (소켓 매핑) |
 | | `Public/HktItemGeneratorFunctionLibrary.h` | MCP API |
 | | `Private/*.cpp` | 구현 (5개) |
@@ -569,7 +571,7 @@ AnimBP 수정 불필요:
    → 누락 Tag 분류:
      VFX: VFX.Launch.Fire, VFX.Explosion.Fire
      Entity: Entity.Projectile.Fireball
-     Equipment: (없음)
+     Item: (없음)
      Anim: Anim.UpperBody.Combat.Cast
 
 3. AI Agent가 각 Generator MCP API 호출:
@@ -638,7 +640,7 @@ AI Agent (Claude via MCP)
             VFX.*       → HktVFXGenerator
             Entity.*    → HktMeshGenerator
             Anim.*      → HktAnimGenerator
-            Equipment.* → HktItemGenerator
+            Entity.Item.* → HktItemGenerator
             기타        → 수동 생성 필요
 ```
 
@@ -668,7 +670,7 @@ AI Agent (Claude via MCP)
 | position | CopyPosition, MoveForward, SetPosition |
 | combat | ApplyDamage, ApplyHeal, ApplyBuff |
 | vfx | PlayVFX, StopVFX |
-| equipment | SpawnEquipment |
+| entity | SpawnEntity, DestroyEntity (Entity.Item.* 포함) |
 | tags | AddTag, RemoveTag, HasTag |
 | spatial | ForEachInRadius, CountByTag |
 | data | StoreInt, LoadInt, CopyProperty |

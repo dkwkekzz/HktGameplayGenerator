@@ -9,7 +9,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogHktItemGeneratorHandler, Log, All);
 
 bool UHktItemGeneratorHandler::CanHandle(const FGameplayTag& Tag) const
 {
-	return Tag.IsValid() && Tag.ToString().StartsWith(TEXT("Equipment."));
+	return Tag.IsValid() && Tag.ToString().StartsWith(TEXT("Entity.Item."));
 }
 
 FSoftObjectPath UHktItemGeneratorHandler::HandleTagMiss(const FGameplayTag& Tag)
@@ -17,7 +17,7 @@ FSoftObjectPath UHktItemGeneratorHandler::HandleTagMiss(const FGameplayTag& Tag)
 	FHktItemIntent Intent;
 	if (!FHktItemIntent::FromTag(Tag, Intent))
 	{
-		UE_LOG(LogHktItemGeneratorHandler, Warning, TEXT("Failed to parse Equipment tag: %s"), *Tag.ToString());
+		UE_LOG(LogHktItemGeneratorHandler, Warning, TEXT("Failed to parse Entity.Item tag: %s"), *Tag.ToString());
 		return FSoftObjectPath();
 	}
 

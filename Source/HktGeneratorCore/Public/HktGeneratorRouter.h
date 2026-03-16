@@ -43,7 +43,7 @@ public:
  *   "VFX.*"        → VFX Generator
  *   "Entity.*"     → Mesh/Character Generator
  *   "Anim.*"       → Animation Generator
- *   "Equipment.*"  → Item Generator
+ *   "Entity.Item.*" → Item Generator
  */
 UCLASS()
 class HKTGENERATORCORE_API UHktGeneratorRouter : public UEditorSubsystem

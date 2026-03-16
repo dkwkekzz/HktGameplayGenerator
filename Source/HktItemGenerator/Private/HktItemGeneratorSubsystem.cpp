@@ -125,8 +125,8 @@ FString UHktItemGeneratorSubsystem::McpRequestItem(const FString& JsonIntent)
 
 	// 태그 생성
 	FString TagStr = Intent.Element.IsEmpty()
-		? FString::Printf(TEXT("Equipment.%s.%s"), *Intent.Category, *Intent.SubType)
-		: FString::Printf(TEXT("Equipment.%s.%s.%s"), *Intent.Category, *Intent.SubType, *Intent.Element);
+		? FString::Printf(TEXT("Entity.Item.%s.%s"), *Intent.Category, *Intent.SubType)
+		: FString::Printf(TEXT("Entity.Item.%s.%s.%s"), *Intent.Category, *Intent.SubType, *Intent.Element);
 	Intent.ItemTag = FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
 
 	FSoftObjectPath Path = RequestItemGeneration(Intent);

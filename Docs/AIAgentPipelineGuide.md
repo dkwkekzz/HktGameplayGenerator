@@ -46,7 +46,7 @@ AI Agent가 수행하는 역할:
 | `VFX.*` | VFX Generator | NiagaraSystem | `VFX.Explosion.Fire` |
 | `Entity.*` | Mesh Generator | SkeletalMesh + Blueprint | `Entity.Character.Goblin` |
 | `Anim.*` | Anim Generator | AnimSequence / Montage / BlendSpace | `Anim.FullBody.Action.Spawn` |
-| `Equipment.*` | Item Generator | StaticMesh + Icon Texture | `Equipment.Weapon.Sword.Fire` |
+| `Entity.Item.*` | Item Generator | StaticMesh + Icon Texture | `Entity.Item.Weapon.Sword.Fire` |
 | `Story.*` | Story Generator | Bytecode (VM 등록) | `Story.Combat.Fireball` |
 
 ### Tag 명명 규칙
@@ -63,8 +63,8 @@ Anim.{Layer}.{Type}.{Name}             예: Anim.FullBody.Locomotion.Run
                                            Anim.UpperBody.Combat.Attack
                                            Anim.Montage.Intro
 
-Equipment.{Category}.{SubType}         예: Equipment.Weapon.Sword
-Equipment.{Category}.{SubType}.{Elem}  예: Equipment.Weapon.Sword.Fire
+Entity.Item.{Category}.{SubType}         예: Entity.Item.Weapon.Sword
+Entity.Item.{Category}.{SubType}.{Elem}  예: Entity.Item.Weapon.Sword.Fire
 ```
 
 ### Convention Path — Tag에서 에셋 경로 자동 유도
@@ -75,7 +75,7 @@ Tag가 정해지면 에셋이 저장될 경로도 자동 결정됩니다. `/Game
 |-----|----------------|
 | `Entity.Character.Goblin` | `/Game/Generated/Characters/Goblin/BP_Goblin` |
 | `VFX.Explosion.Fire` | `/Game/Generated/VFX/VFX_Explosion_Fire` |
-| `Equipment.Weapon.Sword` | `/Game/Generated/Items/Weapon/SM_Sword` |
+| `Entity.Item.Weapon.Sword` | `/Game/Generated/Items/Weapon/SM_Sword` |
 | `Anim.FullBody.Locomotion.Run` | `/Game/Generated/Animations/Anim_FullBody_Locomotion_Run` |
 
 ---
@@ -115,11 +115,10 @@ examples = McpGetStoryExamples()
 |----------|---------|
 | control | `Label`, `Jump`, `JumpIf`, `Return` |
 | wait | `WaitFrames`, `WaitUntilProperty` |
-| entity | `SpawnEntity`, `Destroy`, `SetEntityType` |
+| entity | `SpawnEntity`, `Destroy`, `SetEntityType` (Entity.Item.* 포함) |
 | position | `CopyPosition`, `MoveForward`, `SetPosition` |
 | combat | `ApplyDamage`, `ApplyHeal`, `ApplyBuff` |
 | vfx | `PlayVFX`, `StopVFX` |
-| equipment | `SpawnEquipment` |
 | tags | `AddTag`, `RemoveTag`, `HasTag` |
 | spatial | `ForEachInRadius`, `CountByTag` |
 | data | `StoreInt`, `LoadInt`, `CopyProperty` |
@@ -144,7 +143,7 @@ result = McpAnalyzeDependencies(json_story)
   "VFX": ["VFX.Launch.Fire", "VFX.Explosion.Fire"],
   "Entity": ["Entity.Projectile.Fireball"],
   "Anim": ["Anim.UpperBody.Combat.Cast"],
-  "Equipment": [],
+  "Item": [],
   "Unknown": []
 }
 ```
@@ -346,11 +345,11 @@ AnimBP 리컴파일은 불필요합니다.
 
 ---
 
-## 7. Item Generator — Equipment.* Tag 처리
+## 7. Item Generator — Entity.Item.* Tag 처리
 
 ### 개요
 
-Equipment Tag → StaticMesh + Icon Texture + MaterialInstance 생성.
+Entity.Item Tag → StaticMesh + Icon Texture + MaterialInstance 생성.
 메시는 외부 도구, 아이콘은 HktTextureGenerator를 활용.
 
 ### MCP API
@@ -377,7 +376,7 @@ Equipment Tag → StaticMesh + Icon Texture + MaterialInstance 생성.
 
 ```json
 {
-  "itemTag": "Equipment.Weapon.Sword.Fire",
+  "itemTag": "Entity.Item.Weapon.Sword.Fire",
   "category": "Weapon",
   "subType": "Sword",
   "element": "Fire",
@@ -665,7 +664,7 @@ HktGameplayGenerator/
 │   ├── HktVFXGenerator/         ← VFX.* Tag → NiagaraSystem
 │   ├── HktMeshGenerator/        ← Entity.* Tag → SkeletalMesh + Blueprint
 │   ├── HktAnimGenerator/        ← Anim.* Tag → AnimSequence/Montage/BlendSpace
-│   ├── HktItemGenerator/        ← Equipment.* Tag → StaticMesh + Icon
+│   ├── HktItemGenerator/        ← Entity.Item.* Tag → StaticMesh + Icon
 │   ├── HktStoryGenerator/       ← Story JSON → Bytecode 컴파일
 │   ├── HktMcpBridge/            ← MCP 런타임 브릿지
 │   └── HktMcpBridgeEditor/      ← MCP 에디터 브릿지 + 기본 MCP Tools
