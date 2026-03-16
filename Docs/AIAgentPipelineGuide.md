@@ -115,11 +115,10 @@ examples = McpGetStoryExamples()
 |----------|---------|
 | control | `Label`, `Jump`, `JumpIf`, `Return` |
 | wait | `WaitFrames`, `WaitUntilProperty` |
-| entity | `SpawnEntity`, `Destroy`, `SetEntityType` |
+| entity | `SpawnEntity`, `Destroy`, `SetEntityType` (Entity.Item.* 포함) |
 | position | `CopyPosition`, `MoveForward`, `SetPosition` |
 | combat | `ApplyDamage`, `ApplyHeal`, `ApplyBuff` |
 | vfx | `PlayVFX`, `StopVFX` |
-| item | `SpawnItem` |
 | tags | `AddTag`, `RemoveTag`, `HasTag` |
 | spatial | `ForEachInRadius`, `CountByTag` |
 | data | `StoreInt`, `LoadInt`, `CopyProperty` |

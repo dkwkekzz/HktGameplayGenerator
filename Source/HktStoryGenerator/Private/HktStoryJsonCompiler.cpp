@@ -259,9 +259,6 @@ bool FHktStoryJsonCompiler::ApplyStep(
 	if (Op == TEXT("PlaySound")) { Builder.PlaySound(GetTag(TEXT("tag"))); return true; }
 	if (Op == TEXT("PlaySoundAtLocation")) { Builder.PlaySoundAtLocation(GetReg(TEXT("pos")), GetTag(TEXT("tag"))); return true; }
 
-	// ========== Item (Entity.Item.*) ==========
-	if (Op == TEXT("SpawnItem")) { Builder.SpawnEquipment(GetReg(TEXT("owner")), GetInt(TEXT("slot")), GetTag(TEXT("itemTag"))); return true; }
-
 	// ========== Tags ==========
 	if (Op == TEXT("AddTag")) { Builder.AddTag(GetReg(TEXT("entity")), GetTag(TEXT("tag"))); return true; }
 	if (Op == TEXT("RemoveTag")) { Builder.RemoveTag(GetReg(TEXT("entity")), GetTag(TEXT("tag"))); return true; }
@@ -420,7 +417,6 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		TEXT("ApplyDamage"), TEXT("ApplyDamageConst"), TEXT("ApplyEffect"), TEXT("RemoveEffect"),
 		TEXT("PlayVFX"), TEXT("PlayVFXAttached"),
 		TEXT("PlaySound"), TEXT("PlaySoundAtLocation"),
-		TEXT("SpawnItem"),
 		TEXT("AddTag"), TEXT("RemoveTag"), TEXT("HasTag"), TEXT("CountByTag"),
 		TEXT("GetWorldTime"), TEXT("RandomInt"), TEXT("HasPlayerInGroup"), TEXT("CountByOwner"), TEXT("FindByOwner"),
 		TEXT("Log"),
@@ -448,7 +444,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		}
 
 		// Collect referenced tags
-		for (const FString& TagField : { TEXT("tag"), TEXT("classTag"), TEXT("effectTag"), TEXT("itemTag") })
+		for (const FString& TagField : { TEXT("tag"), TEXT("classTag"), TEXT("effectTag") })
 		{
 			FString TagStr;
 			if ((*StepObj)->TryGetStringField(TagField, TagStr))
@@ -530,9 +526,6 @@ FString FHktStoryJsonCompiler::GetStorySchema()
     "audio": {
       "PlaySound": { "tag": "tag — Sound tag" },
       "PlaySoundAtLocation": { "pos": "register (3 consecutive)", "tag": "tag" }
-    },
-    "item": {
-      "SpawnItem": { "owner": "register", "slot": "int", "itemTag": "tag — Entity.Item tag" }
     },
     "tags": {
       "AddTag": { "entity": "register", "tag": "tag" },
@@ -698,8 +691,14 @@ FString FHktStoryJsonCompiler::GetStoryExamples()
         { "op": "PlaySound", "tag": "Sound_Spawn" },
         { "op": "AddTag", "entity": "Self", "tag": "AnimSpawn" },
         { "op": "WaitSeconds", "seconds": 0.5 },
-        { "op": "SpawnItem", "owner": "Self", "slot": 0, "itemTag": "Weapon_Sword" },
-        { "op": "SpawnItem", "owner": "Self", "slot": 1, "itemTag": "Shield" },
+        { "op": "SpawnEntity", "classTag": "Weapon_Sword" },
+        { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Owner", "src": "Self" },
+        { "op": "LoadConst", "dst": "R3", "value": 0 },
+        { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Slot", "src": "R3" },
+        { "op": "SpawnEntity", "classTag": "Shield" },
+        { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Owner", "src": "Self" },
+        { "op": "LoadConst", "dst": "R3", "value": 1 },
+        { "op": "SaveEntityProperty", "entity": "Spawned", "property": "Slot", "src": "R3" },
         { "op": "AddTag", "entity": "Self", "tag": "AnimIntro" },
         { "op": "WaitAnimEnd", "entity": "Self" },
         { "op": "RemoveTag", "entity": "Self", "tag": "AnimSpawn" },

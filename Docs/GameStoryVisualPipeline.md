@@ -322,7 +322,9 @@ Anim.Montage.Intro              → Layer=Montage,   One-shot Montage
 
 **흐름:**
 ```
-Story: .SpawnItem(Self, 0, "Entity.Item.Weapon.Sword.Fire")
+SpawnEntity("Entity.Item.Weapon.Sword.Fire")
++ SaveEntityProperty(Spawned, "Owner", Self)
++ SaveEntityProperty(Spawned, "Slot", 0)
     ↓
 FHktItemIntent::FromTag()
     → Category=Weapon, SubType=Sword, Element=Fire
@@ -668,7 +670,7 @@ AI Agent (Claude via MCP)
 | position | CopyPosition, MoveForward, SetPosition |
 | combat | ApplyDamage, ApplyHeal, ApplyBuff |
 | vfx | PlayVFX, StopVFX |
-| item | SpawnItem |
+| entity | SpawnEntity, DestroyEntity (Entity.Item.* 포함) |
 | tags | AddTag, RemoveTag, HasTag |
 | spatial | ForEachInRadius, CountByTag |
 | data | StoreInt, LoadInt, CopyProperty |
