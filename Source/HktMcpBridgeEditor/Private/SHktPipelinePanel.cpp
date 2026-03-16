@@ -6,6 +6,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SBoxPanel.h"
 #include "Misc/FileHelper.h"
@@ -647,10 +648,10 @@ TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateTaskRow(
 
 	// Tags display
 	FString TagsStr;
-	for (const FString& Tag : Item->Tags)
+	for (const FString& TagEntry : Item->Tags)
 	{
 		if (!TagsStr.IsEmpty()) TagsStr += TEXT(", ");
-		TagsStr += Tag;
+		TagsStr += TagEntry;
 	}
 
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
