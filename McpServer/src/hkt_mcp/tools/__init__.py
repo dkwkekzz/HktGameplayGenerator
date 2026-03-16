@@ -12,6 +12,7 @@ Tool categories:
 - anim_tools: Animation generation and import
 - mesh_tools: Character mesh generation and import
 - item_tools: Item/equipment generation and import
+- pipeline_tools: Pipeline monitor (state tracking, checkpoints)
 """
 
 from . import asset_tools
@@ -24,10 +25,11 @@ from . import texture_tools
 from . import anim_tools
 from . import mesh_tools
 from . import item_tools
+from . import pipeline_tools
 
 __all__ = [
     "asset_tools", "level_tools", "query_tools", "runtime_tools",
     "vfx_tools", "story_tools", "texture_tools",
-    "anim_tools", "mesh_tools", "item_tools",
+    "anim_tools", "mesh_tools", "item_tools", "pipeline_tools",
 ]
 

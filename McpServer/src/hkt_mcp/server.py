@@ -22,6 +22,7 @@ from mcp.types import Tool, TextContent, Resource, Prompt
 # Import tool modules
 from .tools import asset_tools, level_tools, query_tools, runtime_tools
 from .tools import vfx_tools, story_tools, texture_tools, anim_tools, mesh_tools, item_tools
+from .tools import pipeline_tools
 from .bridge import editor_bridge, runtime_bridge
 
 # Configure logging
@@ -735,6 +736,121 @@ async def list_tools() -> list[Tool]:
         ),
     ])
 
+    # ==================== Pipeline Monitor Tools ====================
+    tools.extend([
+        Tool(
+            name="pipeline_create",
+            description="Create a new automation pipeline for tracking multi-phase gameplay generation (design → task planning → story building → asset discovery → verification).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Pipeline name (e.g., 'Goblin Dungeon')"},
+                    "description": {"type": "string", "description": "What this pipeline builds"},
+                    "metadata_json": {"type": "string", "description": "Optional JSON metadata (theme, room_count, etc.)"}
+                },
+                "required": ["name", "description"]
+            }
+        ),
+        Tool(
+            name="pipeline_list",
+            description="List all pipelines with summary status.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        Tool(
+            name="pipeline_get_status",
+            description="Get comprehensive pipeline status: current phase, task counts by status, pending checkpoints, and next action suggestion.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pipeline_id": {"type": "string", "description": "Pipeline ID"}
+                },
+                "required": ["pipeline_id"]
+            }
+        ),
+        Tool(
+            name="pipeline_delete",
+            description="Delete a pipeline.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pipeline_id": {"type": "string", "description": "Pipeline ID to delete"}
+                },
+                "required": ["pipeline_id"]
+            }
+        ),
+        Tool(
+            name="pipeline_add_tasks",
+            description="Add tasks to the pipeline's current phase. Each task tracks a unit of work (story to build, mesh to generate, etc.).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
+                    "tasks_json": {
+                        "type": "string",
+                        "description": "JSON array of tasks. Each: {category, title, description, tags?, parent_id?, mcp_tool_hint?}"
+                    }
+                },
+                "required": ["pipeline_id", "tasks_json"]
+            }
+        ),
+        Tool(
+            name="pipeline_update_task",
+            description="Update a task's status, result, error, or add a note. Call this after executing an MCP tool to record the outcome.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
+                    "task_id": {"type": "string", "description": "Task ID to update"},
+                    "status": {"type": "string", "description": "New status: pending/in_progress/completed/failed/blocked/review"},
+                    "result_json": {"type": "string", "description": "JSON result data from execution"},
+                    "error": {"type": "string", "description": "Error message if failed"},
+                    "note": {"type": "string", "description": "Add a note to the task"}
+                },
+                "required": ["pipeline_id", "task_id"]
+            }
+        ),
+        Tool(
+            name="pipeline_get_tasks",
+            description="Get filtered task list from a pipeline.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
+                    "phase": {"type": "string", "description": "Filter by phase (e.g., 'story_building')"},
+                    "status": {"type": "string", "description": "Filter by status (e.g., 'pending')"},
+                    "category": {"type": "string", "description": "Filter by category (e.g., 'mesh')"}
+                },
+                "required": ["pipeline_id"]
+            }
+        ),
+        Tool(
+            name="pipeline_request_advance",
+            description="Request advancing to the next pipeline phase. Generates a checkpoint report for user review. Phase advances only after user approves.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pipeline_id": {"type": "string", "description": "Pipeline ID"}
+                },
+                "required": ["pipeline_id"]
+            }
+        ),
+        Tool(
+            name="pipeline_resolve_checkpoint",
+            description="Resolve a pipeline checkpoint: approve (advance), revise (stay and fix), or reject (go back to earlier phase).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
+                    "checkpoint_id": {"type": "string", "description": "Checkpoint ID to resolve"},
+                    "action": {"type": "string", "description": "Action: approve/revise/reject"},
+                    "feedback": {"type": "string", "description": "User feedback or modification notes"},
+                    "target_phase": {"type": "string", "description": "For reject: which phase to return to"}
+                },
+                "required": ["pipeline_id", "checkpoint_id", "action"]
+            }
+        ),
+    ])
+
     return tools
 
 
@@ -937,6 +1053,47 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await item_tools.list_generated_items(bridge, arguments.get("directory", ""))
     elif name == "get_socket_mappings":
         return await item_tools.get_socket_mappings(bridge)
+
+    # Pipeline Monitor Tools (no bridge needed — pure Python state management)
+    elif name == "pipeline_create":
+        return await pipeline_tools.pipeline_create(
+            arguments["name"], arguments["description"],
+            arguments.get("metadata_json", "{}")
+        )
+    elif name == "pipeline_list":
+        return await pipeline_tools.pipeline_list()
+    elif name == "pipeline_get_status":
+        return await pipeline_tools.pipeline_get_status(arguments["pipeline_id"])
+    elif name == "pipeline_delete":
+        return await pipeline_tools.pipeline_delete(arguments["pipeline_id"])
+    elif name == "pipeline_add_tasks":
+        return await pipeline_tools.pipeline_add_tasks(
+            arguments["pipeline_id"], arguments["tasks_json"]
+        )
+    elif name == "pipeline_update_task":
+        return await pipeline_tools.pipeline_update_task(
+            arguments["pipeline_id"], arguments["task_id"],
+            status=arguments.get("status", ""),
+            result_json=arguments.get("result_json", ""),
+            error=arguments.get("error", ""),
+            note=arguments.get("note", ""),
+        )
+    elif name == "pipeline_get_tasks":
+        return await pipeline_tools.pipeline_get_tasks(
+            arguments["pipeline_id"],
+            phase=arguments.get("phase", ""),
+            status=arguments.get("status", ""),
+            category=arguments.get("category", ""),
+        )
+    elif name == "pipeline_request_advance":
+        return await pipeline_tools.pipeline_request_advance(arguments["pipeline_id"])
+    elif name == "pipeline_resolve_checkpoint":
+        return await pipeline_tools.pipeline_resolve_checkpoint(
+            arguments["pipeline_id"], arguments["checkpoint_id"],
+            arguments["action"],
+            feedback=arguments.get("feedback", ""),
+            target_phase=arguments.get("target_phase", ""),
+        )
 
     else:
         raise ValueError(f"Unknown tool: {name}")
