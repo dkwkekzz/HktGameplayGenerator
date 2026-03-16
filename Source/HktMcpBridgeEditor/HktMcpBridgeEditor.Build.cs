@@ -23,6 +23,7 @@ public class HktMcpBridgeEditor : ModuleRules
 			{
 				"Slate",
 				"SlateCore",
+				"InputCore",
 				"UnrealEd",
 				"EditorSubsystem",
 				"LevelEditor",
@@ -31,8 +32,9 @@ public class HktMcpBridgeEditor : ModuleRules
 				"ContentBrowser",
 				"EditorScriptingUtilities",
 				"PythonScriptPlugin",
-                "HktMcpBridge"
-            }
+				"WorkspaceMenuStructure",
+				"HktMcpBridge"
+			}
 		);
 	}
 }

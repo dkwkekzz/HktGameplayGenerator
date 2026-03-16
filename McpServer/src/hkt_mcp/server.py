@@ -1086,7 +1086,17 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             category=arguments.get("category", ""),
         )
     elif name == "pipeline_request_advance":
-        return await pipeline_tools.pipeline_request_advance(arguments["pipeline_id"])
+        result = await pipeline_tools.pipeline_request_advance(arguments["pipeline_id"])
+        # Notify editor so Pipeline Monitor panel refreshes
+        try:
+            import json as _json
+            parsed = _json.loads(result)
+            if parsed.get("success"):
+                await query_tools.show_notification(
+                    bridge, "[Pipeline] Checkpoint created - review pending", 5.0)
+        except Exception:
+            pass
+        return result
     elif name == "pipeline_resolve_checkpoint":
         return await pipeline_tools.pipeline_resolve_checkpoint(
             arguments["pipeline_id"], arguments["checkpoint_id"],
