@@ -907,13 +907,26 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="build_map",
-            description="Build an HktMap in UE5 - instantiate landscape, spawners, and load linked stories. Requires connected UE5 editor.",
+            description="Build an HktMap in UE5 - instantiate per-region landscapes, spawners, and load linked stories. Requires connected UE5 editor.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "map_json": {"type": "string", "description": "HktMap JSON to build in UE5"}
                 },
                 "required": ["map_json"]
+            }
+        ),
+        Tool(
+            name="generate_terrain_preview",
+            description="Generate an ASCII heightmap preview from a terrain recipe JSON. Useful for visually verifying terrain layout before building.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "terrain_recipe_json": {"type": "string", "description": "Terrain recipe JSON (base_noise_type, octaves, frequency, features, etc.)"},
+                    "width": {"type": "integer", "description": "ASCII preview width (default 60)", "default": 60},
+                    "height": {"type": "integer", "description": "ASCII preview height (default 30)", "default": 30},
+                },
+                "required": ["terrain_recipe_json"]
             }
         ),
     ])
@@ -1174,6 +1187,12 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await map_tools.delete_map(arguments["map_id"])
     elif name == "build_map":
         return await map_tools.build_map(arguments["map_json"], bridge)
+    elif name == "generate_terrain_preview":
+        return await map_tools.generate_terrain_preview(
+            arguments["terrain_recipe_json"],
+            arguments.get("width", 60),
+            arguments.get("height", 30),
+        )
 
     else:
         raise ValueError(f"Unknown tool: {name}")

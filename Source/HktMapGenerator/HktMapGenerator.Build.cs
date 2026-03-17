@@ -37,6 +37,7 @@ public class HktMapGenerator : ModuleRules
 				"DeveloperSettings",
 				"AssetRegistry",
 				"AssetTools",
+				"LandscapeEditor",
 			}
 		);
 	}

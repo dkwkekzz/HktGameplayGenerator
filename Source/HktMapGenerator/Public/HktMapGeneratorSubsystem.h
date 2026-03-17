@@ -6,13 +6,18 @@
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
 #include "HktMapData.h"
+#include "HktMapStoryRegistry.h"
 #include "HktMapGeneratorSubsystem.generated.h"
+
+class AHktMapRegionVolume;
+class AHktSpawnerActor;
 
 /**
  * UHktMapGeneratorSubsystem
  *
  * 에디터 서브시스템으로 HktMap JSON → UE5 월드 반영 기능 제공.
- * MCP를 통해 호출되며, JSON 파싱 → Landscape 생성 → Spawner 배치 → Story 연결.
+ * MCP를 통해 호출되며, JSON 파싱 → Region별 Landscape 생성 →
+ * Spawner 배치 → Story 연결 → GlobalEntity 스폰.
  */
 UCLASS()
 class HKTMAPGENERATOR_API UHktMapGeneratorSubsystem : public UEditorSubsystem
@@ -35,7 +40,7 @@ public:
 
 	// ── Build ───────────────────────────────────────────────────
 
-	/** HktMapData로 현재 레벨에 맵 빌드 (Landscape + Spawner + Story 등록) */
+	/** HktMapData로 현재 레벨에 맵 빌드 (Region별 Landscape + Spawner + Story) */
 	UFUNCTION(BlueprintCallable, Category = "HKT|MapGenerator")
 	bool BuildMap(const FHktMapData& MapData);
 
@@ -69,22 +74,45 @@ public:
 
 	// ── MCP Endpoints ───────────────────────────────────────────
 
-	/** MCP: JSON으로 맵 빌드 (bridge 호출용) */
 	UFUNCTION(BlueprintCallable, Category = "HKT|MapGenerator|MCP")
 	FString McpBuildMap(const FString& JsonStr);
 
-	/** MCP: 맵 유효성 검사 */
 	UFUNCTION(BlueprintCallable, Category = "HKT|MapGenerator|MCP")
 	FString McpValidateMap(const FString& JsonStr);
 
-	/** MCP: 맵 스키마 반환 */
 	UFUNCTION(BlueprintCallable, Category = "HKT|MapGenerator|MCP")
 	FString McpGetMapSchema();
 
 private:
 	FString CurrentMapId;
 
-	/** 빌드 시 생성된 액터 추적 (언로드용) */
+	/** 빌드 시 생성된 전체 액터 추적 (언로드용) */
 	UPROPERTY()
 	TArray<TWeakObjectPtr<AActor>> SpawnedActors;
+
+	/** Story 관리 */
+	UPROPERTY()
+	TObjectPtr<UHktMapStoryRegistry> StoryRegistry;
+
+	UHktMapStoryRegistry* GetOrCreateStoryRegistry();
+
+	// ── Build Helpers ───────────────────────────────────────────
+
+	/** Region별 Landscape 생성 */
+	bool BuildRegionLandscape(const FHktMapRegion& Region, UWorld* World);
+
+	/** Region Volume 생성 */
+	AHktMapRegionVolume* BuildRegionVolume(const FHktMapRegion& Region, UWorld* World);
+
+	/** Spawner 액터 배치 */
+	void BuildSpawners(const TArray<FHktMapSpawner>& Spawners, UWorld* World);
+
+	/** Prop 배치 */
+	void BuildProps(const TArray<FHktMapProp>& Props, UWorld* World);
+
+	/** GlobalEntity 스폰 */
+	void BuildGlobalEntities(const TArray<FHktMapGlobalEntity>& Entities, UWorld* World);
+
+	/** Environment 설정 적용 */
+	void ApplyEnvironment(const FHktMapEnvironment& Env, UWorld* World);
 };
