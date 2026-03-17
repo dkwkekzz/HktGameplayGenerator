@@ -551,7 +551,7 @@ async def list_tools() -> list[Tool]:
     tools.extend([
         Tool(
             name="generate_texture",
-            description="Generate or lookup texture. Cache hit returns asset path; cache miss returns pending + completed prompt for external generation.",
+            description="Generate or lookup texture. Cache hit returns asset path; cache miss auto-generates via local SD WebUI (if running) or returns pending + prompt for external generation.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1299,7 +1299,15 @@ Consider spacing, visual composition, and gameplay requirements."""
 async def run_server():
     """Run the MCP server"""
     logger.info("Starting HKT MCP Server for Unreal Engine 5")
-    
+
+    # Log SD WebUI configuration
+    from .config import get_config
+    config = get_config()
+    if config.sd_enabled:
+        logger.info("SD WebUI auto-generation enabled (url: %s). Auto-launch uses batch file from Project Settings.", config.sd_url)
+    else:
+        logger.info("SD WebUI auto-generation disabled (SD_AUTO_GENERATE=false)")
+
     # Check if running inside UE Python environment
     try:
         import unreal

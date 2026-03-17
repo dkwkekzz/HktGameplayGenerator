@@ -310,6 +310,13 @@ FString UHktTextureGeneratorSubsystem::McpGenerateTexture(const FString& JsonInt
 		const FString ImagePath = ImageDir / (Intent.GetAssetKey() + TEXT(".png"));
 		Writer->WriteValue(TEXT("imagePath"), ImagePath);
 
+		// SD WebUI 서버 설정 (MCP Agent가 자동 실행에 사용)
+		if (!Settings->SDWebUIBatchFilePath.IsEmpty())
+		{
+			Writer->WriteValue(TEXT("sdWebUIBatchFilePath"), Settings->SDWebUIBatchFilePath);
+		}
+		Writer->WriteValue(TEXT("sdWebUIServerURL"), Settings->SDWebUIServerURL);
+
 		Writer->WriteObjectEnd();
 		Writer->Close();
 		return Output;

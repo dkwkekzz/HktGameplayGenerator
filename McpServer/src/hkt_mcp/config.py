@@ -32,6 +32,14 @@ class McpConfig:
     # Timeouts
     rpc_timeout: float = 30.0
     connection_timeout: float = 10.0
+
+    # Local SD WebUI settings (A1111/Forge)
+    sd_url: str = "http://127.0.0.1:7860"
+    sd_timeout: float = 120.0
+    sd_steps: int = 20
+    sd_cfg_scale: float = 7.0
+    sd_sampler: str = "Euler a"
+    sd_auto_generate: bool = True
     
     @classmethod
     def from_environment(cls) -> "McpConfig":
@@ -61,9 +69,39 @@ class McpConfig:
         log_level = os.environ.get("HKT_MCP_LOG_LEVEL")
         if log_level:
             config.log_level = log_level.upper()
-        
+
+        # Local SD WebUI
+        sd_url = os.environ.get("SD_WEBUI_URL")
+        if sd_url:
+            config.sd_url = sd_url
+
+        sd_timeout = os.environ.get("SD_WEBUI_TIMEOUT")
+        if sd_timeout:
+            config.sd_timeout = float(sd_timeout)
+
+        sd_steps = os.environ.get("SD_WEBUI_STEPS")
+        if sd_steps:
+            config.sd_steps = int(sd_steps)
+
+        sd_cfg = os.environ.get("SD_WEBUI_CFG_SCALE")
+        if sd_cfg:
+            config.sd_cfg_scale = float(sd_cfg)
+
+        sd_sampler = os.environ.get("SD_WEBUI_SAMPLER")
+        if sd_sampler:
+            config.sd_sampler = sd_sampler
+
+        sd_auto = os.environ.get("SD_AUTO_GENERATE")
+        if sd_auto is not None:
+            config.sd_auto_generate = sd_auto.lower() != "false"
+
         return config
     
+    @property
+    def sd_enabled(self) -> bool:
+        """Whether local SD WebUI auto-generation is enabled."""
+        return self.sd_auto_generate
+
     @property
     def websocket_url(self) -> str:
         """Get full WebSocket URL"""
