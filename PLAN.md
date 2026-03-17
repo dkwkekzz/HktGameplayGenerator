@@ -1,8 +1,10 @@
-# HktMapGenerator 구현 계획
+# HktMapGenerator 구현 계획 (구현 완료)
 
 ## 개요
 
-LLM 기반 UE5 맵 자동 생성 시스템. LLM이 컨셉 텍스트에서 "Terrain Recipe" JSON을 생성하면, C++에서 이를 해석하여 Landscape + Spawner + Story + 환경을 구축한다. Region 단위 스트리밍으로 부분 로드/언로드를 지원한다.
+LLM 기반 UE5 맵 자동 생성 시스템. LLM이 컨셉 텍스트에서 "Terrain Recipe" JSON을 생성하면, C++에서 이를 해석하여 **Region별 독립 Landscape** + Spawner + Story + 환경을 구축한다. Region 단위 스트리밍으로 부분 로드/언로드를 지원한다.
+
+**핵심 결정**: Landscape를 맵 전체 하나가 아닌 **Region별 독립 ALandscape**로 생성한다. ALandscape는 생성 후 부분 로드/언로드가 불가능하므로, Region마다 별도 ALandscape를 만들어 Region 단위로 Spawn/Destroy한다.
 
 ---
 
