@@ -1,6 +1,8 @@
 # AI Agent Pipeline Guide — Modular Step System
 
-> 이 문서는 AI Agent(Claude, GPT 등)가 MCP를 통해 게임 콘텐츠를 자동 생성할 때 따라야 하는 작업 절차서입니다.
+> **대상**: AI Agent (Claude, GPT 등) — MCP 도구 사용법과 작업 절차
+> **C++ 아키텍처 상세는 [GameStoryVisualPipeline.md](./GameStoryVisualPipeline.md) 참고**
+>
 > 코드를 모르는 AI Agent도 이 문서만 읽으면 작업할 수 있도록 작성되었습니다.
 > 각 스텝은 독립적이므로, 다른 에이전트가 중간부터 이어서 작업할 수 있습니다.
 
