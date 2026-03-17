@@ -6,7 +6,8 @@
       "env": {
         "UE_PROJECT_PATH": "E:/WS/UE5/HktProto",
         "UE_PROJECT_NAME": "HktProto",
-        "PYTHONPATH": "E:/WS/UE5/HktProto/Plugins/HktGameplayGenerator/McpServer/src"
+        "PYTHONPATH": "E:/WS/UE5/HktProto/Plugins/HktGameplayGenerator/McpServer/src",
+        "STABILITY_AI_API_KEY": ""
       }
     }
   }

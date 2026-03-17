@@ -29,6 +29,12 @@ class McpConfig:
     # Timeouts
     rpc_timeout: float = 30.0
     connection_timeout: float = 10.0
+
+    # Stability AI settings
+    stability_ai_api_key: Optional[str] = None
+    stability_ai_model: str = "sd3.5-large"
+    stability_ai_timeout: float = 60.0
+    stability_ai_auto_generate: bool = True
     
     @classmethod
     def from_environment(cls) -> "McpConfig":
@@ -58,9 +64,31 @@ class McpConfig:
         log_level = os.environ.get("HKT_MCP_LOG_LEVEL")
         if log_level:
             config.log_level = log_level.upper()
-        
+
+        # Stability AI
+        stability_key = os.environ.get("STABILITY_AI_API_KEY")
+        if stability_key:
+            config.stability_ai_api_key = stability_key
+
+        stability_model = os.environ.get("STABILITY_AI_MODEL")
+        if stability_model:
+            config.stability_ai_model = stability_model
+
+        stability_timeout = os.environ.get("STABILITY_AI_TIMEOUT")
+        if stability_timeout:
+            config.stability_ai_timeout = float(stability_timeout)
+
+        stability_auto = os.environ.get("STABILITY_AI_AUTO_GENERATE")
+        if stability_auto is not None:
+            config.stability_ai_auto_generate = stability_auto.lower() != "false"
+
         return config
     
+    @property
+    def stability_ai_enabled(self) -> bool:
+        """Whether Stability AI auto-generation is enabled."""
+        return self.stability_ai_api_key is not None and self.stability_ai_auto_generate
+
     @property
     def websocket_url(self) -> str:
         """Get full WebSocket URL"""
