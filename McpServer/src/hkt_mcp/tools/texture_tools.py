@@ -25,15 +25,20 @@ OBJECT_PATH = "/Script/HktTextureGenerator.Default__HktTextureGeneratorFunctionL
 _sd_client = None
 
 
-def _get_sd_client():
-    """Get or create the SD WebUI client (lazy singleton)."""
+def _get_sd_client(server_url: str = ""):
+    """Get or create the SD WebUI client (lazy singleton).
+
+    If server_url is provided (from C++ pending response), use it.
+    Otherwise fall back to config.
+    """
     global _sd_client
     if _sd_client is None:
         config = get_config()
         if config.sd_enabled:
             from ..sd_client import SDWebUIClient
+            url = server_url or config.sd_url
             _sd_client = SDWebUIClient(
-                url=config.sd_url,
+                url=url,
                 timeout=config.sd_timeout,
                 default_steps=config.sd_steps,
                 default_cfg_scale=config.sd_cfg_scale,
@@ -43,7 +48,7 @@ def _get_sd_client():
 
 
 async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: str = "") -> str:
-    """Generate or lookup texture. Auto-generates via local SD WebUI on cache miss if running."""
+    """Generate or lookup texture. Auto-launches SD WebUI and generates on cache miss."""
     logger.info("Generating texture from intent")
 
     # Step 1: Check cache via C++
@@ -60,7 +65,8 @@ async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: s
         return json.dumps({"success": True, "data": data}, indent=2)
 
     # Step 3: Cache miss -- try local SD WebUI auto-generation
-    client = _get_sd_client()
+    server_url = data.get("sdWebUIServerURL", "")
+    client = _get_sd_client(server_url)
     if client is None:
         logger.info("SD WebUI not configured, returning pending response")
         return json.dumps({"success": False, "data": data}, indent=2)
@@ -74,6 +80,21 @@ async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: s
         return json.dumps({"success": False, "data": data, "error": "Missing prompt or imagePath in pending response"}, indent=2)
 
     try:
+        # Step 3a: Ensure SD WebUI is running (auto-launch if batch file configured)
+        batch_file = data.get("sdWebUIBatchFilePath", "")
+        if batch_file:
+            ready = await client.ensure_running(batch_file)
+            if not ready:
+                return json.dumps({
+                    "success": False,
+                    "data": data,
+                    "sd_error": "Failed to launch SD WebUI server",
+                }, indent=2)
+        elif not await client.is_alive():
+            logger.warning("SD WebUI not running and no batch file configured")
+            return json.dumps({"success": False, "data": data}, indent=2)
+
+        # Step 3b: Generate image
         logger.info("Auto-generating texture via SD WebUI: %s...", prompt[:80])
 
         await client.generate_image(

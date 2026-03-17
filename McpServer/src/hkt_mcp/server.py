@@ -1067,9 +1067,9 @@ async def run_server():
     from .config import get_config
     config = get_config()
     if config.sd_enabled:
-        logger.info("SD WebUI auto-generation enabled (url: %s)", config.sd_url)
+        logger.info("SD WebUI auto-generation enabled (url: %s). Auto-launch uses batch file from Project Settings.", config.sd_url)
     else:
-        logger.info("SD WebUI auto-generation disabled")
+        logger.info("SD WebUI auto-generation disabled (SD_AUTO_GENERATE=false)")
 
     # Check if running inside UE Python environment
     try:

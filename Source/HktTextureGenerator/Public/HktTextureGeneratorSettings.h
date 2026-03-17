@@ -29,6 +29,18 @@ public:
 	FString DefaultOutputDirectory = TEXT("/Game/Generated/Textures");
 
 	// =========================================================================
+	// SD WebUI (로컬 Stable Diffusion 서버)
+	// =========================================================================
+
+	/** SD WebUI 실행 파일 경로 (예: E:/AI/webui_forge/run.bat). 비어있으면 자동 실행 안함. */
+	UPROPERTY(Config, EditAnywhere, Category = "SD WebUI", meta = (FilePathFilter = "bat"))
+	FString SDWebUIBatchFilePath;
+
+	/** SD WebUI 서버 URL (기본: http://127.0.0.1:7860) */
+	UPROPERTY(Config, EditAnywhere, Category = "SD WebUI")
+	FString SDWebUIServerURL = TEXT("http://127.0.0.1:7860");
+
+	// =========================================================================
 	// 생성 기본값
 	// =========================================================================
 
