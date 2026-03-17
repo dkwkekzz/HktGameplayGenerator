@@ -30,11 +30,13 @@ class McpConfig:
     rpc_timeout: float = 30.0
     connection_timeout: float = 10.0
 
-    # Stability AI settings
-    stability_ai_api_key: Optional[str] = None
-    stability_ai_model: str = "sd3.5-large"
-    stability_ai_timeout: float = 60.0
-    stability_ai_auto_generate: bool = True
+    # Local SD WebUI settings (A1111/Forge)
+    sd_url: str = "http://127.0.0.1:7860"
+    sd_timeout: float = 120.0
+    sd_steps: int = 20
+    sd_cfg_scale: float = 7.0
+    sd_sampler: str = "Euler a"
+    sd_auto_generate: bool = True
     
     @classmethod
     def from_environment(cls) -> "McpConfig":
@@ -65,29 +67,37 @@ class McpConfig:
         if log_level:
             config.log_level = log_level.upper()
 
-        # Stability AI
-        stability_key = os.environ.get("STABILITY_AI_API_KEY")
-        if stability_key:
-            config.stability_ai_api_key = stability_key
+        # Local SD WebUI
+        sd_url = os.environ.get("SD_WEBUI_URL")
+        if sd_url:
+            config.sd_url = sd_url
 
-        stability_model = os.environ.get("STABILITY_AI_MODEL")
-        if stability_model:
-            config.stability_ai_model = stability_model
+        sd_timeout = os.environ.get("SD_WEBUI_TIMEOUT")
+        if sd_timeout:
+            config.sd_timeout = float(sd_timeout)
 
-        stability_timeout = os.environ.get("STABILITY_AI_TIMEOUT")
-        if stability_timeout:
-            config.stability_ai_timeout = float(stability_timeout)
+        sd_steps = os.environ.get("SD_WEBUI_STEPS")
+        if sd_steps:
+            config.sd_steps = int(sd_steps)
 
-        stability_auto = os.environ.get("STABILITY_AI_AUTO_GENERATE")
-        if stability_auto is not None:
-            config.stability_ai_auto_generate = stability_auto.lower() != "false"
+        sd_cfg = os.environ.get("SD_WEBUI_CFG_SCALE")
+        if sd_cfg:
+            config.sd_cfg_scale = float(sd_cfg)
+
+        sd_sampler = os.environ.get("SD_WEBUI_SAMPLER")
+        if sd_sampler:
+            config.sd_sampler = sd_sampler
+
+        sd_auto = os.environ.get("SD_AUTO_GENERATE")
+        if sd_auto is not None:
+            config.sd_auto_generate = sd_auto.lower() != "false"
 
         return config
     
     @property
-    def stability_ai_enabled(self) -> bool:
-        """Whether Stability AI auto-generation is enabled."""
-        return self.stability_ai_api_key is not None and self.stability_ai_auto_generate
+    def sd_enabled(self) -> bool:
+        """Whether local SD WebUI auto-generation is enabled."""
+        return self.sd_auto_generate
 
     @property
     def websocket_url(self) -> str:

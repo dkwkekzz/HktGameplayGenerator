@@ -4,8 +4,8 @@ Texture Generator Tools - MCP tools for texture generation and import
 Calls UHktTextureGeneratorFunctionLibrary via Remote Control API.
 
 Workflow:
-1. generate_texture    -> Cache hit: asset path / Cache miss: auto-generate via Stability AI (if configured) or return pending + prompt
-2. Agent generates image externally if needed (SD/DALL-E/ComfyUI)
+1. generate_texture    -> Cache hit: asset path / Cache miss: auto-generate via local SD WebUI (if running) or return pending + prompt
+2. Agent generates image externally if needed
 3. import_texture      -> Import generated image as UTexture2D
 4. list_generated_textures -> Verify
 """
@@ -21,27 +21,29 @@ logger = logging.getLogger("hkt_mcp.tools.texture")
 
 OBJECT_PATH = "/Script/HktTextureGenerator.Default__HktTextureGeneratorFunctionLibrary"
 
-# Lazy-initialized Stability AI client
-_stability_client = None
+# Lazy-initialized SD WebUI client
+_sd_client = None
 
 
-def _get_stability_client():
-    """Get or create the Stability AI client (lazy singleton)."""
-    global _stability_client
-    if _stability_client is None:
+def _get_sd_client():
+    """Get or create the SD WebUI client (lazy singleton)."""
+    global _sd_client
+    if _sd_client is None:
         config = get_config()
-        if config.stability_ai_enabled:
-            from ..stability_client import StabilityClient
-            _stability_client = StabilityClient(
-                api_key=config.stability_ai_api_key,
-                model=config.stability_ai_model,
-                timeout=config.stability_ai_timeout,
+        if config.sd_enabled:
+            from ..sd_client import SDWebUIClient
+            _sd_client = SDWebUIClient(
+                url=config.sd_url,
+                timeout=config.sd_timeout,
+                default_steps=config.sd_steps,
+                default_cfg_scale=config.sd_cfg_scale,
+                default_sampler=config.sd_sampler,
             )
-    return _stability_client
+    return _sd_client
 
 
 async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: str = "") -> str:
-    """Generate or lookup texture. Auto-generates via Stability AI on cache miss if configured."""
+    """Generate or lookup texture. Auto-generates via local SD WebUI on cache miss if running."""
     logger.info("Generating texture from intent")
 
     # Step 1: Check cache via C++
@@ -57,10 +59,10 @@ async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: s
     if data.get("success", False) or not data.get("pending", False):
         return json.dumps({"success": True, "data": data}, indent=2)
 
-    # Step 3: Cache miss -- try Stability AI auto-generation
-    client = _get_stability_client()
+    # Step 3: Cache miss -- try local SD WebUI auto-generation
+    client = _get_sd_client()
     if client is None:
-        logger.info("Stability AI not configured, returning pending response")
+        logger.info("SD WebUI not configured, returning pending response")
         return json.dumps({"success": False, "data": data}, indent=2)
 
     prompt = data.get("prompt", "")
@@ -72,15 +74,14 @@ async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: s
         return json.dumps({"success": False, "data": data, "error": "Missing prompt or imagePath in pending response"}, indent=2)
 
     try:
-        logger.info("Auto-generating texture via Stability AI: %s...", prompt[:80])
-        from ..stability_client import resolution_to_aspect_ratio
-        aspect_ratio = resolution_to_aspect_ratio(resolution)
+        logger.info("Auto-generating texture via SD WebUI: %s...", prompt[:80])
 
         await client.generate_image(
             prompt=prompt,
             negative_prompt=negative_prompt,
             output_path=image_path,
-            aspect_ratio=aspect_ratio,
+            width=resolution,
+            height=resolution,
         )
 
         # Step 4: Import the generated image into UE5
@@ -94,7 +95,7 @@ async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: s
             return json.dumps({
                 "success": True,
                 "data": import_data,
-                "generated_by": "stability_ai",
+                "generated_by": "sd_webui",
             }, indent=2)
         else:
             return json.dumps({
@@ -105,11 +106,11 @@ async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: s
             }, indent=2)
 
     except Exception as e:
-        logger.warning("Stability AI generation failed: %s, falling back to pending", e)
+        logger.warning("SD WebUI generation failed: %s, falling back to pending", e)
         return json.dumps({
             "success": False,
             "data": data,
-            "stability_error": str(e),
+            "sd_error": str(e),
         }, indent=2)
 
 

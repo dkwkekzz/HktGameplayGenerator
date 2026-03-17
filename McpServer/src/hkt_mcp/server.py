@@ -550,7 +550,7 @@ async def list_tools() -> list[Tool]:
     tools.extend([
         Tool(
             name="generate_texture",
-            description="Generate or lookup texture. Cache hit returns asset path; cache miss auto-generates via Stability AI (if configured) or returns pending + prompt for external generation.",
+            description="Generate or lookup texture. Cache hit returns asset path; cache miss auto-generates via local SD WebUI (if running) or returns pending + prompt for external generation.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1063,13 +1063,13 @@ async def run_server():
     """Run the MCP server"""
     logger.info("Starting HKT MCP Server for Unreal Engine 5")
 
-    # Log Stability AI configuration
+    # Log SD WebUI configuration
     from .config import get_config
     config = get_config()
-    if config.stability_ai_enabled:
-        logger.info("Stability AI auto-generation enabled (model: %s)", config.stability_ai_model)
+    if config.sd_enabled:
+        logger.info("SD WebUI auto-generation enabled (url: %s)", config.sd_url)
     else:
-        logger.info("Stability AI auto-generation disabled (no STABILITY_AI_API_KEY)")
+        logger.info("SD WebUI auto-generation disabled")
 
     # Check if running inside UE Python environment
     try:
