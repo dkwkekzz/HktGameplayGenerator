@@ -1,5 +1,8 @@
-# GameStory → Visual 자동화 파이프라인
+# GameStory → Visual 자동화 파이프라인 (C++ 아키텍처)
 
+> **대상**: C++ 개발자, 시스템 아키텍트
+> **에이전트 작업 절차는 [AIAgentPipelineGuide.md](./AIAgentPipelineGuide.md) 참고**
+>
 > Story에서 정의한 Tag에 대해 데이터 작업 없이 AI Agent 중심으로 Visual 요소와 연결하는 시스템.
 
 ## 1. 문제와 목표
@@ -111,10 +114,15 @@ HktGameplayGenerator/
 │   │   ├── UHktItemGeneratorSettings  (소켓 매핑, 머티리얼 맵)
 │   │   └── UHktItemGeneratorFunctionLibrary (MCP API)
 │   │
-│   └── HktStoryGenerator/      ← Story JSON 컴파일 (완료)
-│       ├── FHktStoryJsonCompiler        (JSON → FHktStoryBuilder 컴파일)
-│       ├── UHktStoryGeneratorSubsystem  (MCP Story 빌드/검증/분석 API)
-│       └── UHktStoryGeneratorFunctionLibrary (MCP API)
+│   ├── HktStoryGenerator/      ← Story JSON 컴파일 (완료)
+│   │   ├── FHktStoryJsonCompiler        (JSON → FHktStoryBuilder 컴파일)
+│   │   ├── UHktStoryGeneratorSubsystem  (MCP Story 빌드/검증/분석 API)
+│   │   └── UHktStoryGeneratorFunctionLibrary (MCP API)
+│   │
+│   └── HktMapGenerator/         ← HktMap JSON 기반 맵 생성 (신규)
+│       ├── FHktMapData                  (맵 데이터 구조체 — Landscape/Spawner/Region/Story)
+│       ├── UHktMapGeneratorSubsystem    (JSON 파싱, 맵 빌드, MCP API)
+│       └── UHktMapGeneratorSettings     (출력 경로, 기본 Landscape 설정)
 │
 └── Docs/
     └── GameStoryVisualPipeline.md  ← 이 문서
@@ -127,11 +135,12 @@ HktTextureGenerator (독립, 최하위)
         ↑
 HktGeneratorCore (HktTextureGenerator, HktAsset, HktVFX)
         ↑
-├── HktVFXGenerator  (HktGeneratorCore, HktTextureGenerator, HktVFX)
-├── HktMeshGenerator (HktGeneratorCore, HktTextureGenerator)
-├── HktAnimGenerator (HktGeneratorCore)
-├── HktItemGenerator (HktGeneratorCore, HktTextureGenerator)
-└── HktStoryGenerator (HktCore, HktAsset, HktGeneratorCore)
+├── HktVFXGenerator    (HktGeneratorCore, HktTextureGenerator, HktVFX)
+├── HktMeshGenerator   (HktGeneratorCore, HktTextureGenerator)
+├── HktAnimGenerator   (HktGeneratorCore)
+├── HktItemGenerator   (HktGeneratorCore, HktTextureGenerator)
+├── HktStoryGenerator  (HktCore, HktAsset, HktGeneratorCore)
+└── HktMapGenerator    (HktGeneratorCore, Landscape)  ← 신규: HktMap JSON → 월드 빌드
 ```
 
 ### Handler 자동 등록
@@ -364,21 +373,7 @@ Accessory  → Socket Attach (소형) 또는 VFX (버프)
 | MaterialNormal | Normal Map | Normalmap | false | WorldNormalMap |
 | MaterialMask | R/M/AO Packed | Masks | false | World |
 
-### MCP Agent 워크플로우
-
-```
-1. McpGenerateTexture(intent)
-   → 캐시 hit: 즉시 에셋 경로 반환
-   → 캐시 miss: pending=true + 완성된 프롬프트 + imagePath 반환
-
-2. Agent가 이미지 생성 (SD/DALL-E/ComfyUI 등)
-   → imagePath에 .png 저장
-
-3. McpImportTexture(imagePath, intent)
-   → UTexture2D 임포트 + Usage별 자동 설정 + 캐시 등록
-
-4. McpListGeneratedTextures() → 확인
-```
+**MCP 도구 사용법**: [AIAgentPipelineGuide.md - Section 8](./AIAgentPipelineGuide.md#8-texture-generator--공유-모듈) 참고
 
 ### Convention Path
 ```
@@ -532,58 +527,11 @@ AnimBP 수정 불필요:
 
 ---
 
-## 10. AI Agent 통합 시나리오
+## 10. AI Agent 통합
 
-### 시나리오: "고블린 캐릭터 추가"
+에이전트 MCP 작업 절차 및 시나리오 예제는 [AIAgentPipelineGuide.md](./AIAgentPipelineGuide.md) 참고.
 
-```
-1. Story 작성자: Entity.Character.Goblin 태그 정의
-
-2. AI Agent (Claude via MCP):
-   a. McpGenerateTexture({usage: "material_base", prompt: "goblin skin, green"})
-      → T_Base_XXXX.png 생성 → McpImportTexture() → UTexture2D
-
-   b. 외부 3D API로 SkeletalMesh 생성
-      → SK_Humanoid_Base Skeleton 사용
-      → /Game/Generated/Characters/Goblin/SK_Goblin
-
-   c. Blueprint 생성
-      → /Game/Generated/Characters/Goblin/BP_Goblin
-      → SkeletalMeshComponent에 SK_Goblin 설정
-      → AnimBP에 UHktAnimInstance 설정
-
-   d. AnimSequence 생성 (Mixamo or AI Motion)
-      → RegisterAnimMapping("Anim.FullBody.Locomotion.Run", ...) 호출
-
-3. 런타임:
-   Story: .SpawnEntity("Entity.Character.Goblin")
-   → ActorRenderer → Convention Path → BP_Goblin → 자동 스폰
-   → AnimInstance → 태그 기반 애니메이션 자동 재생
-```
-
-### 시나리오: "화염구 스킬 전체 자동 생성"
-
-```
-1. AI Agent: McpBuildStory(fireball_json)
-   → Story.Combat.Fireball 컴파일 + 등록
-
-2. AI Agent: McpAnalyzeDependencies(fireball_json)
-   → 누락 Tag 분류:
-     VFX: VFX.Launch.Fire, VFX.Explosion.Fire
-     Entity: Entity.Projectile.Fireball
-     Item: (없음)
-     Anim: Anim.UpperBody.Combat.Cast
-
-3. AI Agent가 각 Generator MCP API 호출:
-   a. McpRequestAnimation({layer:"UpperBody", type:"Combat", name:"Cast"})
-   b. VFXGenerator가 VFX.Launch.Fire, VFX.Explosion.Fire 자동 생성
-   c. MeshGenerator가 Entity.Projectile.Fireball 메시 생성
-
-4. 런타임: Story.Combat.Fireball 실행
-   → 모든 참조 Tag가 Convention Path로 해결됨
-```
-
-### 시나리오: "화염 폭발 VFX"
+### 런타임 해결 흐름 (VFX 예시)
 
 ```
 1. Story: .PlayVFX(Self, "VFX.Explosion.Fire")
@@ -622,58 +570,32 @@ AnimBP 수정 불필요:
 
 ### 개요
 
-AI Agent가 JSON으로 게임 로직(Story)을 정의하면, `FHktStoryJsonCompiler`가 `FHktStoryBuilder` 메서드 호출로 변환하여 바이트코드를 컴파일하고 `FHktStoryRegistry`에 등록한다.
+`FHktStoryJsonCompiler`가 JSON → `FHktStoryBuilder` 메서드 호출로 변환 → 바이트코드 컴파일 → `FHktStoryRegistry` 등록.
 
-### 흐름
+**MCP 도구 사용법 및 Op 목록**: [AIAgentPipelineGuide.md - Section 3](./AIAgentPipelineGuide.md#3-step-by-step-작업-절차-스토리-생성--빌드) 참고
+
+### 컴파일 흐름 (C++)
 
 ```
-AI Agent (Claude via MCP)
-    │
-    ├── 1. McpGetStorySchema()    → 전체 op/register/property 스키마
-    ├── 2. McpGetStoryExamples()  → 4개 완성 예제 (Fireball, Spawn 등)
-    │
-    ├── 3. McpValidateStory(json) → 사전 검증 (컴파일 없이)
-    ├── 4. McpBuildStory(json)    → 컴파일 + 등록 + 결과 반환
-    │
-    └── 5. McpAnalyzeDependencies(json)
-         → 참조 Tag 분석 → Generator별 분류:
-            VFX.*       → HktVFXGenerator
-            Entity.*    → HktMeshGenerator
-            Anim.*      → HktAnimGenerator
-            Entity.Item.* → HktItemGenerator
-            기타        → 수동 생성 필요
+FHktStoryJsonCompiler::Compile(JsonStr)
+    ├── JSON 파싱 → storyTag, tags{}, steps[]
+    ├── tags{} → FGameplayTag alias 등록 (UGameplayTagsManager::AddNativeGameplayTag)
+    ├── steps[] → FHktStoryBuilder 메서드 호출 (45+ ops)
+    ├── FHktStoryBuilder → 바이트코드 생성
+    └── FHktStoryRegistry::Register(storyTag, bytecode)
 ```
 
-### JSON Story 형식
+### 의존 분석 (C++)
 
-```json
-{
-  "storyTag": "Story.Combat.Fireball",
-  "steps": [
-    { "op": "SpawnEntity", "args": { "register": "Spawned", "tag": "Entity.Projectile.Fireball" } },
-    { "op": "SetEntityType", "args": { "register": "Spawned", "type": "Projectile" } },
-    { "op": "CopyPosition", "args": { "to": "Spawned", "from": "Self" } },
-    { "op": "MoveForward", "args": { "register": "Spawned", "distance": 500 } },
-    { "op": "PlayVFX", "args": { "register": "Spawned", "tag": "VFX.Launch.Fire" } },
-    { "op": "ApplyDamage", "args": { "attacker": "Self", "target": "Target", "amount": 25 } }
-  ]
-}
 ```
-
-### 지원 Op 카테고리 (45+ ops)
-
-| 카테고리 | 대표 Op |
-|----------|---------|
-| control | Label, Jump, JumpIf, Return |
-| wait | WaitFrames, WaitUntilProperty |
-| entity | SpawnEntity, Destroy, SetEntityType |
-| position | CopyPosition, MoveForward, SetPosition |
-| combat | ApplyDamage, ApplyHeal, ApplyBuff |
-| vfx | PlayVFX, StopVFX |
-| entity | SpawnEntity, DestroyEntity (Entity.Item.* 포함) |
-| tags | AddTag, RemoveTag, HasTag |
-| spatial | ForEachInRadius, CountByTag |
-| data | StoreInt, LoadInt, CopyProperty |
+FHktStoryJsonCompiler::AnalyzeDependencies(JsonStr)
+    → steps에서 참조되는 모든 Tag 추출
+    → prefix별 분류:
+       VFX.*       → HktVFXGenerator
+       Entity.*    → HktMeshGenerator
+       Anim.*      → HktAnimGenerator
+       Entity.Item.* → HktItemGenerator
+```
 
 ### 핵심 파일
 

@@ -1,7 +1,10 @@
-# AI Agent Pipeline Guide — GameStoryVisualPipeline
+# AI Agent Pipeline Guide — Modular Step System
 
-> 이 문서는 AI Agent(Claude, GPT 등)가 MCP를 통해 게임 콘텐츠를 자동 생성할 때 따라야 하는 작업 절차서입니다.
+> **대상**: AI Agent (Claude, GPT 등) — MCP 도구 사용법과 작업 절차
+> **C++ 아키텍처 상세는 [GameStoryVisualPipeline.md](./GameStoryVisualPipeline.md) 참고**
+>
 > 코드를 모르는 AI Agent도 이 문서만 읽으면 작업할 수 있도록 작성되었습니다.
+> 각 스텝은 독립적이므로, 다른 에이전트가 중간부터 이어서 작업할 수 있습니다.
 
 ---
 
@@ -10,29 +13,77 @@
 ### 핵심 원리
 
 ```
-Story(게임 로직 JSON) → 필요한 리소스를 Tag로 참조 → Generator가 리소스 자동 생성
+사용자 컨셉 → Map + Story 설계 → Story JSON → 의존 어셋 분석 → Generator가 리소스 생성
 ```
 
-AI Agent가 수행하는 역할:
-1. **Story JSON 작성** — 게임 로직을 JSON 형식으로 정의
-2. **의존성 분석** — Story가 참조하는 Tag 중 누락된 리소스 파악
-3. **리소스 생성** — 각 Generator의 MCP API를 호출하여 VFX/Mesh/Anim/Item/Texture 생성
-4. **검증** — 생성된 에셋이 올바르게 등록되었는지 확인
+### 모듈식 스텝 구조
 
-### 전체 파이프라인 흐름
+각 스텝은 **독립적**으로 실행 가능하며, JSON 파일로 입출력을 주고받습니다.
 
 ```
-[1] Story JSON 작성
-     │
-[2] McpValidateStory(json)        ← 문법 검증
-     │
-[3] McpAnalyzeDependencies(json)  ← 누락 Tag 분석 → Generator별 분류
-     │
-[4] 각 Generator MCP API 호출     ← VFX / Mesh / Anim / Item / Texture
-     │
-[5] McpBuildStory(json)           ← 컴파일 + VM 등록
-     │
-[6] 런타임 실행 (UE5)             ← Convention Path로 에셋 자동 해결
+[Step 1] concept_design
+         사용자 컨셉 → 지형 명세 + 스토리 리스트
+              │
+     ┌────────┴────────┐
+     │                 │
+[Step 2]           [Step 3]
+map_generation     story_generation       ← 병렬 가능
+HktMap JSON          Story JSON들
+                       │
+                  [Step 4]
+                  asset_discovery
+                  어셋 명세 (Character/Item/VFX)
+                       │
+            ┌──────────┼──────────┐
+            │          │          │
+        [Step 5]   [Step 6]   [Step 7]
+        character  item       vfx           ← 병렬 가능
+        _generation _generation _generation
+        uasset들    uasset들    uasset들
+```
+
+### 스텝 MCP 도구 워크플로우
+
+```python
+# 1. 프로젝트 생성
+project = step_create_project(name="고블린 던전", concept="...")
+
+# 2. 스텝 시작 (입력 자동 해석)
+step_begin(project_id, "concept_design")
+
+# 3. 스텝 출력 저장 (완료 처리)
+step_save_output(project_id, "concept_design", output_json)
+
+# 4. 다음 스텝 — 다른 에이전트가 실행해도 됨
+input_data = step_load_input(project_id, "story_generation")
+step_begin(project_id, "story_generation")
+# ... 작업 수행 ...
+step_save_output(project_id, "story_generation", output_json)
+
+# 5. 실패 시
+step_fail(project_id, "vfx_generation", error="Niagara build failed")
+```
+
+### 스텝 데이터 파일 구조
+
+```
+.hkt_steps/{project_id}/
+├── manifest.json              ← 전체 프로젝트 상태
+├── concept_design/
+│   ├── input.json
+│   └── output.json            ← 지형 명세 + 스토리 리스트
+├── map_generation/
+│   └── output.json            ← HktMap JSON
+├── story_generation/
+│   └── output.json            ← Story JSON 파일 목록
+├── asset_discovery/
+│   └── output.json            ← 어셋 명세 (characters, items, vfx)
+├── character_generation/
+│   └── output.json            ← 생성된 uasset 경로들
+├── item_generation/
+│   └── output.json
+└── vfx_generation/
+    └── output.json
 ```
 
 ---
@@ -80,7 +131,11 @@ Tag가 정해지면 에셋이 저장될 경로도 자동 결정됩니다. `/Game
 
 ---
 
-## 3. Step-by-Step 작업 절차
+## 3. Step-by-Step 작업 절차 (스토리 생성 ~ 빌드)
+
+> 아래는 `story_generation` 스텝 내에서 수행하는 세부 절차입니다.
+> `step_begin(project_id, "story_generation")`으로 시작하고,
+> 완료 후 `step_save_output()`으로 결과를 기록합니다.
 
 ### Step 1: Story JSON 작성
 
@@ -666,9 +721,15 @@ HktGameplayGenerator/
 │   ├── HktAnimGenerator/        ← Anim.* Tag → AnimSequence/Montage/BlendSpace
 │   ├── HktItemGenerator/        ← Entity.Item.* Tag → StaticMesh + Icon
 │   ├── HktStoryGenerator/       ← Story JSON → Bytecode 컴파일
+│   ├── HktMapGenerator/         ← HktMap JSON → Landscape + Spawner + Story 연결
 │   ├── HktMcpBridge/            ← MCP 런타임 브릿지
-│   └── HktMcpBridgeEditor/      ← MCP 에디터 브릿지 + 기본 MCP Tools
+│   └── HktMcpBridgeEditor/      ← MCP 에디터 브릿지 + Step Viewer 패널
 ├── McpServer/                   ← Python MCP Server (Claude Desktop/Cursor 연동)
+│   └── src/hkt_mcp/
+│       ├── steps/               ← 모듈식 스텝 시스템 (models, store)
+│       ├── tools/               ← MCP 도구 (step_tools, map_tools, story_tools 등)
+│       ├── bridge/              ← UE5 통신 (Remote Control API)
+│       └── server.py            ← 도구 등록 & 디스패치
 └── Docs/
     ├── GameStoryVisualPipeline.md   ← 아키텍처 상세 문서
     ├── VFXNiagaraConfigGuide.md     ← VFX Config 필드 레퍼런스
