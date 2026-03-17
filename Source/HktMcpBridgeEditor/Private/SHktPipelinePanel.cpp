@@ -4,10 +4,8 @@
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Notifications/SProgressBar.h"
-#include "Widgets/Images/SImage.h"
 #include "Widgets/SBoxPanel.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -15,58 +13,56 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "EditorAssetLibrary.h"
-#include "ContentBrowserModule.h"
-#include "IContentBrowserSingleton.h"
 #include "Styling/AppStyle.h"
+#include "DesktopPlatformModule.h"
 
-#define LOCTEXT_NAMESPACE "HktPipelinePanel"
+#define LOCTEXT_NAMESPACE "HktStepViewer"
 
-// ==================== Phase Display Names ====================
+// ==================== Step Display Names ====================
 
-static const TMap<FString, FString> PhaseDisplayNames = {
-	{TEXT("design"), TEXT("Design")},
-	{TEXT("task_planning"), TEXT("Task Planning")},
-	{TEXT("story_building"), TEXT("Story Building")},
-	{TEXT("asset_discovery"), TEXT("Asset Discovery")},
-	{TEXT("verification"), TEXT("Verification")},
+static const TMap<FString, FString> StepDisplayNames = {
+	{TEXT("concept_design"),        TEXT("Concept Design")},
+	{TEXT("map_generation"),        TEXT("Map Generation")},
+	{TEXT("story_generation"),      TEXT("Story Generation")},
+	{TEXT("asset_discovery"),       TEXT("Asset Discovery")},
+	{TEXT("character_generation"),  TEXT("Character Generation")},
+	{TEXT("item_generation"),       TEXT("Item Generation")},
+	{TEXT("vfx_generation"),        TEXT("VFX Generation")},
 };
 
-static const TArray<FString> PhaseOrder = {
-	TEXT("design"),
-	TEXT("task_planning"),
-	TEXT("story_building"),
+static const TArray<FString> StepOrder = {
+	TEXT("concept_design"),
+	TEXT("map_generation"),
+	TEXT("story_generation"),
 	TEXT("asset_discovery"),
-	TEXT("verification"),
+	TEXT("character_generation"),
+	TEXT("item_generation"),
+	TEXT("vfx_generation"),
 };
 
 // ==================== Status Colors ====================
 
 static FSlateColor StatusToColor(const FString& Status)
 {
-	if (Status == TEXT("completed")) return FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f));
+	if (Status == TEXT("completed"))   return FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f));
 	if (Status == TEXT("in_progress")) return FSlateColor(FLinearColor(0.3f, 0.6f, 1.0f));
-	if (Status == TEXT("failed")) return FSlateColor(FLinearColor(1.0f, 0.3f, 0.2f));
-	if (Status == TEXT("blocked")) return FSlateColor(FLinearColor(1.0f, 0.6f, 0.0f));
-	if (Status == TEXT("review")) return FSlateColor(FLinearColor(0.8f, 0.6f, 1.0f));
-	return FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)); // pending
+	if (Status == TEXT("failed"))      return FSlateColor(FLinearColor(1.0f, 0.3f, 0.2f));
+	return FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)); // not_started
 }
 
 static FString StatusToSymbol(const FString& Status)
 {
-	if (Status == TEXT("completed")) return TEXT("[OK]");
+	if (Status == TEXT("completed"))   return TEXT("[OK]");
 	if (Status == TEXT("in_progress")) return TEXT("[..]");
-	if (Status == TEXT("failed")) return TEXT("[X]");
-	if (Status == TEXT("blocked")) return TEXT("[!]");
-	if (Status == TEXT("review")) return TEXT("[?]");
-	return TEXT("[ ]"); // pending
+	if (Status == TEXT("failed"))      return TEXT("[X]");
+	return TEXT("[ ]"); // not_started
 }
 
 // ==================== Construct ====================
 
 void SHktPipelinePanel::Construct(const FArguments& InArgs)
 {
-	PipelineDataPath = FindPipelineDataPath();
+	StepsDataPath = FindStepsDataPath();
 
 	ChildSlot
 	[
@@ -83,7 +79,7 @@ void SHktPipelinePanel::Construct(const FArguments& InArgs)
 			.VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("PanelTitle", "Pipeline Monitor"))
+				.Text(LOCTEXT("PanelTitle", "Step Viewer"))
 				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 16))
 			]
 			+ SHorizontalBox::Slot()
@@ -115,28 +111,18 @@ void SHktPipelinePanel::Construct(const FArguments& InArgs)
 	OnRefreshClicked();
 }
 
-// ==================== Pipeline Data Path ====================
+// ==================== Steps Data Path ====================
 
-FString SHktPipelinePanel::FindPipelineDataPath() const
+FString SHktPipelinePanel::FindStepsDataPath() const
 {
-	// Search for .pipeline_data directory in likely locations
 	TArray<FString> SearchPaths;
-
-	// Relative to plugin/project
-	FString PluginDir = FPaths::GetPath(FPaths::GetPath(
-		FModuleManager::Get().GetModuleFilename("HktMcpBridgeEditor")));
-
-	// McpServer/.pipeline_data (most likely - same level as McpServer)
 	FString ProjectRoot = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 
-	// Look for McpServer directory near the project
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".."), TEXT("McpServer"), TEXT(".pipeline_data")));
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("McpServer"), TEXT(".pipeline_data")));
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".pipeline_data")));
-
-	// Also check the plugin's own directory structure
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".."), TEXT("McpServer"), TEXT(".hkt_steps")));
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("McpServer"), TEXT(".hkt_steps")));
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".hkt_steps")));
 	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("Plugins"), TEXT("HktGameplayGenerator"),
-		TEXT("McpServer"), TEXT(".pipeline_data")));
+		TEXT("McpServer"), TEXT(".hkt_steps")));
 
 	for (const FString& Path : SearchPaths)
 	{
@@ -144,60 +130,57 @@ FString SHktPipelinePanel::FindPipelineDataPath() const
 		FPaths::NormalizeDirectoryName(Normalized);
 		if (FPaths::DirectoryExists(Normalized))
 		{
-			UE_LOG(LogHktMcpEditor, Log, TEXT("Pipeline data found at: %s"), *Normalized);
+			UE_LOG(LogHktMcpEditor, Log, TEXT("Steps data found at: %s"), *Normalized);
 			return Normalized;
 		}
 	}
 
-	// Default fallback
-	FString DefaultPath = FPaths::Combine(ProjectRoot, TEXT(".pipeline_data"));
-	UE_LOG(LogHktMcpEditor, Warning, TEXT("Pipeline data not found, using default: %s"), *DefaultPath);
+	FString DefaultPath = FPaths::Combine(ProjectRoot, TEXT(".hkt_steps"));
+	UE_LOG(LogHktMcpEditor, Warning, TEXT("Steps data not found, using default: %s"), *DefaultPath);
 	return DefaultPath;
 }
 
-// ==================== Pipeline Discovery & Loading ====================
+// ==================== Project Discovery & Loading ====================
 
-void SHktPipelinePanel::DiscoverPipelines()
+void SHktPipelinePanel::DiscoverProjects()
 {
-	PipelineIds.Empty();
+	ProjectIds.Empty();
 
-	FString PipelinesDir = FPaths::Combine(PipelineDataPath, TEXT("pipelines"));
-	if (!FPaths::DirectoryExists(PipelinesDir))
+	if (!FPaths::DirectoryExists(StepsDataPath))
 	{
 		return;
 	}
 
-	TArray<FString> Files;
-	IFileManager::Get().FindFiles(Files, *FPaths::Combine(PipelinesDir, TEXT("*.json")), true, false);
+	TArray<FString> Directories;
+	IFileManager::Get().FindFiles(Directories, *FPaths::Combine(StepsDataPath, TEXT("*")), false, true);
 
-	for (const FString& File : Files)
+	for (const FString& Dir : Directories)
 	{
-		if (!File.EndsWith(TEXT(".bak")))
+		FString ManifestPath = FPaths::Combine(StepsDataPath, Dir, TEXT("manifest.json"));
+		if (FPaths::FileExists(ManifestPath))
 		{
-			FString Id = FPaths::GetBaseFilename(File);
-			PipelineIds.Add(Id);
+			ProjectIds.Add(Dir);
 		}
 	}
 
-	PipelineIds.Sort();
+	ProjectIds.Sort();
 }
 
-bool SHktPipelinePanel::LoadPipeline(const FString& PipelineId)
+bool SHktPipelinePanel::LoadProject(const FString& ProjectId)
 {
-	FString FilePath = FPaths::Combine(PipelineDataPath, TEXT("pipelines"),
-		PipelineId + TEXT(".json"));
+	FString FilePath = FPaths::Combine(StepsDataPath, ProjectId, TEXT("manifest.json"));
 
 	FString JsonString;
 	if (!FFileHelper::LoadFileToString(JsonString, *FilePath))
 	{
-		UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to load pipeline file: %s"), *FilePath);
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to load manifest: %s"), *FilePath);
 		return false;
 	}
 
-	return ParsePipelineJson(JsonString);
+	return ParseManifestJson(JsonString);
 }
 
-bool SHktPipelinePanel::ParsePipelineJson(const FString& JsonString)
+bool SHktPipelinePanel::ParseManifestJson(const FString& JsonString)
 {
 	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
 	TSharedPtr<FJsonObject> Root;
@@ -206,109 +189,57 @@ bool SHktPipelinePanel::ParsePipelineJson(const FString& JsonString)
 		return false;
 	}
 
-	CurrentPipeline = FPipelineSummary();
-	CurrentPipeline.Id = Root->GetStringField(TEXT("id"));
-	CurrentPipeline.Name = Root->GetStringField(TEXT("name"));
-	CurrentPipeline.Description = Root->GetStringField(TEXT("description"));
-	CurrentPipeline.CurrentPhase = Root->GetStringField(TEXT("current_phase"));
+	CurrentProject = FProjectSummary();
+	CurrentProject.ProjectId = Root->GetStringField(TEXT("project_id"));
+	CurrentProject.ProjectName = Root->GetStringField(TEXT("project_name"));
+	Root->TryGetStringField(TEXT("concept"), CurrentProject.Concept);
+	Root->TryGetStringField(TEXT("created_at"), CurrentProject.CreatedAt);
+	Root->TryGetStringField(TEXT("updated_at"), CurrentProject.UpdatedAt);
 
-	// Parse phases
-	const TSharedPtr<FJsonObject>* PhasesObj = nullptr;
-	if (Root->TryGetObjectField(TEXT("phases"), PhasesObj))
+	// Parse steps
+	const TSharedPtr<FJsonObject>* StepsObj = nullptr;
+	if (Root->TryGetObjectField(TEXT("steps"), StepsObj))
 	{
-		for (const FString& PhaseName : PhaseOrder)
+		CurrentProject.TotalCount = 0;
+		CurrentProject.CompletedCount = 0;
+
+		for (const FString& StepType : StepOrder)
 		{
-			const TSharedPtr<FJsonObject>* PhaseObj = nullptr;
-			if ((*PhasesObj)->TryGetObjectField(PhaseName, PhaseObj))
+			const TSharedPtr<FJsonObject>* StepObj = nullptr;
+			if ((*StepsObj)->TryGetObjectField(StepType, StepObj))
 			{
-				FPipelinePhaseEntry Entry;
-				Entry.Phase = PhaseName;
-				Entry.Status = (*PhaseObj)->GetStringField(TEXT("status"));
-				CurrentPipeline.Phases.Add(Entry);
-			}
-		}
-	}
+				FStepEntry Entry;
+				Entry.StepType = StepType;
 
-	// Parse tasks
-	const TArray<TSharedPtr<FJsonValue>>* TasksArray = nullptr;
-	if (Root->TryGetArrayField(TEXT("tasks"), TasksArray))
-	{
-		for (const TSharedPtr<FJsonValue>& TaskVal : *TasksArray)
-		{
-			const TSharedPtr<FJsonObject>& TaskObj = TaskVal->AsObject();
-			if (!TaskObj.IsValid()) continue;
-
-			FPipelineTaskEntry Task;
-			Task.Id = TaskObj->GetStringField(TEXT("id"));
-			Task.Title = TaskObj->GetStringField(TEXT("title"));
-			Task.Category = TaskObj->GetStringField(TEXT("category"));
-			Task.Status = TaskObj->GetStringField(TEXT("status"));
-			Task.Phase = TaskObj->GetStringField(TEXT("phase"));
-			TaskObj->TryGetStringField(TEXT("mcp_tool_hint"), Task.McpToolHint);
-			TaskObj->TryGetStringField(TEXT("error"), Task.Error);
-
-			// Parse tags
-			const TArray<TSharedPtr<FJsonValue>>* TagsArray = nullptr;
-			if (TaskObj->TryGetArrayField(TEXT("tags"), TagsArray))
-			{
-				for (const auto& TagVal : *TagsArray)
+				if (const FString* Name = StepDisplayNames.Find(StepType))
 				{
-					Task.Tags.Add(TagVal->AsString());
+					Entry.DisplayName = *Name;
+				}
+				else
+				{
+					Entry.DisplayName = StepType;
+				}
+
+				(*StepObj)->TryGetStringField(TEXT("status"), Entry.Status);
+				(*StepObj)->TryGetStringField(TEXT("agent_id"), Entry.AgentId);
+				(*StepObj)->TryGetStringField(TEXT("started_at"), Entry.StartedAt);
+				(*StepObj)->TryGetStringField(TEXT("completed_at"), Entry.CompletedAt);
+				(*StepObj)->TryGetStringField(TEXT("error"), Entry.Error);
+
+				// Resolve file paths
+				FString StepDir = FPaths::Combine(StepsDataPath, SelectedProjectId, StepType);
+				Entry.OutputFilePath = FPaths::Combine(StepDir, TEXT("output.json"));
+				Entry.InputFilePath = FPaths::Combine(StepDir, TEXT("input.json"));
+				Entry.bHasOutput = FPaths::FileExists(Entry.OutputFilePath);
+				Entry.bHasInput = FPaths::FileExists(Entry.InputFilePath);
+
+				CurrentProject.Steps.Add(Entry);
+				CurrentProject.TotalCount++;
+				if (Entry.Status == TEXT("completed"))
+				{
+					CurrentProject.CompletedCount++;
 				}
 			}
-
-			// Extract asset path from result if present
-			const TSharedPtr<FJsonObject>* ResultObj = nullptr;
-			if (TaskObj->TryGetObjectField(TEXT("result"), ResultObj) && ResultObj)
-			{
-				// Look for common asset path fields
-				FString AssetPath;
-				if ((*ResultObj)->TryGetStringField(TEXT("asset_path"), AssetPath) ||
-					(*ResultObj)->TryGetStringField(TEXT("assetPath"), AssetPath) ||
-					(*ResultObj)->TryGetStringField(TEXT("path"), AssetPath))
-				{
-					Task.ResultAssetPath = AssetPath;
-				}
-			}
-
-			CurrentPipeline.Tasks.Add(Task);
-		}
-	}
-
-	// Count tasks per phase
-	for (FPipelinePhaseEntry& PhaseEntry : CurrentPipeline.Phases)
-	{
-		for (const FPipelineTaskEntry& Task : CurrentPipeline.Tasks)
-		{
-			if (Task.Phase == PhaseEntry.Phase)
-			{
-				PhaseEntry.TotalTasks++;
-				if (Task.Status == TEXT("completed"))
-				{
-					PhaseEntry.CompletedTasks++;
-				}
-			}
-		}
-	}
-
-	// Parse checkpoints
-	const TArray<TSharedPtr<FJsonValue>>* CpArray = nullptr;
-	if (Root->TryGetArrayField(TEXT("checkpoints"), CpArray))
-	{
-		for (const TSharedPtr<FJsonValue>& CpVal : *CpArray)
-		{
-			const TSharedPtr<FJsonObject>& CpObj = CpVal->AsObject();
-			if (!CpObj.IsValid()) continue;
-
-			FPipelineCheckpointEntry Cp;
-			Cp.Id = CpObj->GetStringField(TEXT("id"));
-			Cp.Phase = CpObj->GetStringField(TEXT("phase"));
-			Cp.Title = CpObj->GetStringField(TEXT("title"));
-
-			FString Action;
-			Cp.bPending = !CpObj->TryGetStringField(TEXT("action"), Action) || Action.IsEmpty();
-
-			CurrentPipeline.Checkpoints.Add(Cp);
 		}
 	}
 
@@ -321,67 +252,66 @@ void SHktPipelinePanel::RebuildContent()
 {
 	ContentBox->ClearChildren();
 
-	if (PipelineIds.Num() == 0)
+	if (ProjectIds.Num() == 0)
 	{
 		ContentBox->AddSlot()
 			.AutoHeight()
 			.Padding(0, 20)
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("NoPipelines", "No pipelines found.\n\nUse pipeline_create via MCP to start a new pipeline."))
+				.Text(LOCTEXT("NoProjects", "No projects found.\n\nUse step_create_project via MCP to start a new project."))
 				.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
 			];
 		return;
 	}
 
-	// Pipeline selector
+	// Project selector
 	ContentBox->AddSlot()
 		.AutoHeight()
 		.Padding(0, 0, 0, 8)
 		[
-			BuildPipelineSelector()
+			BuildProjectSelector()
 		];
 
-	if (SelectedPipelineId.IsEmpty())
+	if (SelectedProjectId.IsEmpty())
 	{
 		return;
 	}
 
-	// Pipeline name & description
+	// Project name & concept
 	ContentBox->AddSlot()
 		.AutoHeight()
 		.Padding(0, 0, 0, 4)
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(CurrentPipeline.Name))
+			.Text(FText::FromString(CurrentProject.ProjectName))
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 14))
 		];
 
-	if (!CurrentPipeline.Description.IsEmpty())
+	if (!CurrentProject.Concept.IsEmpty())
 	{
+		FString TruncatedConcept = CurrentProject.Concept;
+		if (TruncatedConcept.Len() > 200)
+		{
+			TruncatedConcept = TruncatedConcept.Left(200) + TEXT("...");
+		}
 		ContentBox->AddSlot()
 			.AutoHeight()
 			.Padding(0, 0, 0, 8)
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(CurrentPipeline.Description))
+				.Text(FText::FromString(TruncatedConcept))
 				.ColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)))
+				.AutoWrapText(true)
 			];
 	}
 
-	// Checkpoint alert (if pending)
-	ContentBox->AddSlot()
-		.AutoHeight()
-		[
-			BuildCheckpointAlert()
-		];
-
-	// Phase progress
+	// Step overview (progress bar)
 	ContentBox->AddSlot()
 		.AutoHeight()
 		.Padding(0, 0, 0, 12)
 		[
-			BuildPhaseProgress()
+			BuildStepOverview()
 		];
 
 	ContentBox->AddSlot()
@@ -390,35 +320,29 @@ void SHktPipelinePanel::RebuildContent()
 			SNew(SSeparator)
 		];
 
-	// Current phase label
-	FString PhaseDisplay = CurrentPipeline.CurrentPhase;
-	if (const FString* Display = PhaseDisplayNames.Find(CurrentPipeline.CurrentPhase))
-	{
-		PhaseDisplay = *Display;
-	}
-
+	// Step list header
 	ContentBox->AddSlot()
 		.AutoHeight()
 		.Padding(0, 8, 0, 4)
 		[
 			SNew(STextBlock)
 			.Text(FText::Format(
-				LOCTEXT("CurrentPhaseFmt", "Tasks - {0}"),
-				FText::FromString(PhaseDisplay)))
+				LOCTEXT("StepListHeader", "Steps ({0}/{1} completed)"),
+				FText::AsNumber(CurrentProject.CompletedCount),
+				FText::AsNumber(CurrentProject.TotalCount)))
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
 		];
 
-	// Task list
+	// Step list
 	ContentBox->AddSlot()
 		.FillHeight(1.0f)
 		[
-			BuildTaskList()
+			BuildStepList()
 		];
 }
 
-TSharedRef<SWidget> SHktPipelinePanel::BuildPipelineSelector()
+TSharedRef<SWidget> SHktPipelinePanel::BuildProjectSelector()
 {
-	// Simple text buttons for each pipeline
 	TSharedRef<SHorizontalBox> Box = SNew(SHorizontalBox);
 
 	Box->AddSlot()
@@ -427,13 +351,13 @@ TSharedRef<SWidget> SHktPipelinePanel::BuildPipelineSelector()
 		.Padding(0, 0, 8, 0)
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("Pipeline", "Pipeline:"))
+			.Text(LOCTEXT("Project", "Project:"))
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
 		];
 
-	for (const FString& Id : PipelineIds)
+	for (const FString& Id : ProjectIds)
 	{
-		bool bSelected = (Id == SelectedPipelineId);
+		bool bSelected = (Id == SelectedProjectId);
 		Box->AddSlot()
 			.AutoWidth()
 			.Padding(2, 0)
@@ -441,7 +365,7 @@ TSharedRef<SWidget> SHktPipelinePanel::BuildPipelineSelector()
 				SNew(SButton)
 				.Text(FText::FromString(Id))
 				.OnClicked_Lambda([this, Id]() {
-					OnPipelineSelected(Id);
+					OnProjectSelected(Id);
 					return FReply::Handled();
 				})
 				.ButtonColorAndOpacity(bSelected
@@ -453,206 +377,114 @@ TSharedRef<SWidget> SHktPipelinePanel::BuildPipelineSelector()
 	return Box;
 }
 
-TSharedRef<SWidget> SHktPipelinePanel::BuildPhaseProgress()
+TSharedRef<SWidget> SHktPipelinePanel::BuildStepOverview()
 {
 	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox);
 
-	for (const FPipelinePhaseEntry& Phase : CurrentPipeline.Phases)
-	{
-		FString DisplayName = Phase.Phase;
-		if (const FString* Name = PhaseDisplayNames.Find(Phase.Phase))
-		{
-			DisplayName = *Name;
-		}
+	float OverallProgress = (CurrentProject.TotalCount > 0)
+		? static_cast<float>(CurrentProject.CompletedCount) / CurrentProject.TotalCount
+		: 0.0f;
 
-		bool bIsCurrent = (Phase.Phase == CurrentPipeline.CurrentPhase);
-		FLinearColor PhaseColor = StatusToColor(Phase.Status).GetSpecifiedColor();
-
-		// Progress fraction
-		float Progress = (Phase.TotalTasks > 0)
-			? static_cast<float>(Phase.CompletedTasks) / Phase.TotalTasks
-			: (Phase.Status == TEXT("completed") ? 1.0f : 0.0f);
-
-		FString TaskCountStr = (Phase.TotalTasks > 0)
-			? FString::Printf(TEXT("%d/%d"), Phase.CompletedTasks, Phase.TotalTasks)
-			: TEXT("-");
-
-		Box->AddSlot()
-			.AutoHeight()
-			.Padding(0, 2)
-			[
-				SNew(SHorizontalBox)
-
-				// Current phase indicator
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(0, 0, 4, 0)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(bIsCurrent ? TEXT(">") : TEXT(" ")))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.3f, 0.8f, 1.0f)))
-				]
-
-				// Phase name
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(0, 0, 8, 0)
-				[
-					SNew(SBox)
-					.WidthOverride(120.0f)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(DisplayName))
-						.Font(bIsCurrent
-							? FCoreStyle::GetDefaultFontStyle("Bold", 10)
-							: FCoreStyle::GetDefaultFontStyle("Regular", 10))
-					]
-				]
-
-				// Progress bar
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				.VAlign(VAlign_Center)
-				.Padding(0, 0, 8, 0)
-				[
-					SNew(SBox)
-					.HeightOverride(14.0f)
-					[
-						SNew(SProgressBar)
-						.Percent(Progress)
-						.FillColorAndOpacity(PhaseColor)
-					]
-				]
-
-				// Task count
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(TaskCountStr))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)))
-				]
-			];
-	}
-
-	return Box;
-}
-
-TSharedRef<SWidget> SHktPipelinePanel::BuildCheckpointAlert()
-{
-	// Find pending checkpoints
-	bool bHasPending = false;
-	FString PendingTitle;
-	for (const FPipelineCheckpointEntry& Cp : CurrentPipeline.Checkpoints)
-	{
-		if (Cp.bPending)
-		{
-			bHasPending = true;
-			PendingTitle = Cp.Title;
-			break;
-		}
-	}
-
-	if (!bHasPending)
-	{
-		return SNew(SBox); // empty
-	}
-
-	return SNew(SBorder)
-		.BorderBackgroundColor(FLinearColor(0.8f, 0.6f, 0.0f, 0.3f))
-		.Padding(8.0f)
+	// Overall progress bar
+	Box->AddSlot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 8)
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0, 0, 8, 0)
-			[
-				SNew(STextBlock)
-				.Text(LOCTEXT("CheckpointIcon", "[!]"))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 12))
-				.ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.8f, 0.0f)))
-			]
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
 			.VAlign(VAlign_Center)
 			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.AutoHeight()
+				SNew(SBox)
+				.HeightOverride(16.0f)
 				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("CheckpointPending", "Checkpoint Pending Review"))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-					.ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.8f, 0.0f)))
-				]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				[
-					SNew(STextBlock)
-					.Text(FText::Format(
-						LOCTEXT("CheckpointDetailFmt", "{0} - Reply approve/revise/reject in the conversation"),
-						FText::FromString(PendingTitle)))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.7f, 0.7f, 0.7f)))
+					SNew(SProgressBar)
+					.Percent(OverallProgress)
+					.FillColorAndOpacity(FLinearColor(0.2f, 0.6f, 0.9f))
 				]
 			]
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(8, 0, 0, 0)
+			[
+				SNew(STextBlock)
+				.Text(FText::Format(
+					LOCTEXT("ProgressFmt", "{0}%"),
+					FText::AsNumber(FMath::RoundToInt(OverallProgress * 100.f))))
+				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+			]
 		];
-}
 
-TSharedRef<SWidget> SHktPipelinePanel::BuildTaskList()
-{
-	// Build filtered list items (current phase tasks)
-	TaskListItems.Empty();
-	for (FPipelineTaskEntry& Task : CurrentPipeline.Tasks)
+	// Mini step indicators (horizontal dots/boxes)
+	TSharedRef<SHorizontalBox> StepDots = SNew(SHorizontalBox);
+	for (const FStepEntry& Step : CurrentProject.Steps)
 	{
-		if (Task.Phase == CurrentPipeline.CurrentPhase)
-		{
-			TaskListItems.Add(MakeShared<FPipelineTaskEntry>(Task));
-		}
+		FSlateColor Color = StatusToColor(Step.Status);
+		StepDots->AddSlot()
+			.FillWidth(1.0f)
+			.Padding(1, 0)
+			[
+				SNew(SBox)
+				.HeightOverride(4.0f)
+				[
+					SNew(SBorder)
+					.BorderBackgroundColor(Color.GetSpecifiedColor())
+				]
+			];
 	}
 
-	// Sort: in_progress first, then pending, then completed, then failed
-	TaskListItems.Sort([](const TSharedPtr<FPipelineTaskEntry>& A, const TSharedPtr<FPipelineTaskEntry>& B)
-	{
-		auto Priority = [](const FString& S) -> int32
-		{
-			if (S == TEXT("in_progress")) return 0;
-			if (S == TEXT("blocked")) return 1;
-			if (S == TEXT("review")) return 2;
-			if (S == TEXT("pending")) return 3;
-			if (S == TEXT("failed")) return 4;
-			if (S == TEXT("completed")) return 5;
-			return 6;
-		};
-		return Priority(A->Status) < Priority(B->Status);
-	});
+	Box->AddSlot()
+		.AutoHeight()
+		[
+			StepDots
+		];
 
-	return SAssignNew(TaskListView, SListView<TSharedPtr<FPipelineTaskEntry>>)
-		.ListItemsSource(&TaskListItems)
-		.OnGenerateRow(this, &SHktPipelinePanel::OnGenerateTaskRow)
+	return Box;
+}
+
+TSharedRef<SWidget> SHktPipelinePanel::BuildStepList()
+{
+	StepListItems.Empty();
+	for (FStepEntry& Step : CurrentProject.Steps)
+	{
+		StepListItems.Add(MakeShared<FStepEntry>(Step));
+	}
+
+	return SAssignNew(StepListView, SListView<TSharedPtr<FStepEntry>>)
+		.ListItemsSource(&StepListItems)
+		.OnGenerateRow(this, &SHktPipelinePanel::OnGenerateStepRow)
 		.SelectionMode(ESelectionMode::None);
 }
 
-TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateTaskRow(
-	TSharedPtr<FPipelineTaskEntry> Item,
+TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateStepRow(
+	TSharedPtr<FStepEntry> Item,
 	const TSharedRef<STableViewBase>& OwnerTable)
 {
 	FString StatusSym = StatusToSymbol(Item->Status);
 	FSlateColor Color = StatusToColor(Item->Status);
 
-	// Tags display
-	FString TagsStr;
-	for (const FString& TagEntry : Item->Tags)
+	// Subtitle: agent + timing info
+	FString SubLine;
+	if (!Item->AgentId.IsEmpty())
 	{
-		if (!TagsStr.IsEmpty()) TagsStr += TEXT(", ");
-		TagsStr += TagEntry;
+		SubLine += FString::Printf(TEXT("Agent: %s"), *Item->AgentId);
 	}
+	if (!Item->CompletedAt.IsEmpty())
+	{
+		if (!SubLine.IsEmpty()) SubLine += TEXT(" | ");
+		SubLine += FString::Printf(TEXT("Done: %s"), *Item->CompletedAt.Left(19));
+	}
+	else if (!Item->StartedAt.IsEmpty())
+	{
+		if (!SubLine.IsEmpty()) SubLine += TEXT(" | ");
+		SubLine += FString::Printf(TEXT("Started: %s"), *Item->StartedAt.Left(19));
+	}
+
+	// I/O indicators
+	FString IoLine;
+	if (Item->bHasInput) IoLine += TEXT("[IN]");
+	if (Item->bHasOutput) IoLine += TEXT(" [OUT]");
 
 	TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
 		// Status symbol
@@ -667,7 +499,7 @@ TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateTaskRow(
 			.ColorAndOpacity(Color)
 		]
 
-		// Title + category
+		// Step name + subtitle
 		+ SHorizontalBox::Slot()
 		.FillWidth(1.0f)
 		.VAlign(VAlign_Center)
@@ -677,21 +509,29 @@ TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateTaskRow(
 			.AutoHeight()
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Item->Title))
+				.Text(FText::FromString(Item->DisplayName))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 10))
 			]
 			+ SVerticalBox::Slot()
 			.AutoHeight()
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(
-					FString::Printf(TEXT("%s%s%s"),
-						*Item->Category,
-						Item->McpToolHint.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" | %s"), *Item->McpToolHint),
-						TagsStr.IsEmpty() ? TEXT("") : *FString::Printf(TEXT(" | %s"), *TagsStr))))
+				.Text(FText::FromString(SubLine.IsEmpty() ? Item->StepType : SubLine))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 				.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
 			]
+		]
+
+		// I/O indicators
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(4, 0)
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(IoLine))
+			.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+			.ColorAndOpacity(FSlateColor(FLinearColor(0.4f, 0.7f, 0.4f)))
 		]
 
 		// Status text
@@ -706,19 +546,19 @@ TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateTaskRow(
 			.ColorAndOpacity(Color)
 		];
 
-	// Browse asset button (only if we have an asset path)
-	if (!Item->ResultAssetPath.IsEmpty())
+	// Browse output button (only if output exists)
+	if (Item->bHasOutput)
 	{
-		FString AssetPath = Item->ResultAssetPath;
+		FString OutputPath = Item->OutputFilePath;
 		Row->AddSlot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			[
 				SNew(SButton)
-				.Text(LOCTEXT("Browse", "Browse"))
-				.ToolTipText(FText::FromString(AssetPath))
-				.OnClicked_Lambda([this, AssetPath]() {
-					OnBrowseAsset(AssetPath);
+				.Text(LOCTEXT("ViewOutput", "Output"))
+				.ToolTipText(FText::FromString(OutputPath))
+				.OnClicked_Lambda([this, OutputPath]() {
+					OnBrowseStepOutput(OutputPath);
 					return FReply::Handled();
 				})
 			];
@@ -740,7 +580,7 @@ TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateTaskRow(
 			];
 	}
 
-	return SNew(STableRow<TSharedPtr<FPipelineTaskEntry>>, OwnerTable)
+	return SNew(STableRow<TSharedPtr<FStepEntry>>, OwnerTable)
 		.Padding(FMargin(4, 3))
 		[
 			Row
@@ -751,51 +591,40 @@ TSharedRef<ITableRow> SHktPipelinePanel::OnGenerateTaskRow(
 
 void SHktPipelinePanel::OnRefreshClicked()
 {
-	PipelineDataPath = FindPipelineDataPath();
-	DiscoverPipelines();
+	StepsDataPath = FindStepsDataPath();
+	DiscoverProjects();
 
-	if (!SelectedPipelineId.IsEmpty() && PipelineIds.Contains(SelectedPipelineId))
+	if (!SelectedProjectId.IsEmpty() && ProjectIds.Contains(SelectedProjectId))
 	{
-		LoadPipeline(SelectedPipelineId);
+		LoadProject(SelectedProjectId);
 	}
-	else if (PipelineIds.Num() > 0)
+	else if (ProjectIds.Num() > 0)
 	{
-		SelectedPipelineId = PipelineIds.Last();
-		LoadPipeline(SelectedPipelineId);
+		SelectedProjectId = ProjectIds.Last();
+		LoadProject(SelectedProjectId);
 	}
 	else
 	{
-		SelectedPipelineId.Empty();
-		CurrentPipeline = FPipelineSummary();
+		SelectedProjectId.Empty();
+		CurrentProject = FProjectSummary();
 	}
 
 	RebuildContent();
 }
 
-void SHktPipelinePanel::OnPipelineSelected(const FString& PipelineId)
+void SHktPipelinePanel::OnProjectSelected(const FString& ProjectId)
 {
-	SelectedPipelineId = PipelineId;
-	if (LoadPipeline(PipelineId))
+	SelectedProjectId = ProjectId;
+	if (LoadProject(ProjectId))
 	{
 		RebuildContent();
 	}
 }
 
-void SHktPipelinePanel::OnBrowseAsset(const FString& AssetPath)
+void SHktPipelinePanel::OnBrowseStepOutput(const FString& FilePath)
 {
-	// Try to sync Content Browser to the asset
-	if (UObject* Asset = UEditorAssetLibrary::LoadAsset(AssetPath))
-	{
-		FContentBrowserModule& ContentBrowserModule =
-			FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
-		TArray<UObject*> Assets;
-		Assets.Add(Asset);
-		ContentBrowserModule.Get().SyncBrowserToAssets(Assets);
-	}
-	else
-	{
-		UE_LOG(LogHktMcpEditor, Warning, TEXT("Asset not found: %s"), *AssetPath);
-	}
+	// Open the JSON file in the system's default editor
+	FPlatformProcess::LaunchFileInDefaultExternalApplication(*FilePath);
 }
 
 FSlateColor SHktPipelinePanel::GetStatusColor(const FString& Status) const
@@ -803,13 +632,13 @@ FSlateColor SHktPipelinePanel::GetStatusColor(const FString& Status) const
 	return StatusToColor(Status);
 }
 
-FText SHktPipelinePanel::GetPhaseDisplayName(const FString& Phase) const
+FText SHktPipelinePanel::GetStepDisplayName(const FString& StepType) const
 {
-	if (const FString* Name = PhaseDisplayNames.Find(Phase))
+	if (const FString* Name = StepDisplayNames.Find(StepType))
 	{
 		return FText::FromString(*Name);
 	}
-	return FText::FromString(Phase);
+	return FText::FromString(StepType);
 }
 
 #undef LOCTEXT_NAMESPACE

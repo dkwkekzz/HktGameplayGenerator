@@ -5,56 +5,45 @@
 #include "Widgets/Views/SListView.h"
 
 /**
- * Pipeline Monitor Panel - Dockable Slate tab for tracking pipeline progress.
+ * Step Viewer Panel - Dockable Slate tab for tracking modular step progress.
  *
- * Reads pipeline JSON files from .pipeline_data/ directory and displays:
- * - Pipeline selector
- * - Phase progress indicators
- * - Task list with status colors
- * - "Browse Asset" buttons for completed tasks with asset results
- * - Pending checkpoint alerts
+ * Reads step data from .hkt_steps/ directory and displays:
+ * - Project selector
+ * - Step progress overview (7 independent steps)
+ * - Input/output JSON preview per step
+ * - Asset browse buttons for completed generation steps
+ *
+ * Each step is independent and can be run by a different agent:
+ *   concept_design → map_generation / story_generation → asset_discovery
+ *   → character_generation / item_generation / vfx_generation
  */
 
-// Lightweight structs for UI display (parsed from JSON)
-struct FPipelineTaskEntry
+// Lightweight struct for step UI display (parsed from manifest JSON)
+struct FStepEntry
 {
-	FString Id;
-	FString Title;
-	FString Category;
+	FString StepType;
+	FString DisplayName;
 	FString Status;
-	FString Phase;
-	FString McpToolHint;
+	FString AgentId;
+	FString StartedAt;
+	FString CompletedAt;
 	FString Error;
-	TArray<FString> Tags;
-	// Result asset path (extracted from result JSON if present)
-	FString ResultAssetPath;
+	FString OutputFilePath;
+	FString InputFilePath;
+	bool bHasOutput = false;
+	bool bHasInput = false;
 };
 
-struct FPipelinePhaseEntry
+struct FProjectSummary
 {
-	FString Phase;
-	FString Status;
-	int32 CompletedTasks = 0;
-	int32 TotalTasks = 0;
-};
-
-struct FPipelineCheckpointEntry
-{
-	FString Id;
-	FString Phase;
-	FString Title;
-	bool bPending = false;
-};
-
-struct FPipelineSummary
-{
-	FString Id;
-	FString Name;
-	FString Description;
-	FString CurrentPhase;
-	TArray<FPipelinePhaseEntry> Phases;
-	TArray<FPipelineTaskEntry> Tasks;
-	TArray<FPipelineCheckpointEntry> Checkpoints;
+	FString ProjectId;
+	FString ProjectName;
+	FString Concept;
+	FString CreatedAt;
+	FString UpdatedAt;
+	TArray<FStepEntry> Steps;
+	int32 CompletedCount = 0;
+	int32 TotalCount = 0;
 };
 
 class SHktPipelinePanel : public SCompoundWidget
@@ -67,40 +56,39 @@ public:
 
 private:
 	// Data
-	FString PipelineDataPath;
-	TArray<FString> PipelineIds;
-	FString SelectedPipelineId;
-	FPipelineSummary CurrentPipeline;
-	TArray<TSharedPtr<FPipelineTaskEntry>> TaskListItems;
+	FString StepsDataPath;
+	TArray<FString> ProjectIds;
+	FString SelectedProjectId;
+	FProjectSummary CurrentProject;
+	TArray<TSharedPtr<FStepEntry>> StepListItems;
 
 	// Widgets
-	TSharedPtr<SListView<TSharedPtr<FPipelineTaskEntry>>> TaskListView;
+	TSharedPtr<SListView<TSharedPtr<FStepEntry>>> StepListView;
 
-	// Pipeline file discovery & loading
-	void DiscoverPipelines();
-	bool LoadPipeline(const FString& PipelineId);
-	bool ParsePipelineJson(const FString& JsonString);
-	FString FindPipelineDataPath() const;
+	// Project file discovery & loading
+	void DiscoverProjects();
+	bool LoadProject(const FString& ProjectId);
+	bool ParseManifestJson(const FString& JsonString);
+	FString FindStepsDataPath() const;
 
 	// UI builders
-	TSharedRef<SWidget> BuildPipelineSelector();
-	TSharedRef<SWidget> BuildPhaseProgress();
-	TSharedRef<SWidget> BuildCheckpointAlert();
-	TSharedRef<SWidget> BuildTaskList();
+	TSharedRef<SWidget> BuildProjectSelector();
+	TSharedRef<SWidget> BuildStepOverview();
+	TSharedRef<SWidget> BuildStepList();
 
-	// Task list view
-	TSharedRef<ITableRow> OnGenerateTaskRow(
-		TSharedPtr<FPipelineTaskEntry> Item,
+	// Step list view
+	TSharedRef<ITableRow> OnGenerateStepRow(
+		TSharedPtr<FStepEntry> Item,
 		const TSharedRef<STableViewBase>& OwnerTable);
 
 	// Actions
 	void OnRefreshClicked();
-	void OnPipelineSelected(const FString& PipelineId);
-	void OnBrowseAsset(const FString& AssetPath);
+	void OnProjectSelected(const FString& ProjectId);
+	void OnBrowseStepOutput(const FString& FilePath);
 
 	// Helpers
 	FSlateColor GetStatusColor(const FString& Status) const;
-	FText GetPhaseDisplayName(const FString& Phase) const;
+	FText GetStepDisplayName(const FString& StepType) const;
 
 	// Rebuild entire panel content
 	TSharedPtr<SVerticalBox> ContentBox;

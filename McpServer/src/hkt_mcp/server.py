@@ -22,7 +22,7 @@ from mcp.types import Tool, TextContent, Resource, Prompt
 # Import tool modules
 from .tools import asset_tools, level_tools, query_tools, runtime_tools
 from .tools import vfx_tools, story_tools, texture_tools, anim_tools, mesh_tools, item_tools
-from .tools import pipeline_tools
+from .tools import step_tools, map_tools
 from .bridge import editor_bridge, runtime_bridge
 
 # Configure logging
@@ -736,117 +736,184 @@ async def list_tools() -> list[Tool]:
         ),
     ])
 
-    # ==================== Pipeline Monitor Tools ====================
+    # ==================== Step Management Tools ====================
     tools.extend([
         Tool(
-            name="pipeline_create",
-            description="Create a new automation pipeline for tracking multi-phase gameplay generation (design → task planning → story building → asset discovery → verification).",
+            name="step_create_project",
+            description="Create a new generation project with modular step tracking. Each step (concept_design, map_generation, story_generation, asset_discovery, character_generation, item_generation, vfx_generation) runs independently.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Pipeline name (e.g., 'Goblin Dungeon')"},
-                    "description": {"type": "string", "description": "What this pipeline builds"},
-                    "metadata_json": {"type": "string", "description": "Optional JSON metadata (theme, room_count, etc.)"}
+                    "name": {"type": "string", "description": "Project name (e.g., 'Goblin Dungeon')"},
+                    "concept": {"type": "string", "description": "Initial concept text describing the desired gameplay scenario"},
+                    "config_json": {"type": "string", "description": "Optional JSON config (output paths, generation preferences)"}
                 },
-                "required": ["name", "description"]
+                "required": ["name", "concept"]
             }
         ),
         Tool(
-            name="pipeline_list",
-            description="List all pipelines with summary status.",
+            name="step_list_projects",
+            description="List all generation projects with step progress.",
             inputSchema={"type": "object", "properties": {}}
         ),
         Tool(
-            name="pipeline_get_status",
-            description="Get comprehensive pipeline status: current phase, task counts by status, pending checkpoints, and next action suggestion.",
+            name="step_get_status",
+            description="Get full project status including all step states, input/output file paths, and completion progress.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pipeline_id": {"type": "string", "description": "Pipeline ID"}
+                    "project_id": {"type": "string", "description": "Project ID"}
                 },
-                "required": ["pipeline_id"]
+                "required": ["project_id"]
             }
         ),
         Tool(
-            name="pipeline_delete",
-            description="Delete a pipeline.",
+            name="step_delete_project",
+            description="Delete a project and all its step data.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pipeline_id": {"type": "string", "description": "Pipeline ID to delete"}
+                    "project_id": {"type": "string", "description": "Project ID to delete"}
                 },
-                "required": ["pipeline_id"]
+                "required": ["project_id"]
             }
         ),
         Tool(
-            name="pipeline_add_tasks",
-            description="Add tasks to the pipeline's current phase. Each task tracks a unit of work (story to build, mesh to generate, etc.).",
+            name="step_begin",
+            description="Start working on a step. Marks it as in_progress and auto-resolves input from upstream step output. Can be called by any agent.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
-                    "tasks_json": {
-                        "type": "string",
-                        "description": "JSON array of tasks. Each: {category, title, description, tags?, parent_id?, mcp_tool_hint?}"
-                    }
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "step_type": {"type": "string", "description": "Step type: concept_design|map_generation|story_generation|asset_discovery|character_generation|item_generation|vfx_generation"},
+                    "input_json": {"type": "string", "description": "Optional explicit input JSON (overrides auto-resolve from upstream)"},
+                    "agent_id": {"type": "string", "description": "Optional agent identifier for tracking"}
                 },
-                "required": ["pipeline_id", "tasks_json"]
+                "required": ["project_id", "step_type"]
             }
         ),
         Tool(
-            name="pipeline_update_task",
-            description="Update a task's status, result, error, or add a note. Call this after executing an MCP tool to record the outcome.",
+            name="step_save_output",
+            description="Save step output data, marking the step as completed. Output is saved both in manifest and as a standalone JSON file for direct access.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
-                    "task_id": {"type": "string", "description": "Task ID to update"},
-                    "status": {"type": "string", "description": "New status: pending/in_progress/completed/failed/blocked/review"},
-                    "result_json": {"type": "string", "description": "JSON result data from execution"},
-                    "error": {"type": "string", "description": "Error message if failed"},
-                    "note": {"type": "string", "description": "Add a note to the task"}
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "step_type": {"type": "string", "description": "Step type"},
+                    "output_json": {"type": "string", "description": "JSON output data from the step"},
+                    "agent_id": {"type": "string", "description": "Optional agent identifier"}
                 },
-                "required": ["pipeline_id", "task_id"]
+                "required": ["project_id", "step_type", "output_json"]
             }
         ),
         Tool(
-            name="pipeline_get_tasks",
-            description="Get filtered task list from a pipeline.",
+            name="step_load_input",
+            description="Load input for a step. Auto-resolves from upstream step's output based on the dependency graph.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
-                    "phase": {"type": "string", "description": "Filter by phase (e.g., 'story_building')"},
-                    "status": {"type": "string", "description": "Filter by status (e.g., 'pending')"},
-                    "category": {"type": "string", "description": "Filter by category (e.g., 'mesh')"}
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "step_type": {"type": "string", "description": "Step type"}
                 },
-                "required": ["pipeline_id"]
+                "required": ["project_id", "step_type"]
             }
         ),
         Tool(
-            name="pipeline_request_advance",
-            description="Request advancing to the next pipeline phase. Generates a checkpoint report for user review. Phase advances only after user approves.",
+            name="step_fail",
+            description="Mark a step as failed with an error message.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pipeline_id": {"type": "string", "description": "Pipeline ID"}
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "step_type": {"type": "string", "description": "Step type"},
+                    "error": {"type": "string", "description": "Error description"}
                 },
-                "required": ["pipeline_id"]
+                "required": ["project_id", "step_type", "error"]
             }
         ),
         Tool(
-            name="pipeline_resolve_checkpoint",
-            description="Resolve a pipeline checkpoint: approve (advance), revise (stay and fix), or reject (go back to earlier phase).",
+            name="step_get_schema",
+            description="Get the input/output JSON schema for a step type. Useful for understanding what data a step expects and produces.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pipeline_id": {"type": "string", "description": "Pipeline ID"},
-                    "checkpoint_id": {"type": "string", "description": "Checkpoint ID to resolve"},
-                    "action": {"type": "string", "description": "Action: approve/revise/reject"},
-                    "feedback": {"type": "string", "description": "User feedback or modification notes"},
-                    "target_phase": {"type": "string", "description": "For reject: which phase to return to"}
+                    "step_type": {"type": "string", "description": "Step type"}
                 },
-                "required": ["pipeline_id", "checkpoint_id", "action"]
+                "required": ["step_type"]
+            }
+        ),
+        Tool(
+            name="step_list_types",
+            description="List all available step types with descriptions and dependency relationships.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+    ])
+
+    # ==================== Map Generation Tools ====================
+    tools.extend([
+        Tool(
+            name="get_map_schema",
+            description="Get the HktMap JSON schema. HktMap defines landscape, spawners, regions, and linked stories for dynamic loading.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        Tool(
+            name="validate_map",
+            description="Validate an HktMap JSON against the schema. Checks required fields, cross-references regions with spawners and stories.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "map_json": {"type": "string", "description": "HktMap JSON string to validate"}
+                },
+                "required": ["map_json"]
+            }
+        ),
+        Tool(
+            name="save_map",
+            description="Save an HktMap JSON to the maps directory.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "map_json": {"type": "string", "description": "HktMap JSON string to save"}
+                },
+                "required": ["map_json"]
+            }
+        ),
+        Tool(
+            name="load_map",
+            description="Load a saved HktMap JSON by its map_id.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "map_id": {"type": "string", "description": "Map ID to load"}
+                },
+                "required": ["map_id"]
+            }
+        ),
+        Tool(
+            name="list_maps",
+            description="List all saved HktMaps with summary info.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        Tool(
+            name="delete_map",
+            description="Delete a saved HktMap by ID.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "map_id": {"type": "string", "description": "Map ID to delete"}
+                },
+                "required": ["map_id"]
+            }
+        ),
+        Tool(
+            name="build_map",
+            description="Build an HktMap in UE5 - instantiate landscape, spawners, and load linked stories. Requires connected UE5 editor.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "map_json": {"type": "string", "description": "HktMap JSON to build in UE5"}
+                },
+                "required": ["map_json"]
             }
         ),
     ])
@@ -1054,56 +1121,59 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
     elif name == "get_socket_mappings":
         return await item_tools.get_socket_mappings(bridge)
 
-    # Pipeline Monitor Tools (no bridge needed — pure Python state management)
-    elif name == "pipeline_create":
-        return await pipeline_tools.pipeline_create(
-            arguments["name"], arguments["description"],
-            arguments.get("metadata_json", "{}")
+    # Step Management Tools (no bridge needed — pure Python state management)
+    elif name == "step_create_project":
+        return await step_tools.step_create_project(
+            arguments["name"], arguments["concept"],
+            arguments.get("config_json", "{}")
         )
-    elif name == "pipeline_list":
-        return await pipeline_tools.pipeline_list()
-    elif name == "pipeline_get_status":
-        return await pipeline_tools.pipeline_get_status(arguments["pipeline_id"])
-    elif name == "pipeline_delete":
-        return await pipeline_tools.pipeline_delete(arguments["pipeline_id"])
-    elif name == "pipeline_add_tasks":
-        return await pipeline_tools.pipeline_add_tasks(
-            arguments["pipeline_id"], arguments["tasks_json"]
+    elif name == "step_list_projects":
+        return await step_tools.step_list_projects()
+    elif name == "step_get_status":
+        return await step_tools.step_get_status(arguments["project_id"])
+    elif name == "step_delete_project":
+        return await step_tools.step_delete_project(arguments["project_id"])
+    elif name == "step_begin":
+        return await step_tools.step_begin(
+            arguments["project_id"], arguments["step_type"],
+            input_json=arguments.get("input_json", ""),
+            agent_id=arguments.get("agent_id", ""),
         )
-    elif name == "pipeline_update_task":
-        return await pipeline_tools.pipeline_update_task(
-            arguments["pipeline_id"], arguments["task_id"],
-            status=arguments.get("status", ""),
-            result_json=arguments.get("result_json", ""),
-            error=arguments.get("error", ""),
-            note=arguments.get("note", ""),
+    elif name == "step_save_output":
+        return await step_tools.step_save_output(
+            arguments["project_id"], arguments["step_type"],
+            arguments["output_json"],
+            agent_id=arguments.get("agent_id", ""),
         )
-    elif name == "pipeline_get_tasks":
-        return await pipeline_tools.pipeline_get_tasks(
-            arguments["pipeline_id"],
-            phase=arguments.get("phase", ""),
-            status=arguments.get("status", ""),
-            category=arguments.get("category", ""),
+    elif name == "step_load_input":
+        return await step_tools.step_load_input(
+            arguments["project_id"], arguments["step_type"],
         )
-    elif name == "pipeline_request_advance":
-        result = await pipeline_tools.pipeline_request_advance(arguments["pipeline_id"])
-        # Notify editor so Pipeline Monitor panel refreshes
-        try:
-            import json as _json
-            parsed = _json.loads(result)
-            if parsed.get("success"):
-                await query_tools.show_notification(
-                    bridge, "[Pipeline] Checkpoint created - review pending", 5.0)
-        except Exception:
-            pass
-        return result
-    elif name == "pipeline_resolve_checkpoint":
-        return await pipeline_tools.pipeline_resolve_checkpoint(
-            arguments["pipeline_id"], arguments["checkpoint_id"],
-            arguments["action"],
-            feedback=arguments.get("feedback", ""),
-            target_phase=arguments.get("target_phase", ""),
+    elif name == "step_fail":
+        return await step_tools.step_fail(
+            arguments["project_id"], arguments["step_type"],
+            arguments["error"],
         )
+    elif name == "step_get_schema":
+        return await step_tools.step_get_schema(arguments["step_type"])
+    elif name == "step_list_types":
+        return await step_tools.step_list_types()
+
+    # Map Generation Tools (no bridge needed for save/load/validate)
+    elif name == "get_map_schema":
+        return await map_tools.get_map_schema()
+    elif name == "validate_map":
+        return await map_tools.validate_map(arguments["map_json"])
+    elif name == "save_map":
+        return await map_tools.save_map(arguments["map_json"])
+    elif name == "load_map":
+        return await map_tools.load_map(arguments["map_id"])
+    elif name == "list_maps":
+        return await map_tools.list_maps()
+    elif name == "delete_map":
+        return await map_tools.delete_map(arguments["map_id"])
+    elif name == "build_map":
+        return await map_tools.build_map(arguments["map_json"], bridge)
 
     else:
         raise ValueError(f"Unknown tool: {name}")

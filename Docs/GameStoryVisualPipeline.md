@@ -111,10 +111,15 @@ HktGameplayGenerator/
 │   │   ├── UHktItemGeneratorSettings  (소켓 매핑, 머티리얼 맵)
 │   │   └── UHktItemGeneratorFunctionLibrary (MCP API)
 │   │
-│   └── HktStoryGenerator/      ← Story JSON 컴파일 (완료)
-│       ├── FHktStoryJsonCompiler        (JSON → FHktStoryBuilder 컴파일)
-│       ├── UHktStoryGeneratorSubsystem  (MCP Story 빌드/검증/분석 API)
-│       └── UHktStoryGeneratorFunctionLibrary (MCP API)
+│   ├── HktStoryGenerator/      ← Story JSON 컴파일 (완료)
+│   │   ├── FHktStoryJsonCompiler        (JSON → FHktStoryBuilder 컴파일)
+│   │   ├── UHktStoryGeneratorSubsystem  (MCP Story 빌드/검증/분석 API)
+│   │   └── UHktStoryGeneratorFunctionLibrary (MCP API)
+│   │
+│   └── HktMapGenerator/         ← HktMap JSON 기반 맵 생성 (신규)
+│       ├── FHktMapData                  (맵 데이터 구조체 — Landscape/Spawner/Region/Story)
+│       ├── UHktMapGeneratorSubsystem    (JSON 파싱, 맵 빌드, MCP API)
+│       └── UHktMapGeneratorSettings     (출력 경로, 기본 Landscape 설정)
 │
 └── Docs/
     └── GameStoryVisualPipeline.md  ← 이 문서
@@ -127,11 +132,12 @@ HktTextureGenerator (독립, 최하위)
         ↑
 HktGeneratorCore (HktTextureGenerator, HktAsset, HktVFX)
         ↑
-├── HktVFXGenerator  (HktGeneratorCore, HktTextureGenerator, HktVFX)
-├── HktMeshGenerator (HktGeneratorCore, HktTextureGenerator)
-├── HktAnimGenerator (HktGeneratorCore)
-├── HktItemGenerator (HktGeneratorCore, HktTextureGenerator)
-└── HktStoryGenerator (HktCore, HktAsset, HktGeneratorCore)
+├── HktVFXGenerator    (HktGeneratorCore, HktTextureGenerator, HktVFX)
+├── HktMeshGenerator   (HktGeneratorCore, HktTextureGenerator)
+├── HktAnimGenerator   (HktGeneratorCore)
+├── HktItemGenerator   (HktGeneratorCore, HktTextureGenerator)
+├── HktStoryGenerator  (HktCore, HktAsset, HktGeneratorCore)
+└── HktMapGenerator    (HktGeneratorCore, Landscape)  ← 신규: HktMap JSON → 월드 빌드
 ```
 
 ### Handler 자동 등록
