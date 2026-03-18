@@ -26,10 +26,12 @@ from . import anim_tools
 from . import mesh_tools
 from . import item_tools
 from . import pipeline_tools
+from . import python_tools
 
 __all__ = [
     "asset_tools", "level_tools", "query_tools", "runtime_tools",
     "vfx_tools", "story_tools", "texture_tools",
     "anim_tools", "mesh_tools", "item_tools", "pipeline_tools",
+    "python_tools",
 ]
 

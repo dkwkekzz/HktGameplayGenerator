@@ -211,6 +211,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MCP|Utility")
 	void ShowNotification(const FString& Message, float Duration = 3.0f);
 
+	// ==================== Python Script Executor ====================
+
+	/** Execute Python script and capture stdout/stderr output */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Python")
+	FString ExecutePythonScript(const FString& ScriptCode, float TimeoutSeconds = 30.0f);
+
 private:
 	// 헬퍼 함수들
 	AActor* FindActorByName(const FString& ActorName);

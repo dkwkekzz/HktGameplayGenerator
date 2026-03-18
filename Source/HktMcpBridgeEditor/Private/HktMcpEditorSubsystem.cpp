@@ -21,6 +21,7 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "SLevelViewport.h"
 #include "EditorViewportClient.h"
+#include "IPythonScriptPlugin.h"
 
 void UHktMcpEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -585,6 +586,99 @@ void UHktMcpEditorSubsystem::ShowNotification(const FString& Message, float Dura
 	Info.ExpireDuration = Duration;
 	Info.bUseSuccessFailIcons = false;
 	FSlateNotificationManager::Get().AddNotification(Info);
+}
+
+// ==================== Python Script Executor ====================
+
+/** Helper to escape a string for embedding inside a Python triple-quoted string */
+static FString EscapePythonTripleQuote(const FString& Input)
+{
+	// Replace backslashes first, then triple-quotes
+	FString Out = Input.Replace(TEXT("\\"), TEXT("\\\\"));
+	Out = Out.Replace(TEXT("\"\"\""), TEXT("\\\"\\\"\\\""));
+	return Out;
+}
+
+FString UHktMcpEditorSubsystem::ExecutePythonScript(const FString& ScriptCode, float TimeoutSeconds)
+{
+	IPythonScriptPlugin* PythonPlugin = IPythonScriptPlugin::Get();
+	if (!PythonPlugin)
+	{
+		return TEXT("{\"success\":false,\"output\":\"\",\"error\":\"Python plugin not available\"}");
+	}
+
+	// Wrap user script to capture stdout/stderr and report results via unreal.log()
+	// The wrapper stores results in a known format that we parse from LogOutput
+	FString EscapedCode = EscapePythonTripleQuote(ScriptCode);
+
+	FString WrappedScript = FString::Printf(TEXT(
+		"import sys as _sys, io as _io, json as _json, traceback as _tb\n"
+		"_hkt_stdout = _io.StringIO()\n"
+		"_hkt_stderr = _io.StringIO()\n"
+		"_hkt_old_stdout, _hkt_old_stderr = _sys.stdout, _sys.stderr\n"
+		"_sys.stdout, _sys.stderr = _hkt_stdout, _hkt_stderr\n"
+		"_hkt_success = True\n"
+		"_hkt_error = ''\n"
+		"try:\n"
+		"    exec(compile(\"\"\"%s\"\"\", '<mcp_script>', 'exec'))\n"
+		"except Exception as _e:\n"
+		"    _hkt_success = False\n"
+		"    _hkt_error = _tb.format_exc()\n"
+		"finally:\n"
+		"    _sys.stdout, _sys.stderr = _hkt_old_stdout, _hkt_old_stderr\n"
+		"_hkt_out = _hkt_stdout.getvalue()\n"
+		"_hkt_err_out = _hkt_stderr.getvalue()\n"
+		"if _hkt_err_out and not _hkt_error:\n"
+		"    _hkt_error = _hkt_err_out\n"
+		"import unreal as _ue\n"
+		"_ue.log('__HKT_PYRESULT__' + _json.dumps({'success': _hkt_success, 'output': _hkt_out, 'error': _hkt_error}))\n"
+	), *EscapedCode);
+
+	FPythonCommandEx PythonCommand;
+	PythonCommand.Command = WrappedScript;
+	PythonCommand.ExecutionMode = EPythonCommandExecutionMode::ExecuteStatement;
+	PythonCommand.FileExecutionScope = EPythonFileExecutionScope::Public;
+
+	PythonPlugin->ExecPythonCommandEx(PythonCommand);
+
+	// Search LogOutput for our result marker
+	FString ResultJson;
+	const FString Marker = TEXT("__HKT_PYRESULT__");
+	for (const FPythonLogOutputEntry& Entry : PythonCommand.LogOutput)
+	{
+		int32 MarkerIdx = Entry.Output.Find(Marker);
+		if (MarkerIdx != INDEX_NONE)
+		{
+			ResultJson = Entry.Output.Mid(MarkerIdx + Marker.Len());
+			break;
+		}
+	}
+
+	if (!ResultJson.IsEmpty())
+	{
+		return ResultJson;
+	}
+
+	// Fallback: collect all log output
+	FString AllOutput;
+	for (const FPythonLogOutputEntry& Entry : PythonCommand.LogOutput)
+	{
+		if (!AllOutput.IsEmpty())
+		{
+			AllOutput += TEXT("\n");
+		}
+		AllOutput += Entry.Output;
+	}
+
+	TSharedRef<FJsonObject> Result = MakeShareable(new FJsonObject);
+	Result->SetBoolField(TEXT("success"), !AllOutput.Contains(TEXT("Error")));
+	Result->SetStringField(TEXT("output"), AllOutput);
+	Result->SetStringField(TEXT("error"), TEXT(""));
+
+	FString Output;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	FJsonSerializer::Serialize(Result, Writer);
+	return Output;
 }
 
 // ==================== Helper Functions ====================

@@ -22,7 +22,7 @@ from mcp.types import Tool, TextContent, Resource, Prompt
 # Import tool modules
 from .tools import asset_tools, level_tools, query_tools, runtime_tools
 from .tools import vfx_tools, story_tools, texture_tools, anim_tools, mesh_tools, item_tools
-from .tools import step_tools, map_tools
+from .tools import step_tools, map_tools, python_tools
 from .bridge import editor_bridge, runtime_bridge
 
 # Configure logging
@@ -931,6 +931,45 @@ async def list_tools() -> list[Tool]:
         ),
     ])
 
+    # Python Script Executor
+    tools.append(
+        Tool(
+            name="execute_python_script",
+            description=(
+                "Execute Python code directly in the Unreal Editor's embedded Python environment. "
+                "The script has full access to the 'unreal' module and all editor APIs. Use this for:\n"
+                "- Custom editor operations not covered by other tools\n"
+                "- Batch operations on multiple actors/assets\n"
+                "- Complex queries combining multiple API calls\n"
+                "- Rapid prototyping of editor workflows\n\n"
+                "Use print() to return data — stdout is captured and returned.\n"
+                "Example: print(unreal.EditorAssetLibrary.list_assets('/Game/Meshes'))\n\n"
+                "SAFETY: Scripts containing os.remove, subprocess, etc. are blocked by default. "
+                "Set skip_safety_check=true to override."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "script_code": {
+                        "type": "string",
+                        "description": "Python code to execute in the UE5 editor Python environment"
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "description": "Execution timeout in seconds (default: 30)",
+                        "default": 30
+                    },
+                    "skip_safety_check": {
+                        "type": "boolean",
+                        "description": "Skip blocked-pattern safety check (default: false)",
+                        "default": False
+                    }
+                },
+                "required": ["script_code"]
+            }
+        )
+    )
+
     return tools
 
 
@@ -1192,6 +1231,15 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             arguments["terrain_recipe_json"],
             arguments.get("width", 60),
             arguments.get("height", 30),
+        )
+
+    # Python Script Executor
+    elif name == "execute_python_script":
+        return await python_tools.execute_python_script(
+            bridge,
+            arguments["script_code"],
+            timeout=arguments.get("timeout", 30.0),
+            skip_safety_check=arguments.get("skip_safety_check", False),
         )
 
     else:

@@ -133,6 +133,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "MCP|Utility")
     static bool McpSetViewportCamera(FVector Location, FRotator Rotation);
 
+    // ==================== Python Script Executor ====================
+
+    /** Execute arbitrary Python script in the editor and return captured output as JSON */
+    UFUNCTION(BlueprintCallable, Category = "MCP|Python")
+    static FString McpExecutePythonScript(const FString& ScriptCode, float TimeoutSeconds = 30.0f);
+
 private:
     static UHktMcpEditorSubsystem* GetSubsystem();
 };
