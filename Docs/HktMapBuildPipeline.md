@@ -49,11 +49,14 @@ FHktMapData                 Story VM 등록
 
 **진입 함수**: `UHktMapGeneratorSubsystem::BuildMapFromJson(JsonStr)` 또는 MCP의 `McpBuildMap(JsonStr)`
 
+파싱 로직은 `FHktMapJsonParser` (HktMapJsonParser.h/cpp)에 분리되어 있어,
+에디터(`UHktMapGeneratorSubsystem`)와 런타임(`UHktMapStreamingSubsystem`) 양쪽에서 공용 사용한다.
+
 ```
 JSON 문자열
     │
     ▼
-ParseMapFromJson()                    ← HktMapGeneratorSubsystem.cpp
+FHktMapJsonParser::Parse()            ← HktMapJsonParser.cpp (에디터/런타임 공용)
     │  ● map_id, map_name, description
     │  ● regions[]
     │  │   └─ 각 Region → Landscape / Spawner / Story / Prop
@@ -207,14 +210,20 @@ FHktMapEnvironment
 
 ### 4.1 맵 로드
 
+`LoadMap(FilePath)` → JSON 파일 읽기 → `FHktMapJsonParser::Parse()` → `LoadMapFromData()` 호출.
+`LoadMapFromData(MapData)` 로 직접 호출도 가능.
+
 ```
-LoadMapFromData(MapData)
+LoadMap(FilePath) 또는 LoadMapFromData(MapData)
     ├─ 전 Region → inactive 초기화
     ├─ SpawnGlobalContent()
     │    └─ GlobalEntities → AHktSpawnerActor (즉시 Activate)
     │       EntityType별 SpawnRule:
     │         WorldBoss → OnTrigger
     │         NPC/NPCSpawner → Always
+    │
+    ├─ ApplyEnvironment()
+    │    └─ DirectionalLight / Fog / Wind 설정 (에디터와 동일)
     │
     ├─ RegisterGlobalStories()
     │    └─ autoLoad=true → McpBuildStory() → VM 등록
@@ -378,6 +387,7 @@ HktMapGenerator
     │    └─ ALandscape::Import()    → 하이트맵 기반 지형 생성
     │
     └─ 내부 클래스
+         ├─ FHktMapJsonParser        → JSON ↔ FHktMapData 변환 (에디터/런타임 공용)
          ├─ FHktTerrainRecipeBuilder → 절차적 하이트맵/웨이트맵 생성
          ├─ AHktSpawnerActor         → EntityTag 기반 엔티티 스폰
          ├─ AHktMapRegionVolume      → Region 영역 감지
