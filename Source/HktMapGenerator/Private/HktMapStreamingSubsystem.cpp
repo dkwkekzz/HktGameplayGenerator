@@ -1,6 +1,7 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
 
 #include "HktMapStreamingSubsystem.h"
+#include "HktMapJsonParser.h"
 #include "HktTerrainRecipeBuilder.h"
 #include "HktMapRegionVolume.h"
 #include "HktSpawnerActor.h"
@@ -9,15 +10,19 @@
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
+#include "Engine/WindDirectionalSource.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
+#include "Components/WindDirectionalSourceComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "EngineUtils.h"
 #include "Misc/FileHelper.h"
 #include "TimerManager.h"
 #include "Landscape.h"
-#include "Dom/JsonObject.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktStreaming, Log, All);
 
@@ -48,18 +53,13 @@ bool UHktMapStreamingSubsystem::LoadMap(const FString& MapFilePath)
 	}
 
 	FHktMapData MapData;
-	TSharedPtr<FJsonObject> Root;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonStr);
-	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+	if (!FHktMapJsonParser::Parse(JsonStr, MapData))
 	{
 		UE_LOG(LogHktStreaming, Error, TEXT("Failed to parse map JSON from %s"), *MapFilePath);
 		return false;
 	}
 
-	// TODO: Use shared parsing logic (currently in editor subsystem)
-	// For now, store the raw data path and expect LoadMapFromData to be called
-	UE_LOG(LogHktStreaming, Log, TEXT("Map file loaded, use LoadMapFromData for full initialization"));
-	return false;
+	return LoadMapFromData(MapData);
 }
 
 bool UHktMapStreamingSubsystem::LoadMapFromData(const FHktMapData& MapData)
@@ -75,6 +75,9 @@ bool UHktMapStreamingSubsystem::LoadMapFromData(const FHktMapData& MapData)
 
 	// Spawn global content (always active)
 	SpawnGlobalContent(MapData);
+
+	// Apply environment (lighting, fog, wind)
+	ApplyEnvironment(MapData.Environment);
 
 	// Register global stories
 	StoryRegistry->RegisterGlobalStories(MapData.GlobalStories);
@@ -403,15 +406,18 @@ void UHktMapStreamingSubsystem::SpawnRegionContent(const FHktMapRegion& Region)
 		AStaticMeshActor* PropActor = World->SpawnActor<AStaticMeshActor>(
 			AStaticMeshActor::StaticClass(), &Transform);
 
-		if (PropActor && Prop.MeshTag.IsValid())
+		if (PropActor)
 		{
-			FSoftObjectPath MeshPath = UHktAssetSubsystem::ResolveConventionPath(Prop.MeshTag);
-			if (MeshPath.IsValid())
+			if (Prop.MeshTag.IsValid())
 			{
-				UStaticMesh* Mesh = Cast<UStaticMesh>(MeshPath.TryLoad());
-				if (Mesh)
+				FSoftObjectPath MeshPath = UHktAssetSubsystem::ResolveConventionPath(Prop.MeshTag);
+				if (MeshPath.IsValid())
 				{
-					PropActor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+					UStaticMesh* Mesh = Cast<UStaticMesh>(MeshPath.TryLoad());
+					if (Mesh)
+					{
+						PropActor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+					}
 				}
 			}
 			RA.AllActors.Add(PropActor);
@@ -462,4 +468,95 @@ void UHktMapStreamingSubsystem::SpawnGlobalContent(const FHktMapData& MapData)
 	}
 
 	UE_LOG(LogHktStreaming, Log, TEXT("Spawned %d global entities"), MapData.GlobalEntities.Num());
+}
+
+// ── Environment ─────────────────────────────────────────────────────
+
+void UHktMapStreamingSubsystem::ApplyEnvironment(const FHktMapEnvironment& Env)
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	UE_LOG(LogHktStreaming, Log, TEXT("Applying environment — weather=%s, time=%s, fog=%.3f"),
+		*Env.Weather, *Env.TimeOfDay, Env.FogDensity);
+
+	// ── 1. Directional Light (sun) ──────────────────────────────
+	float SunPitch = -45.f;
+	float SunIntensity = 10.f;
+	if (Env.TimeOfDay == TEXT("dawn"))           { SunPitch = -10.f; SunIntensity = 3.f; }
+	else if (Env.TimeOfDay == TEXT("morning"))   { SunPitch = -30.f; SunIntensity = 7.f; }
+	else if (Env.TimeOfDay == TEXT("noon"))      { SunPitch = -70.f; SunIntensity = 10.f; }
+	else if (Env.TimeOfDay == TEXT("afternoon")) { SunPitch = -50.f; SunIntensity = 8.f; }
+	else if (Env.TimeOfDay == TEXT("dusk"))      { SunPitch = -15.f; SunIntensity = 3.f; }
+	else if (Env.TimeOfDay == TEXT("night"))     { SunPitch = 10.f; SunIntensity = 0.1f; }
+
+	ADirectionalLight* SunLight = nullptr;
+	for (TActorIterator<ADirectionalLight> It(World); It; ++It) { SunLight = *It; break; }
+
+	if (!SunLight)
+	{
+		SunLight = World->SpawnActor<ADirectionalLight>();
+		if (SunLight) GlobalActors.Add(SunLight);
+	}
+
+	if (SunLight)
+	{
+		SunLight->SetActorRotation(FRotator(SunPitch, -45.f, 0.f));
+		if (UDirectionalLightComponent* LC = SunLight->GetComponent())
+		{
+			LC->SetLightColor(Env.SunColor);
+			LC->SetIntensity(SunIntensity);
+		}
+	}
+
+	// ── 2. Exponential Height Fog ───────────────────────────────
+	AExponentialHeightFog* FogActor = nullptr;
+	for (TActorIterator<AExponentialHeightFog> It(World); It; ++It) { FogActor = *It; break; }
+
+	if (!FogActor)
+	{
+		FogActor = World->SpawnActor<AExponentialHeightFog>();
+		if (FogActor) GlobalActors.Add(FogActor);
+	}
+
+	if (FogActor)
+	{
+		if (UExponentialHeightFogComponent* FC = FogActor->GetComponent())
+		{
+			float Density = Env.FogDensity;
+			if (Env.Weather == TEXT("fog"))        Density = FMath::Max(Density, 0.15f);
+			else if (Env.Weather == TEXT("rain"))  Density = FMath::Max(Density, 0.05f);
+			else if (Env.Weather == TEXT("snow"))  Density = FMath::Max(Density, 0.08f);
+			else if (Env.Weather == TEXT("storm")) Density = FMath::Max(Density, 0.12f);
+
+			FC->SetFogDensity(Density);
+			FC->SetFogInscatteringColor(Env.AmbientColor);
+		}
+	}
+
+	// ── 3. Wind Directional Source ──────────────────────────────
+	if (Env.WindStrength > KINDA_SMALL_NUMBER)
+	{
+		AWindDirectionalSource* WindActor = nullptr;
+		for (TActorIterator<AWindDirectionalSource> It(World); It; ++It) { WindActor = *It; break; }
+
+		if (!WindActor)
+		{
+			WindActor = World->SpawnActor<AWindDirectionalSource>();
+			if (WindActor) GlobalActors.Add(WindActor);
+		}
+
+		if (WindActor)
+		{
+			WindActor->SetActorRotation(Env.WindDirection.GetSafeNormal().Rotation());
+			if (UWindDirectionalSourceComponent* WC = WindActor->GetComponent())
+			{
+				float Strength = Env.WindStrength;
+				if (Env.Weather == TEXT("storm"))     Strength = FMath::Max(Strength, 0.8f);
+				else if (Env.Weather == TEXT("rain")) Strength = FMath::Max(Strength, 0.4f);
+				WC->SetStrength(Strength);
+				WC->SetSpeed(Strength * 200.f);
+			}
+		}
+	}
 }

@@ -111,4 +111,7 @@ private:
 
 	/** GlobalEntity 스폰 */
 	void SpawnGlobalContent(const FHktMapData& MapData);
+
+	/** Environment 적용 (라이팅, 포그, 바람) */
+	void ApplyEnvironment(const FHktMapEnvironment& Env);
 };

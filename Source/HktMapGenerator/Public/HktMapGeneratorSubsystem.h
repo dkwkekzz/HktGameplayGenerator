@@ -6,6 +6,7 @@
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
 #include "HktMapData.h"
+#include "HktMapJsonParser.h"
 #include "HktMapStoryRegistry.h"
 #include "HktMapGeneratorSubsystem.generated.h"
 
