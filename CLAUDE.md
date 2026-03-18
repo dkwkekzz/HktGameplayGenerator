@@ -4,73 +4,14 @@
 
 LLM 기반 UE5 게임플레이 어셋 자동 생성 시스템. MCP(Model Context Protocol)를 통해 언리얼 에디터와 통신하며, Map/Story/VFX/Mesh/Animation/Texture/Item을 생성한다.
 
-## MCP 서버 아키텍처 (Monolith + HktMcpBridge)
+## MCP 서버 아키텍처
 
-2개의 MCP 서버를 함께 사용한다. **Monolith이 범용 에디터 작업의 기본**, HktMcpBridge는 **HKT 전용 생성기와 Monolith에 없는 기능을 보완**한다.
+Monolith(범용 UE5 에디터)과 HktMcpBridge(HKT 전용 생성기) 2개 MCP 서버를 함께 사용한다. 도구 선택이 헷갈리면 `/editor-guide`를 참조한다.
 
-### Monolith (기본 — 범용 UE5 에디터 작업)
-
-| 도구 | 용도 | 사용 시점 |
-|---|---|---|
-| `blueprint_query` | BP 그래프 CRUD, 변수, 컴포넌트, 컴파일 | Blueprint 생성/편집 |
-| `material_query` | 머티리얼 그래프 빌드, PBR, HLSL 커스텀 노드 | 머티리얼 작업 |
-| `animation_query` | 커브/본 트랙, 블렌드스페이스, 몽타주, 소켓 | **기존** 애니메이션 에셋 편집 |
-| `niagara_query` | 이미터/모듈/렌더러 편집, 파라미터 바인딩, HLSL | **기존** Niagara 에셋 편집 |
-| `editor_query` | 라이브 코딩 컴파일, 빌드 오류 로그 | 빌드/컴파일 |
-| `project_query` | FTS5 에셋 검색, 상호 참조 | 에셋 검색/탐색 |
-| `source_query` | C++ 클래스 계층, 함수 호출 그래프 | 엔진 코드 분석 |
-| `config_query` | INI 설정 탐색, 기본값 추적 | 프로젝트 설정 확인 |
-
-### HktMcpBridge (보조 — HKT 전용 + Monolith 미지원 기능)
-
-#### HKT 전용 생성기 (Monolith에 없음)
-- **Step 파이프라인**: `step_create_project`, `step_begin`, `step_save_output` 등
-- **Map 생성**: `get_map_schema`, `build_map`, `validate_map` 등 (HktMap JSON)
-- **Story 생성**: `build_story`, `validate_story` 등 (바이트코드 VM 컴파일)
-- **VFX 생성**: `build_vfx_system` — JSON config로 **완전한 Niagara 시스템 생성** (Monolith niagara_query는 기존 에셋 편집)
-- **Mesh/Anim/Item/Texture 생성**: `request_*` + `import_*` 워크플로우
-
-#### Monolith 미지원 에디터 기능
-- **레벨 액터 관리**: `list_actors`, `spawn_actor`, `modify_actor`, `delete_actor`, `select_actor`
-- **뷰포트 카메라**: `get_viewport_camera`, `set_viewport_camera`
-- **런타임 제어**: `start_pie`, `stop_pie`, `execute_console_command`, `get_game_state`
-- **알림**: `show_notification`
-- **에셋 상세**: `list_assets` (경로별), `get_asset_info`, `modify_asset`
-
-#### Monolith 우선 도구 (HktMcpBridge에도 있지만 Monolith 권장)
-- `search_assets` → Monolith `project_query` 우선
-- `search_classes` → Monolith `source_query` 우선
-- `get_class_properties` → Monolith `source_query` 우선
-- `get_project_structure` → Monolith `project_query` 우선
-
-### 도구 선택 판단 기준
-
-```
-에셋 검색/탐색?              → Monolith project_query
-Blueprint 생성/편집?         → Monolith blueprint_query
-머티리얼 생성/편집?          → Monolith material_query
-기존 Niagara 에셋 수정?      → Monolith niagara_query
-기존 애니메이션 에셋 수정?   → Monolith animation_query
-C++ 엔진 코드 분석?          → Monolith source_query
-빌드/컴파일?                 → Monolith editor_query
-
-새 VFX 시스템 생성?          → HktMcpBridge build_vfx_system
-새 애니메이션 생성 요청?     → HktMcpBridge request_animation
-새 메시/아이템 생성 요청?    → HktMcpBridge request_*
-Story 생성/빌드?             → HktMcpBridge story_tools
-HktMap 생성/빌드?            → HktMcpBridge map_tools
-Step 파이프라인 관리?        → HktMcpBridge step_tools
-레벨 액터 배치/수정?         → HktMcpBridge level_tools
-PIE 실행/중지?               → HktMcpBridge runtime_tools
-뷰포트 카메라 제어?          → HktMcpBridge level_tools
-```
-
-### 주의사항
-
-1. **새 어셋 생성 vs 기존 어셋 편집**: HktMcpBridge의 `build_vfx_system`은 완전히 새로운 Niagara 시스템을 생성한다. 기존 Niagara 에셋의 파라미터를 수정하려면 Monolith `niagara_query`를 사용한다. `request_animation`도 마찬가지.
-2. **에셋 검색**: `search_assets`(HktMcpBridge)보다 Monolith `project_query`가 FTS5 인덱싱으로 더 빠르고 정확하다.
-3. **레벨 액터 작업**: actor spawning, transform 수정, viewport 카메라는 Monolith에 없으므로 HktMcpBridge를 사용한다.
-4. **HKT 생성 파이프라인**: `/full-pipeline`, `/concept-design` 등 Skill 커맨드는 모두 HktMcpBridge Step 시스템을 사용한다.
+**핵심 규칙:**
+- HktMcpBridge의 `search_assets`, `search_classes`, `get_class_properties`, `get_project_structure`는 Monolith에 더 나은 대응 도구가 있으므로 Monolith 우선 사용
+- **새 어셋 생성**(build_vfx_system, request_animation 등)은 HktMcpBridge, **기존 어셋 편집**(niagara_query, animation_query 등)은 Monolith
+- 레벨 액터/PIE/뷰포트 카메라는 Monolith에 없으므로 HktMcpBridge 사용
 
 ## 모듈식 스텝 시스템
 

@@ -1,9 +1,5 @@
 {
   "mcpServers": {
-    "monolith": {
-      "url": "http://localhost:9316/mcp",
-      "_comment": "Monolith (기본) — Blueprint, Material, Animation, Niagara 그래프 편집, 에셋 검색, 빌드, C++ 분석"
-    },
     "hkt-unreal": {
       "command": "python",
       "args": ["-m", "hkt_mcp.server"],
@@ -12,8 +8,7 @@
         "UE_PROJECT_NAME": "HktProto",
         "PYTHONPATH": "E:/WS/UE5/HktProto/Plugins/HktGameplayGenerator/McpServer/src",
         "SD_WEBUI_URL": "http://127.0.0.1:7860"
-      },
-      "_comment": "HktMcpBridge (보조) — HKT 생성기(Map/Story/VFX/Mesh/Anim/Item), Step 파이프라인, 레벨 액터, PIE, 뷰포트"
+      }
     }
   }
 }
