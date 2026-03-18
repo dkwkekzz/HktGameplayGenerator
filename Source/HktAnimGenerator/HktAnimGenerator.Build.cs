@@ -38,6 +38,11 @@ public class HktAnimGenerator : ModuleRules
 				"DeveloperSettings",
 				"AssetRegistry",
 				"AssetTools",
+				// Animation Blueprint / State Machine / AnimGraph
+				"AnimGraph",
+				"AnimGraphRuntime",
+				"BlueprintGraph",
+				"Kismet",
 			}
 		);
 	}
