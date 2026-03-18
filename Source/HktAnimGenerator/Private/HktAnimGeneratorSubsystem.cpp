@@ -39,6 +39,7 @@
 #include "PackageTools.h"
 #include "UObject/SavePackage.h"
 #include "EdGraph/EdGraphPin.h"
+#include "Engine/SkeletalMeshSocket.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktAnimGeneratorSubsystem, Log, All);
 
@@ -460,9 +461,19 @@ FString UHktAnimGeneratorSubsystem::McpCompileAnimBlueprint(const FString& Asset
 	if (ABP->Status == BS_Error)
 	{
 		TArray<TSharedPtr<FJsonValue>> Errors;
-		for (const auto& Msg : ABP->ErrorMessageLog)
+		for (const UEdGraph* Graph : ABP->UbergraphPages)
 		{
-			Errors.Add(MakeShared<FJsonValueString>(Msg));
+			for (const UEdGraphNode* Node : Graph->Nodes)
+			{
+				if (Node->bHasCompilerMessage && Node->ErrorType <= EMessageSeverity::Error)
+				{
+					Errors.Add(MakeShared<FJsonValueString>(Node->ErrorMsg));
+				}
+			}
+		}
+		if (Errors.Num() == 0)
+		{
+			Errors.Add(MakeShared<FJsonValueString>(TEXT("Compilation failed (no detailed message available)")));
 		}
 		Result->SetArrayField(TEXT("errors"), Errors);
 	}
@@ -1118,7 +1129,15 @@ FString UHktAnimGeneratorSubsystem::McpLinkMontageSections(const FString& JsonCo
 	if (FromIdx == INDEX_NONE) return MakeErrorJson(FString::Printf(TEXT("Section '%s' not found"), *FromSection));
 	if (ToIdx == INDEX_NONE) return MakeErrorJson(FString::Printf(TEXT("Section '%s' not found"), *ToSection));
 
-	Montage->SetNextSectionName(FName(*FromSection), FName(*ToSection));
+	// CompositeSections 배열에서 직접 NextSectionName 설정
+	for (FCompositeSection& Section : Montage->CompositeSections)
+	{
+		if (Section.SectionName == FName(*FromSection))
+		{
+			Section.NextSectionName = FName(*ToSection);
+			break;
+		}
+	}
 	SaveAssetPackage(Montage);
 
 	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
@@ -1178,8 +1197,10 @@ FString UHktAnimGeneratorSubsystem::McpCreateBlendSpace(const FString& JsonConfi
 		(*AxisX)->TryGetNumberField(TEXT("min"), Min);
 		(*AxisX)->TryGetNumberField(TEXT("max"), Max);
 
-		BS->SetBlendParameterName(0, AxisName);
-		BS->SetBlendParameterRange(0, Min, Max);
+		FBlendParameter& Param0 = const_cast<FBlendParameter&>(BS->GetBlendParameter(0));
+		Param0.DisplayName = AxisName;
+		Param0.Min = Min;
+		Param0.Max = Max;
 	}
 
 	// Y축 설정 (2D only)
@@ -1194,8 +1215,10 @@ FString UHktAnimGeneratorSubsystem::McpCreateBlendSpace(const FString& JsonConfi
 			(*AxisY)->TryGetNumberField(TEXT("min"), Min);
 			(*AxisY)->TryGetNumberField(TEXT("max"), Max);
 
-			BS->SetBlendParameterName(1, AxisName);
-			BS->SetBlendParameterRange(1, Min, Max);
+			FBlendParameter& Param1 = const_cast<FBlendParameter&>(BS->GetBlendParameter(1));
+			Param1.DisplayName = AxisName;
+			Param1.Min = Min;
+			Param1.Max = Max;
 		}
 	}
 
@@ -1216,8 +1239,7 @@ FString UHktAnimGeneratorSubsystem::McpCreateBlendSpace(const FString& JsonConfi
 			UAnimSequence* Seq = LoadObject<UAnimSequence>(nullptr, *AnimPath);
 			if (Seq)
 			{
-				FBlendSample Sample(Seq, FVector(X, Y, 0));
-				BS->AddSample(Sample);
+				BS->AddSample(Seq, FVector(X, Y, 0));
 			}
 		}
 	}
@@ -1248,8 +1270,7 @@ FString UHktAnimGeneratorSubsystem::McpAddBlendSpaceSample(const FString& JsonCo
 	UAnimSequence* Seq = LoadObject<UAnimSequence>(nullptr, *AnimPath);
 	if (!Seq) return MakeErrorJson(TEXT("AnimSequence not found"));
 
-	FBlendSample Sample(Seq, FVector(X, Y, 0));
-	BS->AddSample(Sample);
+	BS->AddSample(Seq, FVector(X, Y, 0));
 	SaveAssetPackage(BS);
 
 	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
@@ -1277,8 +1298,10 @@ FString UHktAnimGeneratorSubsystem::McpSetBlendSpaceAxis(const FString& JsonConf
 
 	int32 AxisIdx = (Axis == TEXT("Y") || Axis == TEXT("y")) ? 1 : 0;
 
-	if (!AxisName.IsEmpty()) BS->SetBlendParameterName(AxisIdx, AxisName);
-	BS->SetBlendParameterRange(AxisIdx, Min, Max);
+	FBlendParameter& Param = const_cast<FBlendParameter&>(BS->GetBlendParameter(AxisIdx));
+	if (!AxisName.IsEmpty()) Param.DisplayName = AxisName;
+	Param.Min = Min;
+	Param.Max = Max;
 	SaveAssetPackage(BS);
 
 	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
