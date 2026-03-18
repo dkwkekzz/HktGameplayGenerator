@@ -1,7 +1,11 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
 
 #include "HktSpawnerActor.h"
+#include "HktAssetSubsystem.h"
+#include "HktAnimGeneratorTypes.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/World.h"
+#include "Engine/Blueprint.h"
 #include "TimerManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktSpawner, Log, All);
@@ -88,24 +92,97 @@ void AHktSpawnerActor::DoSpawn()
 	UWorld* World = GetWorld();
 	if (!World) return;
 
-	// TODO: Resolve EntityTag → Blueprint class via HktGeneratorRouter/ConventionPath
-	// For now, log the intent and create placeholder actors
+	// ── Resolve EntityTag → Blueprint class ─────────────────────
+	UClass* SpawnClass = nullptr;
+
+	if (EntityTag.IsValid())
+	{
+		// 1. Try ConventionPath resolution (settings-based)
+		FSoftObjectPath ConventionPath = UHktAssetSubsystem::ResolveConventionPath(EntityTag);
+		if (ConventionPath.IsValid())
+		{
+			UObject* LoadedObj = ConventionPath.TryLoad();
+			if (UBlueprint* BP = Cast<UBlueprint>(LoadedObj))
+			{
+				SpawnClass = BP->GeneratedClass;
+			}
+			else if (UClass* AsClass = Cast<UClass>(LoadedObj))
+			{
+				SpawnClass = AsClass;
+			}
+		}
+
+		// 2. Fallback: tag-based naming convention
+		if (!SpawnClass)
+		{
+			FString TagStr = EntityTag.ToString();
+			FString FallbackBPPath;
+
+			if (TagStr.StartsWith(TEXT("Entity.Character.")))
+			{
+				FHktCharacterIntent Intent;
+				if (FHktCharacterIntent::FromTag(EntityTag, Intent))
+				{
+					FallbackBPPath = FString::Printf(
+						TEXT("/Game/Generated/Characters/%s/BP_%s"), *Intent.Name, *Intent.Name);
+				}
+			}
+			else if (TagStr.StartsWith(TEXT("Entity.Item.")))
+			{
+				FHktItemIntent Intent;
+				if (FHktItemIntent::FromTag(EntityTag, Intent))
+				{
+					FallbackBPPath = FString::Printf(
+						TEXT("/Game/Generated/Items/%s/SM_%s"), *Intent.Category, *Intent.SubType);
+				}
+			}
+
+			if (!FallbackBPPath.IsEmpty())
+			{
+				UObject* FallbackObj = FSoftObjectPath(FallbackBPPath).TryLoad();
+				if (UBlueprint* BP = Cast<UBlueprint>(FallbackObj))
+				{
+					SpawnClass = BP->GeneratedClass;
+				}
+			}
+		}
+
+		if (!SpawnClass)
+		{
+			UE_LOG(LogHktSpawner, Warning, TEXT("Entity '%s': Could not resolve to a spawnable class"),
+				*EntityTag.ToString());
+		}
+	}
+
+	// ── Perform actual spawning ─────────────────────────────────
 	for (int32 i = 0; i < NeededCount; ++i)
 	{
 		FVector SpawnLocation = GetActorLocation();
-		// Spread spawns in a small radius
 		if (SpawnCount > 1)
 		{
 			float Angle = (2.f * PI * i) / SpawnCount;
-			float Radius = 200.f;
-			SpawnLocation += FVector(FMath::Cos(Angle) * Radius, FMath::Sin(Angle) * Radius, 0.f);
+			float SpawnRadius = 200.f;
+			SpawnLocation += FVector(FMath::Cos(Angle) * SpawnRadius, FMath::Sin(Angle) * SpawnRadius, 0.f);
 		}
 
-		UE_LOG(LogHktSpawner, Log, TEXT("Spawn entity '%s' at (%.0f, %.0f, %.0f)"),
-			*EntityTag.ToString(), SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z);
-
-		// Actual spawning will be implemented when GeneratorRouter integration is complete
-		// SpawnedEntities.Add(SpawnedActor);
+		if (SpawnClass)
+		{
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+			AActor* SpawnedActor = World->SpawnActor<AActor>(SpawnClass, &SpawnLocation, &GetActorRotation(), Params);
+			if (SpawnedActor)
+			{
+				SpawnedEntities.Add(SpawnedActor);
+				UE_LOG(LogHktSpawner, Log, TEXT("Spawned '%s' (%s) at (%.0f, %.0f, %.0f)"),
+					*EntityTag.ToString(), *SpawnClass->GetName(),
+					SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z);
+			}
+		}
+		else
+		{
+			UE_LOG(LogHktSpawner, Log, TEXT("Spawn deferred for '%s' at (%.0f, %.0f, %.0f) — class not yet available"),
+				*EntityTag.ToString(), SpawnLocation.X, SpawnLocation.Y, SpawnLocation.Z);
+		}
 	}
 }
 

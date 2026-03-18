@@ -5,6 +5,9 @@
 #include "HktTerrainRecipeBuilder.h"
 #include "HktMapRegionVolume.h"
 #include "HktSpawnerActor.h"
+#include "HktAssetSubsystem.h"
+#include "HktAnimGeneratorTypes.h"
+#include "HktStoryGeneratorSubsystem.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -15,12 +18,18 @@
 #include "Misc/Paths.h"
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
+#include "Engine/WindDirectionalSource.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/WindDirectionalSourceComponent.h"
 #include "Landscape.h"
 #include "LandscapeProxy.h"
 #include "LandscapeInfo.h"
+#include "LandscapeImportHelper.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "EngineUtils.h"
 #include "Editor.h"
 
@@ -740,54 +749,164 @@ bool UHktMapGeneratorSubsystem::BuildMap(const FHktMapData& MapData)
 
 bool UHktMapGeneratorSubsystem::BuildRegionLandscape(const FHktMapRegion& Region, UWorld* World)
 {
-	const auto& Landscape = Region.Landscape;
+	const auto& LandscapeConfig = Region.Landscape;
 
-	// Generate or load heightmap data
+	// ── 1. Generate or load heightmap data ──────────────────────
 	TArray<uint16> HeightData;
 
-	if (!Landscape.HeightmapPath.IsEmpty())
+	if (!LandscapeConfig.HeightmapPath.IsEmpty())
 	{
-		// Load from file
 		TArray<uint8> RawData;
-		if (FFileHelper::LoadFileToArray(RawData, *Landscape.HeightmapPath))
+		if (FFileHelper::LoadFileToArray(RawData, *LandscapeConfig.HeightmapPath))
 		{
 			HeightData.SetNumUninitialized(RawData.Num() / 2);
 			FMemory::Memcpy(HeightData.GetData(), RawData.GetData(), RawData.Num());
 			UE_LOG(LogHktMapGenerator, Log, TEXT("Region '%s': Loaded heightmap from %s (%d samples)"),
-				*Region.Name, *Landscape.HeightmapPath, HeightData.Num());
+				*Region.Name, *LandscapeConfig.HeightmapPath, HeightData.Num());
 		}
 		else
 		{
 			UE_LOG(LogHktMapGenerator, Warning, TEXT("Region '%s': Failed to load heightmap '%s', using recipe"),
-				*Region.Name, *Landscape.HeightmapPath);
+				*Region.Name, *LandscapeConfig.HeightmapPath);
 		}
 	}
 
 	if (HeightData.Num() == 0)
 	{
-		// Generate from terrain recipe
 		HeightData = FHktTerrainRecipeBuilder::GenerateHeightmap(
-			Landscape.TerrainRecipe,
-			Landscape.SizeX, Landscape.SizeY,
-			Landscape.HeightMin, Landscape.HeightMax);
+			LandscapeConfig.TerrainRecipe,
+			LandscapeConfig.SizeX, LandscapeConfig.SizeY,
+			LandscapeConfig.HeightMin, LandscapeConfig.HeightMax);
 	}
 
-	if (HeightData.Num() != Landscape.SizeX * Landscape.SizeY)
+	if (HeightData.Num() != LandscapeConfig.SizeX * LandscapeConfig.SizeY)
 	{
 		UE_LOG(LogHktMapGenerator, Error, TEXT("Region '%s': Heightmap size mismatch (%d vs %dx%d)"),
-			*Region.Name, HeightData.Num(), Landscape.SizeX, Landscape.SizeY);
+			*Region.Name, HeightData.Num(), LandscapeConfig.SizeX, LandscapeConfig.SizeY);
 		return false;
 	}
 
-	// TODO: Create ALandscape from HeightData via LandscapeEditorUtils
-	// This requires LandscapeEditor module. The actual creation uses:
-	//   ALandscape* NewLandscape = World->SpawnActor<ALandscape>();
-	//   NewLandscape->Import(...)
-	// The landscape should be positioned at Region.Center
-	//
-	// For now, log success and track the intent
-	UE_LOG(LogHktMapGenerator, Log, TEXT("Region '%s': Landscape %dx%d generated (biome=%s, %d layers)"),
-		*Region.Name, Landscape.SizeX, Landscape.SizeY, *Landscape.Biome, Landscape.Layers.Num());
+	// ── 2. Determine component geometry ─────────────────────────
+	// UE5 Landscape valid component sizes: 7, 15, 31, 63, 127, 255
+	// Valid section sizes: 7, 15, 31, 63, 127
+	// Total size = NumComponents * SectionsPerComponent * QuadsPerSection + 1
+	const int32 QuadsPerSection = 63;
+	const int32 SectionsPerComponent = 1;
+	const int32 QuadsPerComponent = QuadsPerSection * SectionsPerComponent;
+
+	const int32 NumComponentsX = FMath::Max(1, (LandscapeConfig.SizeX - 1) / QuadsPerComponent);
+	const int32 NumComponentsY = FMath::Max(1, (LandscapeConfig.SizeY - 1) / QuadsPerComponent);
+
+	// ── 3. Prepare landscape material ───────────────────────────
+	const UHktMapGeneratorSettings* Settings = UHktMapGeneratorSettings::Get();
+	UMaterialInterface* LandscapeMaterial = nullptr;
+
+	if (LandscapeConfig.MaterialTag.IsValid())
+	{
+		FSoftObjectPath MatPath = UHktAssetSubsystem::ResolveConventionPath(LandscapeConfig.MaterialTag);
+		if (MatPath.IsValid())
+		{
+			LandscapeMaterial = Cast<UMaterialInterface>(MatPath.TryLoad());
+		}
+	}
+
+	if (!LandscapeMaterial && Settings->DefaultLandscapeMaterial.IsValid())
+	{
+		LandscapeMaterial = Cast<UMaterialInterface>(Settings->DefaultLandscapeMaterial.TryLoad());
+	}
+
+	// ── 4. Prepare layer infos ──────────────────────────────────
+	TArray<FLandscapeImportLayerInfo> ImportLayers;
+
+	// Generate weight maps from heightmap for automatic layer distribution
+	const int32 LayerCount = FMath::Max(LandscapeConfig.Layers.Num(), 1);
+	TArray<TArray<uint8>> WeightMaps = FHktTerrainRecipeBuilder::GenerateWeightMaps(
+		HeightData, LandscapeConfig.SizeX, LandscapeConfig.SizeY, LayerCount);
+
+	for (int32 i = 0; i < LandscapeConfig.Layers.Num(); ++i)
+	{
+		const auto& LayerDef = LandscapeConfig.Layers[i];
+		FLandscapeImportLayerInfo LayerInfo;
+		LayerInfo.LayerName = FName(*LayerDef.Name);
+
+		// Use weight map from file if provided, otherwise use generated
+		if (!LayerDef.WeightMapPath.IsEmpty())
+		{
+			TArray<uint8> FileWeightData;
+			if (FFileHelper::LoadFileToArray(FileWeightData, *LayerDef.WeightMapPath)
+				&& FileWeightData.Num() == LandscapeConfig.SizeX * LandscapeConfig.SizeY)
+			{
+				LayerInfo.LayerData = FileWeightData;
+			}
+			else if (i < WeightMaps.Num())
+			{
+				LayerInfo.LayerData = WeightMaps[i];
+			}
+		}
+		else if (i < WeightMaps.Num())
+		{
+			LayerInfo.LayerData = WeightMaps[i];
+		}
+
+		ImportLayers.Add(LayerInfo);
+	}
+
+	// ── 5. Spawn ALandscape actor ───────────────────────────────
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Name = FName(*FString::Printf(TEXT("HktLandscape_%s"), *Region.Name));
+
+	FVector LandscapeLocation = Region.Center;
+	// Offset so that Region.Center is the center of the landscape
+	float ScaleXY = Region.Extent.X * 2.f / FMath::Max(LandscapeConfig.SizeX - 1, 1);
+	float ScaleZ = (LandscapeConfig.HeightMax - LandscapeConfig.HeightMin) / 512.f; // UE5 Landscape: 512 UU per unit at scale 1
+	FVector LandscapeScale(ScaleXY, ScaleXY, FMath::Max(ScaleZ, 0.01f));
+
+	// Position at the corner so that center of landscape matches Region.Center
+	FVector LandscapeOrigin = Region.Center - FVector(Region.Extent.X, Region.Extent.Y, 0.f);
+	LandscapeOrigin.Z = LandscapeConfig.HeightMin;
+
+	ALandscape* NewLandscape = World->SpawnActor<ALandscape>(
+		ALandscape::StaticClass(), &LandscapeOrigin, nullptr, SpawnParams);
+
+	if (!NewLandscape)
+	{
+		UE_LOG(LogHktMapGenerator, Error, TEXT("Region '%s': Failed to spawn ALandscape actor"), *Region.Name);
+		return false;
+	}
+
+	NewLandscape->SetActorScale3D(LandscapeScale);
+
+	// ── 6. Import heightmap data into landscape ─────────────────
+	TMap<FGuid, TArray<uint16>> HeightDataPerLayer;
+	TMap<FGuid, TArray<FLandscapeImportLayerInfo>> MaterialLayerDataPerLayer;
+
+	FGuid LandscapeGuid = FGuid::NewGuid();
+	HeightDataPerLayer.Add(LandscapeGuid, HeightData);
+	MaterialLayerDataPerLayer.Add(LandscapeGuid, ImportLayers);
+
+	NewLandscape->Import(
+		LandscapeGuid,
+		NumComponentsX, NumComponentsY,
+		QuadsPerSection, SectionsPerComponent,
+		HeightDataPerLayer, TEXT(""),
+		MaterialLayerDataPerLayer,
+		ELandscapeImportAlphamapType::Additive);
+
+	// ── 7. Apply landscape material ─────────────────────────────
+	if (LandscapeMaterial)
+	{
+		NewLandscape->LandscapeMaterial = LandscapeMaterial;
+	}
+
+	NewLandscape->SetFolderPath(FName(TEXT("HktMap/Landscapes")));
+	NewLandscape->MarkPackageDirty();
+	SpawnedActors.Add(NewLandscape);
+
+	UE_LOG(LogHktMapGenerator, Log, TEXT("Region '%s': ALandscape created — %dx%d, %d components (%dx%d), biome=%s, %d layers, scale=(%.2f, %.2f, %.2f)"),
+		*Region.Name, LandscapeConfig.SizeX, LandscapeConfig.SizeY,
+		NumComponentsX * NumComponentsY, NumComponentsX, NumComponentsY,
+		*LandscapeConfig.Biome, ImportLayers.Num(),
+		LandscapeScale.X, LandscapeScale.Y, LandscapeScale.Z);
 
 	return true;
 }
@@ -828,10 +947,10 @@ void UHktMapGeneratorSubsystem::BuildSpawners(const TArray<FHktMapSpawner>& Spaw
 
 void UHktMapGeneratorSubsystem::BuildProps(const TArray<FHktMapProp>& Props, UWorld* World)
 {
+	FAssetRegistryModule& ARM = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+
 	for (const auto& Prop : Props)
 	{
-		// TODO: Resolve MeshTag → StaticMesh via ConventionPath/GeneratorRouter
-		// For now, create a placeholder StaticMeshActor at the right transform
 		FTransform Transform;
 		Transform.SetLocation(Prop.Position);
 		Transform.SetRotation(FQuat(Prop.Rotation));
@@ -840,11 +959,44 @@ void UHktMapGeneratorSubsystem::BuildProps(const TArray<FHktMapProp>& Props, UWo
 		AStaticMeshActor* PropActor = World->SpawnActor<AStaticMeshActor>(
 			AStaticMeshActor::StaticClass(), &Transform);
 
-		if (PropActor)
+		if (!PropActor) continue;
+
+		// Resolve MeshTag → StaticMesh via ConventionPath
+		if (Prop.MeshTag.IsValid())
 		{
-			PropActor->SetFolderPath(FName(TEXT("HktMap/Props")));
-			SpawnedActors.Add(PropActor);
+			FSoftObjectPath MeshPath = UHktAssetSubsystem::ResolveConventionPath(Prop.MeshTag);
+			UStaticMesh* Mesh = nullptr;
+
+			if (MeshPath.IsValid())
+			{
+				Mesh = Cast<UStaticMesh>(MeshPath.TryLoad());
+			}
+
+			if (!Mesh)
+			{
+				// Fallback: try standard naming convention
+				// Tag format: Entity.Item.{Cat}.{Sub} → {Root}/Items/{Cat}/SM_{Sub}
+				FString TagStr = Prop.MeshTag.ToString();
+				FString FallbackPath = FString::Printf(TEXT("/Game/Generated/Props/SM_%s"),
+					*TagStr.Replace(TEXT("."), TEXT("_")));
+				Mesh = Cast<UStaticMesh>(FSoftObjectPath(FallbackPath).TryLoad());
+			}
+
+			if (Mesh)
+			{
+				PropActor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+				UE_LOG(LogHktMapGenerator, Log, TEXT("Prop '%s': Mesh resolved and applied"),
+					*Prop.MeshTag.ToString());
+			}
+			else
+			{
+				UE_LOG(LogHktMapGenerator, Warning, TEXT("Prop '%s': Could not resolve mesh, placed as placeholder"),
+					*Prop.MeshTag.ToString());
+			}
 		}
+
+		PropActor->SetFolderPath(FName(TEXT("HktMap/Props")));
+		SpawnedActors.Add(PropActor);
 	}
 }
 
@@ -892,22 +1044,122 @@ void UHktMapGeneratorSubsystem::BuildGlobalEntities(const TArray<FHktMapGlobalEn
 
 void UHktMapGeneratorSubsystem::ApplyEnvironment(const FHktMapEnvironment& Env, UWorld* World)
 {
-	UE_LOG(LogHktMapGenerator, Log, TEXT("Applying environment — weather=%s, time=%s, fog=%.3f"),
-		*Env.Weather, *Env.TimeOfDay, Env.FogDensity);
+	UE_LOG(LogHktMapGenerator, Log, TEXT("Applying environment — weather=%s, time=%s, fog=%.3f, wind=%.2f"),
+		*Env.Weather, *Env.TimeOfDay, Env.FogDensity, Env.WindStrength);
 
-	// Find or create directional light
+	// ── 1. Sun / Directional Light ──────────────────────────────
+	// Compute sun rotation from time of day
+	float SunPitch = -45.f; // default noon
+	float SunIntensity = 10.f;
+	if (Env.TimeOfDay == TEXT("dawn"))        { SunPitch = -10.f; SunIntensity = 3.f; }
+	else if (Env.TimeOfDay == TEXT("morning")) { SunPitch = -30.f; SunIntensity = 7.f; }
+	else if (Env.TimeOfDay == TEXT("noon"))    { SunPitch = -70.f; SunIntensity = 10.f; }
+	else if (Env.TimeOfDay == TEXT("afternoon")) { SunPitch = -50.f; SunIntensity = 8.f; }
+	else if (Env.TimeOfDay == TEXT("dusk"))    { SunPitch = -15.f; SunIntensity = 3.f; }
+	else if (Env.TimeOfDay == TEXT("night"))   { SunPitch = 10.f; SunIntensity = 0.1f; }
+
+	ADirectionalLight* SunLight = nullptr;
 	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
 	{
-		if (UDirectionalLightComponent* LightComp = It->GetComponent())
-		{
-			LightComp->SetLightColor(Env.SunColor);
-		}
-		break;  // Use first found
+		SunLight = *It;
+		break;
 	}
 
-	// TODO: Apply fog, wind, ambient VFX
-	// These require finding or creating ExponentialHeightFog, WindDirectionalSource, etc.
-	// Ambient VFX would be spawned via HktVFXGenerator using the AmbientVFXTags
+	if (!SunLight)
+	{
+		SunLight = World->SpawnActor<ADirectionalLight>();
+		if (SunLight)
+		{
+			SunLight->SetFolderPath(FName(TEXT("HktMap/Environment")));
+			SpawnedActors.Add(SunLight);
+		}
+	}
+
+	if (SunLight)
+	{
+		SunLight->SetActorRotation(FRotator(SunPitch, -45.f, 0.f));
+		if (UDirectionalLightComponent* LightComp = SunLight->GetComponent())
+		{
+			LightComp->SetLightColor(Env.SunColor);
+			LightComp->SetIntensity(SunIntensity);
+		}
+	}
+
+	// ── 2. Exponential Height Fog ───────────────────────────────
+	AExponentialHeightFog* FogActor = nullptr;
+	for (TActorIterator<AExponentialHeightFog> It(World); It; ++It)
+	{
+		FogActor = *It;
+		break;
+	}
+
+	if (!FogActor)
+	{
+		FogActor = World->SpawnActor<AExponentialHeightFog>();
+		if (FogActor)
+		{
+			FogActor->SetFolderPath(FName(TEXT("HktMap/Environment")));
+			SpawnedActors.Add(FogActor);
+		}
+	}
+
+	if (FogActor)
+	{
+		UExponentialHeightFogComponent* FogComp = FogActor->GetComponent();
+		if (FogComp)
+		{
+			// Adjust fog based on weather preset
+			float EffectiveDensity = Env.FogDensity;
+			if (Env.Weather == TEXT("fog"))         EffectiveDensity = FMath::Max(EffectiveDensity, 0.15f);
+			else if (Env.Weather == TEXT("rain"))   EffectiveDensity = FMath::Max(EffectiveDensity, 0.05f);
+			else if (Env.Weather == TEXT("snow"))   EffectiveDensity = FMath::Max(EffectiveDensity, 0.08f);
+			else if (Env.Weather == TEXT("storm"))  EffectiveDensity = FMath::Max(EffectiveDensity, 0.12f);
+
+			FogComp->SetFogDensity(EffectiveDensity);
+			FogComp->SetFogInscatteringColor(Env.AmbientColor);
+		}
+	}
+
+	// ── 3. Wind Directional Source ──────────────────────────────
+	AWindDirectionalSource* WindActor = nullptr;
+	for (TActorIterator<AWindDirectionalSource> It(World); It; ++It)
+	{
+		WindActor = *It;
+		break;
+	}
+
+	if (!WindActor && Env.WindStrength > KINDA_SMALL_NUMBER)
+	{
+		WindActor = World->SpawnActor<AWindDirectionalSource>();
+		if (WindActor)
+		{
+			WindActor->SetFolderPath(FName(TEXT("HktMap/Environment")));
+			SpawnedActors.Add(WindActor);
+		}
+	}
+
+	if (WindActor)
+	{
+		// Orient wind actor to match wind direction
+		FRotator WindRot = Env.WindDirection.GetSafeNormal().Rotation();
+		WindActor->SetActorRotation(WindRot);
+
+		if (UWindDirectionalSourceComponent* WindComp = WindActor->GetComponent())
+		{
+			// Weather modifiers for wind
+			float EffectiveStrength = Env.WindStrength;
+			if (Env.Weather == TEXT("storm"))     EffectiveStrength = FMath::Max(EffectiveStrength, 0.8f);
+			else if (Env.Weather == TEXT("rain")) EffectiveStrength = FMath::Max(EffectiveStrength, 0.4f);
+
+			WindComp->SetStrength(EffectiveStrength);
+			WindComp->SetSpeed(EffectiveStrength * 200.f);
+		}
+	}
+
+	UE_LOG(LogHktMapGenerator, Log, TEXT("Environment applied — sun pitch=%.1f intensity=%.1f, fog=%.3f, wind=%.2f"),
+		SunPitch, SunIntensity,
+		FogActor && FogActor->GetComponent() ? FogActor->GetComponent()->FogDensity : 0.f,
+		Env.WindStrength);
 }
 
 bool UHktMapGeneratorSubsystem::BuildMapFromJson(const FString& JsonStr)

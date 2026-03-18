@@ -4,13 +4,17 @@
 #include "HktTerrainRecipeBuilder.h"
 #include "HktMapRegionVolume.h"
 #include "HktSpawnerActor.h"
+#include "HktAssetSubsystem.h"
 
 #include "Engine/World.h"
+#include "Engine/StaticMeshActor.h"
+#include "Engine/StaticMesh.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/FileHelper.h"
 #include "TimerManager.h"
+#include "Landscape.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -268,7 +272,7 @@ void UHktMapStreamingSubsystem::SpawnRegionContent(const FHktMapRegion& Region)
 
 	FRegionActors& RA = RegionActorMap.FindOrAdd(Region.Name);
 
-	// 1. Region Volume (for visualization/overlap)
+	// ── 1. Region Volume (for visualization/overlap) ────────────
 	AHktMapRegionVolume* Volume = World->SpawnActor<AHktMapRegionVolume>();
 	if (Volume)
 	{
@@ -277,25 +281,106 @@ void UHktMapStreamingSubsystem::SpawnRegionContent(const FHktMapRegion& Region)
 		RA.AllActors.Add(Volume);
 	}
 
-	// 2. Landscape generation
-	// TODO: Create ALandscape from TerrainRecipe or heightmap file
-	// This is the same logic as BuildRegionLandscape in the editor subsystem
-	// For runtime, we generate the heightmap and create the landscape actor
-	if (Region.Landscape.HeightmapPath.IsEmpty())
+	// ── 2. Landscape generation ─────────────────────────────────
+	const auto& LandscapeConfig = Region.Landscape;
+	TArray<uint16> HeightData;
+
+	if (!LandscapeConfig.HeightmapPath.IsEmpty())
 	{
-		TArray<uint16> HeightData = FHktTerrainRecipeBuilder::GenerateHeightmap(
-			Region.Landscape.TerrainRecipe,
-			Region.Landscape.SizeX, Region.Landscape.SizeY,
-			Region.Landscape.HeightMin, Region.Landscape.HeightMax);
-
-		UE_LOG(LogHktStreaming, Log, TEXT("Region '%s': Generated %dx%d heightmap"),
-			*Region.Name, Region.Landscape.SizeX, Region.Landscape.SizeY);
-
-		// TODO: Create ALandscape from HeightData at Region.Center
-		// ALandscape creation at runtime requires careful handling
+		TArray<uint8> RawData;
+		if (FFileHelper::LoadFileToArray(RawData, *LandscapeConfig.HeightmapPath))
+		{
+			HeightData.SetNumUninitialized(RawData.Num() / 2);
+			FMemory::Memcpy(HeightData.GetData(), RawData.GetData(), RawData.Num());
+		}
 	}
 
-	// 3. Spawners
+	if (HeightData.Num() == 0)
+	{
+		HeightData = FHktTerrainRecipeBuilder::GenerateHeightmap(
+			LandscapeConfig.TerrainRecipe,
+			LandscapeConfig.SizeX, LandscapeConfig.SizeY,
+			LandscapeConfig.HeightMin, LandscapeConfig.HeightMax);
+	}
+
+	if (HeightData.Num() == LandscapeConfig.SizeX * LandscapeConfig.SizeY)
+	{
+		// Compute landscape placement and scale
+		const int32 QuadsPerSection = 63;
+		const int32 SectionsPerComponent = 1;
+		const int32 QuadsPerComponent = QuadsPerSection * SectionsPerComponent;
+		const int32 NumComponentsX = FMath::Max(1, (LandscapeConfig.SizeX - 1) / QuadsPerComponent);
+		const int32 NumComponentsY = FMath::Max(1, (LandscapeConfig.SizeY - 1) / QuadsPerComponent);
+
+		float ScaleXY = Region.Extent.X * 2.f / FMath::Max(LandscapeConfig.SizeX - 1, 1);
+		float ScaleZ = (LandscapeConfig.HeightMax - LandscapeConfig.HeightMin) / 512.f;
+		FVector LandscapeScale(ScaleXY, ScaleXY, FMath::Max(ScaleZ, 0.01f));
+		FVector LandscapeOrigin = Region.Center - FVector(Region.Extent.X, Region.Extent.Y, 0.f);
+		LandscapeOrigin.Z = LandscapeConfig.HeightMin;
+
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.Name = FName(*FString::Printf(TEXT("HktLandscape_%s"), *Region.Name));
+		ALandscape* NewLandscape = World->SpawnActor<ALandscape>(
+			ALandscape::StaticClass(), &LandscapeOrigin, nullptr, SpawnParams);
+
+		if (NewLandscape)
+		{
+			NewLandscape->SetActorScale3D(LandscapeScale);
+
+			// Generate weight maps
+			const int32 LayerCount = FMath::Max(LandscapeConfig.Layers.Num(), 1);
+			TArray<TArray<uint8>> WeightMaps = FHktTerrainRecipeBuilder::GenerateWeightMaps(
+				HeightData, LandscapeConfig.SizeX, LandscapeConfig.SizeY, LayerCount);
+
+			TArray<FLandscapeImportLayerInfo> ImportLayers;
+			for (int32 i = 0; i < LandscapeConfig.Layers.Num(); ++i)
+			{
+				FLandscapeImportLayerInfo LayerInfo;
+				LayerInfo.LayerName = FName(*LandscapeConfig.Layers[i].Name);
+				if (i < WeightMaps.Num())
+				{
+					LayerInfo.LayerData = WeightMaps[i];
+				}
+				ImportLayers.Add(LayerInfo);
+			}
+
+			FGuid LandscapeGuid = FGuid::NewGuid();
+			TMap<FGuid, TArray<uint16>> HeightDataPerLayer;
+			TMap<FGuid, TArray<FLandscapeImportLayerInfo>> MaterialLayerDataPerLayer;
+			HeightDataPerLayer.Add(LandscapeGuid, HeightData);
+			MaterialLayerDataPerLayer.Add(LandscapeGuid, ImportLayers);
+
+			NewLandscape->Import(
+				LandscapeGuid,
+				NumComponentsX, NumComponentsY,
+				QuadsPerSection, SectionsPerComponent,
+				HeightDataPerLayer, TEXT(""),
+				MaterialLayerDataPerLayer,
+				ELandscapeImportAlphamapType::Additive);
+
+			// Apply material if tag is set
+			if (LandscapeConfig.MaterialTag.IsValid())
+			{
+				FSoftObjectPath MatPath = UHktAssetSubsystem::ResolveConventionPath(LandscapeConfig.MaterialTag);
+				if (MatPath.IsValid())
+				{
+					UMaterialInterface* Mat = Cast<UMaterialInterface>(MatPath.TryLoad());
+					if (Mat) NewLandscape->LandscapeMaterial = Mat;
+				}
+			}
+
+			RA.AllActors.Add(NewLandscape);
+			UE_LOG(LogHktStreaming, Log, TEXT("Region '%s': ALandscape created %dx%d at runtime"),
+				*Region.Name, LandscapeConfig.SizeX, LandscapeConfig.SizeY);
+		}
+	}
+	else
+	{
+		UE_LOG(LogHktStreaming, Warning, TEXT("Region '%s': Heightmap size mismatch, skipping landscape"),
+			*Region.Name);
+	}
+
+	// ── 3. Spawners ─────────────────────────────────────────────
 	for (const auto& SpawnerData : Region.Spawners)
 	{
 		AHktSpawnerActor* Spawner = World->SpawnActor<AHktSpawnerActor>();
@@ -307,11 +392,34 @@ void UHktMapStreamingSubsystem::SpawnRegionContent(const FHktMapRegion& Region)
 		}
 	}
 
-	// 4. Props
-	// TODO: Resolve MeshTag → StaticMesh and spawn
+	// ── 4. Props (resolve MeshTag → StaticMesh) ─────────────────
+	for (const auto& Prop : Region.Props)
+	{
+		FTransform Transform;
+		Transform.SetLocation(Prop.Position);
+		Transform.SetRotation(FQuat(Prop.Rotation));
+		Transform.SetScale3D(Prop.Scale);
 
-	UE_LOG(LogHktStreaming, Log, TEXT("Region '%s': Spawned %d spawners"),
-		*Region.Name, RA.Spawners.Num());
+		AStaticMeshActor* PropActor = World->SpawnActor<AStaticMeshActor>(
+			AStaticMeshActor::StaticClass(), &Transform);
+
+		if (PropActor && Prop.MeshTag.IsValid())
+		{
+			FSoftObjectPath MeshPath = UHktAssetSubsystem::ResolveConventionPath(Prop.MeshTag);
+			if (MeshPath.IsValid())
+			{
+				UStaticMesh* Mesh = Cast<UStaticMesh>(MeshPath.TryLoad());
+				if (Mesh)
+				{
+					PropActor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+				}
+			}
+			RA.AllActors.Add(PropActor);
+		}
+	}
+
+	UE_LOG(LogHktStreaming, Log, TEXT("Region '%s': Spawned landscape + %d spawners + %d props"),
+		*Region.Name, RA.Spawners.Num(), Region.Props.Num());
 }
 
 void UHktMapStreamingSubsystem::DestroyRegionContent(const FString& RegionName)

@@ -1,6 +1,8 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
 
 #include "HktMapStoryRegistry.h"
+#include "HktStoryGeneratorSubsystem.h"
+#include "Editor.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktStoryRegistry, Log, All);
 
@@ -79,6 +81,7 @@ void UHktMapStoryRegistry::Clear()
 		UnloadStory(Tag);
 	}
 	GlobalStoryTags.Empty();
+	LoadedStorySet.Empty();
 
 	UE_LOG(LogHktStoryRegistry, Log, TEXT("Story registry cleared"));
 }
@@ -98,18 +101,54 @@ void UHktMapStoryRegistry::LoadStory(const FGameplayTag& StoryTag)
 {
 	UE_LOG(LogHktStoryRegistry, Log, TEXT("Loading story: %s"), *StoryTag.ToString());
 
-	// TODO: Call HktStoryGeneratorSubsystem to compile and register this story
-	// The actual integration depends on HktStoryGenerator being loaded as a module
-	// and exposing a public API for runtime story registration.
-	//
-	// Expected call:
-	// if (UHktStoryGeneratorSubsystem* StorySub = ...)
-	//     StorySub->McpBuildStory(StoryJsonForTag);
+	// Avoid duplicate loads
+	if (LoadedStorySet.Contains(StoryTag))
+	{
+		UE_LOG(LogHktStoryRegistry, Verbose, TEXT("Story '%s' already loaded, skipping"), *StoryTag.ToString());
+		return;
+	}
+
+	UHktStoryGeneratorSubsystem* StorySub = nullptr;
+	if (GEditor)
+	{
+		StorySub = GEditor->GetEditorSubsystem<UHktStoryGeneratorSubsystem>();
+	}
+
+	if (!StorySub)
+	{
+		UE_LOG(LogHktStoryRegistry, Warning, TEXT("Story '%s': HktStoryGeneratorSubsystem not available"),
+			*StoryTag.ToString());
+		return;
+	}
+
+	// Build a minimal story JSON that references the story tag.
+	// The StoryGenerator will compile and register it to the VM.
+	FString StoryJson = FString::Printf(
+		TEXT("{\"storyTag\":\"%s\",\"tags\":{},\"steps\":[]}"),
+		*StoryTag.ToString());
+
+	FString Result = StorySub->McpBuildStory(StoryJson);
+
+	// Check result for success
+	if (Result.Contains(TEXT("\"success\":true")) || Result.Contains(TEXT("\"success\": true")))
+	{
+		LoadedStorySet.Add(StoryTag);
+		UE_LOG(LogHktStoryRegistry, Log, TEXT("Story '%s' loaded successfully"), *StoryTag.ToString());
+	}
+	else
+	{
+		UE_LOG(LogHktStoryRegistry, Warning, TEXT("Story '%s' load failed: %s"),
+			*StoryTag.ToString(), *Result);
+	}
 }
 
 void UHktMapStoryRegistry::UnloadStory(const FGameplayTag& StoryTag)
 {
 	UE_LOG(LogHktStoryRegistry, Log, TEXT("Unloading story: %s"), *StoryTag.ToString());
 
-	// TODO: Call HktStoryGenerator to unregister this story from the VM
+	LoadedStorySet.Remove(StoryTag);
+
+	// Story VM unregistration will be handled when HktStoryGenerator
+	// exposes an explicit unload API. For now we track state locally
+	// so that reloads on region re-entry work correctly.
 }
