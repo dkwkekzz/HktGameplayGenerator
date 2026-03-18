@@ -642,6 +642,253 @@ async def list_tools() -> list[Tool]:
         ),
     ])
 
+    # ==================== Animation Blueprint & Advanced Tools ====================
+    tools.extend([
+        # --- ABP ---
+        Tool(
+            name="get_anim_api_guide",
+            description="Get the Animation API usage guide. Call this first to understand available tools, workflows, and JSON schemas for ABP/StateMachine/Montage/BlendSpace/Skeleton.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        Tool(
+            name="create_anim_blueprint",
+            description="Create an Animation Blueprint with a specified skeleton.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {name, packagePath?, skeletonPath}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="get_anim_blueprint_info",
+            description="Get AnimBlueprint structure: graphs, nodes, state machines, pins, parameters.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "asset_path": {"type": "string", "description": "Asset path of the AnimBlueprint"}
+                },
+                "required": ["asset_path"]
+            }
+        ),
+        Tool(
+            name="compile_anim_blueprint",
+            description="Compile an Animation Blueprint. Returns compilation status and errors.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "asset_path": {"type": "string", "description": "Asset path of the AnimBlueprint"}
+                },
+                "required": ["asset_path"]
+            }
+        ),
+        # --- State Machine ---
+        Tool(
+            name="add_state_machine",
+            description="Add a State Machine node to an AnimBlueprint's AnimGraph.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, machineName, posX?, posY?}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="add_state",
+            description="Add a State to a State Machine. Optionally set animation asset. First state auto-connects to Entry.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, machineName, stateName, animAssetPath?, posX?, posY?}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="add_transition",
+            description="Add a Transition between two States with optional transition rule.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, machineName, fromState, toState, transitionRule?: {type: automatic|timeRemaining|boolParam, crossfadeDuration?, paramName?}}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="connect_state_machine_to_output",
+            description="Connect a State Machine's output to the AnimGraph OutputPose (Result node).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, machineName}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="set_state_animation",
+            description="Set or change the animation asset for a State in a State Machine.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, machineName, stateName, animAssetPath}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        # --- AnimGraph Nodes ---
+        Tool(
+            name="add_anim_graph_node",
+            description="Add a node to the AnimGraph. Types: SequencePlayer, BlendListByBool, TwoWayBlend, LayeredBoneBlend, SaveCachedPose, UseCachedPose.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, nodeType, posX?, posY?, animAssetPath?(SequencePlayer), cacheName?(SaveCachedPose)}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="connect_anim_nodes",
+            description="Connect two AnimGraph nodes via their pins (use nodeId from get_anim_blueprint_info).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, sourceNodeId, sourcePinName, targetNodeId, targetPinName}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="add_anim_parameter",
+            description="Add a Bool/Float/Int parameter (variable) to an AnimBlueprint.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {abpPath, paramName, paramType: bool|float|int, defaultValue?}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        # --- Montage ---
+        Tool(
+            name="create_montage",
+            description="Create an AnimMontage from an AnimSequence with optional sections and slot.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {name, packagePath?, animSequencePath, slotName?, sections?: [{name, startTime}]}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="add_montage_section",
+            description="Add a section to a Montage at a specific time.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {montagePath, sectionName, startTime}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="set_montage_slot",
+            description="Set the slot name for a Montage.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "asset_path": {"type": "string", "description": "Montage asset path"},
+                    "slot_name": {"type": "string", "description": "Slot name (e.g. DefaultSlot, UpperBody)"}
+                },
+                "required": ["asset_path", "slot_name"]
+            }
+        ),
+        Tool(
+            name="link_montage_sections",
+            description="Link two Montage sections (set next section after fromSection).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {montagePath, fromSection, toSection}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        # --- BlendSpace ---
+        Tool(
+            name="create_blend_space",
+            description="Create a BlendSpace (1D if only axisX, 2D if axisX+axisY). Optionally add initial samples.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {name, packagePath?, skeletonPath, axisX: {name, min, max}, axisY?: {name, min, max}, samples?: [{animPath, x, y?}]}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="add_blend_space_sample",
+            description="Add a sample point (animation at coordinates) to a BlendSpace.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {blendSpacePath, animPath, x, y?}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="set_blend_space_axis",
+            description="Set axis parameters (name, min, max) for a BlendSpace.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {blendSpacePath, axis: X|Y, name, min, max}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        # --- Skeleton ---
+        Tool(
+            name="get_skeleton_info",
+            description="Get skeleton bone hierarchy, sockets, and virtual bones.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "skeleton_path": {"type": "string", "description": "Skeleton asset path"}
+                },
+                "required": ["skeleton_path"]
+            }
+        ),
+        Tool(
+            name="add_socket",
+            description="Add a socket to a skeleton bone.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {skeletonPath, boneName, socketName, relativeLocation?: {x,y,z}, relativeRotation?: {pitch,yaw,roll}, relativeScale?: {x,y,z}}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+        Tool(
+            name="add_virtual_bone",
+            description="Add a virtual bone between two bones in a skeleton.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_config": {"type": "string", "description": "JSON: {skeletonPath, sourceBone, targetBone, virtualBoneName}"}
+                },
+                "required": ["json_config"]
+            }
+        ),
+    ])
+
     # ==================== Mesh Generator Tools ====================
     tools.extend([
         Tool(
@@ -1148,6 +1395,52 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await anim_tools.get_pending_anim_requests(bridge)
     elif name == "list_generated_animations":
         return await anim_tools.list_generated_animations(bridge, arguments.get("directory", ""))
+
+    # Animation Blueprint & Advanced Tools
+    elif name == "get_anim_api_guide":
+        return await anim_tools.get_anim_api_guide(bridge)
+    elif name == "create_anim_blueprint":
+        return await anim_tools.create_anim_blueprint(bridge, arguments["json_config"])
+    elif name == "get_anim_blueprint_info":
+        return await anim_tools.get_anim_blueprint_info(bridge, arguments["asset_path"])
+    elif name == "compile_anim_blueprint":
+        return await anim_tools.compile_anim_blueprint(bridge, arguments["asset_path"])
+    elif name == "add_state_machine":
+        return await anim_tools.add_state_machine(bridge, arguments["json_config"])
+    elif name == "add_state":
+        return await anim_tools.add_state(bridge, arguments["json_config"])
+    elif name == "add_transition":
+        return await anim_tools.add_transition(bridge, arguments["json_config"])
+    elif name == "connect_state_machine_to_output":
+        return await anim_tools.connect_state_machine_to_output(bridge, arguments["json_config"])
+    elif name == "set_state_animation":
+        return await anim_tools.set_state_animation(bridge, arguments["json_config"])
+    elif name == "add_anim_graph_node":
+        return await anim_tools.add_anim_graph_node(bridge, arguments["json_config"])
+    elif name == "connect_anim_nodes":
+        return await anim_tools.connect_anim_nodes(bridge, arguments["json_config"])
+    elif name == "add_anim_parameter":
+        return await anim_tools.add_anim_parameter(bridge, arguments["json_config"])
+    elif name == "create_montage":
+        return await anim_tools.create_montage(bridge, arguments["json_config"])
+    elif name == "add_montage_section":
+        return await anim_tools.add_montage_section(bridge, arguments["json_config"])
+    elif name == "set_montage_slot":
+        return await anim_tools.set_montage_slot(bridge, arguments["asset_path"], arguments["slot_name"])
+    elif name == "link_montage_sections":
+        return await anim_tools.link_montage_sections(bridge, arguments["json_config"])
+    elif name == "create_blend_space":
+        return await anim_tools.create_blend_space(bridge, arguments["json_config"])
+    elif name == "add_blend_space_sample":
+        return await anim_tools.add_blend_space_sample(bridge, arguments["json_config"])
+    elif name == "set_blend_space_axis":
+        return await anim_tools.set_blend_space_axis(bridge, arguments["json_config"])
+    elif name == "get_skeleton_info":
+        return await anim_tools.get_skeleton_info(bridge, arguments["skeleton_path"])
+    elif name == "add_socket":
+        return await anim_tools.add_socket(bridge, arguments["json_config"])
+    elif name == "add_virtual_bone":
+        return await anim_tools.add_virtual_bone(bridge, arguments["json_config"])
 
     # Mesh Generator Tools
     elif name == "request_character_mesh":
