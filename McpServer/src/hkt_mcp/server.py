@@ -99,7 +99,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="search_assets",
-            description="Search for assets by name across the project",
+            description="Search for assets by name.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -266,7 +266,7 @@ async def list_tools() -> list[Tool]:
     tools.extend([
         Tool(
             name="search_classes",
-            description="Search for classes by name",
+            description="Search for classes by name.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -284,7 +284,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_class_properties",
-            description="Get all properties of a class",
+            description="Get all properties of a class.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -298,7 +298,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_project_structure",
-            description="Get the folder structure of the project",
+            description="Get the folder structure of the project.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -423,7 +423,7 @@ async def list_tools() -> list[Tool]:
     tools.extend([
         Tool(
             name="build_vfx_system",
-            description="Build a Niagara VFX system from JSON config. Call get_vfx_prompt_guide first to learn the schema.",
+            description="Build a complete Niagara VFX system from JSON config via HktVFXGenerator. Creates full system from scratch using FHktVFXNiagaraConfig. Call get_vfx_prompt_guide first.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -604,7 +604,7 @@ async def list_tools() -> list[Tool]:
     tools.extend([
         Tool(
             name="request_animation",
-            description="Request animation generation. Returns convention path + generation prompt + expected type for external tools (Mixamo, Motion Diffusion).",
+            description="Request animation generation via HktAnimGenerator. Returns convention path + prompt for external tools.",
             inputSchema={
                 "type": "object",
                 "properties": {
