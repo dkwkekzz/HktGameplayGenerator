@@ -62,6 +62,7 @@ __pycache__/
 
 # Claude
 .claude/*
+!.claude/skills/
 
 # Etc
 working_changes.txt

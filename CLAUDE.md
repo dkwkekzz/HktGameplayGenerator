@@ -8,17 +8,19 @@ LLM 기반 UE5 게임플레이 어셋 자동 생성 시스템. MCP(Model Context
 
 생성 파이프라인은 **독립적인 7개 스텝**으로 구성된다. 각 스텝은 서로 다른 에이전트가 독립적으로 실행할 수 있으며, JSON 파일을 통해 입출력을 주고받는다.
 
-### 7개 스텝
+### 7개 스텝과 Skill 커맨드
 
-| 스텝 | 입력 | 출력 | 설명 |
-|---|---|---|---|
-| `concept_design` | 사용자 컨셉 텍스트 | 지형 명세 + 스토리 리스트 | 맵/스토리 전체 설계 |
-| `map_generation` | concept_design 출력 | HktMap JSON | Landscape, Spawner, Region 정의 |
-| `story_generation` | concept_design 출력 | Story JSON 파일들 | HktCore 주입용 스토리 |
-| `asset_discovery` | story_generation 출력 | 어셋 명세 (Character/Item/VFX) | 의존 어셋 분석 |
-| `character_generation` | asset_discovery 출력 (characters) | uasset 경로들 | Mesh + Animation 생성 |
-| `item_generation` | asset_discovery 출력 (items) | uasset 경로들 | Item Mesh + Icon 생성 |
-| `vfx_generation` | asset_discovery 출력 (vfx) | uasset 경로들 | Niagara VFX 생성 |
+| 스텝 | Skill | 입력 | 출력 | 설명 |
+|---|---|---|---|---|
+| `concept_design` | `/concept-design` | 사용자 컨셉 텍스트 | 지형 명세 + 스토리 리스트 | 맵/스토리 전체 설계 |
+| `map_generation` | `/map-gen` | concept_design 출력 | HktMap JSON | Landscape, Spawner, Region 정의 |
+| `story_generation` | `/story-gen` | concept_design 출력 | Story JSON 파일들 | HktCore 주입용 스토리 |
+| `asset_discovery` | `/asset-discovery` | story_generation 출력 | 어셋 명세 (Character/Item/VFX) | 의존 어셋 분석 |
+| `character_generation` | `/char-gen` | asset_discovery 출력 (characters) | uasset 경로들 | Mesh + Animation 생성 |
+| `item_generation` | `/item-gen` | asset_discovery 출력 (items) | uasset 경로들 | Item Mesh + Icon 생성 |
+| `vfx_generation` | `/vfx-gen` | asset_discovery 출력 (vfx) | uasset 경로들 | Niagara VFX 생성 |
+
+전체 파이프라인을 한 번에 실행하려면 `/full-pipeline <프로젝트이름> <컨셉>` 사용.
 
 ### 의존 관계
 
@@ -53,6 +55,7 @@ concept_design
 ### 규칙
 
 - 각 스텝은 독립적이다 — 다른 에이전트가 이어서 실행할 수 있다
+- 각 스텝의 **상세 실행 절차**는 `.claude/skills/` 의 Skill 파일에 정의되어 있다
 - 스텝 간 데이터는 `.hkt_steps/{project_id}/{step_type}/output.json` 파일로 전달된다
 - MCP 도구로도, 파일 직접 접근으로도 스텝 데이터를 읽을 수 있다
 - 스텝 실패 시 `step_fail`로 에러를 기록한다
