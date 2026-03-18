@@ -43,6 +43,9 @@ private:
 	/** Region별 활성 스토리 */
 	TMap<FString, TArray<FGameplayTag>> RegionStoryTags;
 
+	/** 현재 VM에 로드된 스토리 태그 (중복 로드 방지) */
+	TSet<FGameplayTag> LoadedStorySet;
+
 	/** 스토리 태그를 HktStoryGenerator에 등록 */
 	void LoadStory(const FGameplayTag& StoryTag);
 

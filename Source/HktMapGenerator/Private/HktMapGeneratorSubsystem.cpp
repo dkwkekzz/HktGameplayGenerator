@@ -2,25 +2,29 @@
 
 #include "HktMapGeneratorSubsystem.h"
 #include "HktMapGeneratorSettings.h"
+#include "HktMapJsonParser.h"
 #include "HktTerrainRecipeBuilder.h"
 #include "HktMapRegionVolume.h"
 #include "HktSpawnerActor.h"
+#include "HktAssetSubsystem.h"
+#include "HktAnimGeneratorTypes.h"
+#include "HktStoryGeneratorSubsystem.h"
 
-#include "Dom/JsonObject.h"
-#include "Dom/JsonValue.h"
-#include "Serialization/JsonReader.h"
-#include "Serialization/JsonSerializer.h"
-#include "Serialization/JsonWriter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Engine/World.h"
 #include "Engine/StaticMeshActor.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
+#include "Engine/WindDirectionalSource.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/WindDirectionalSourceComponent.h"
 #include "Landscape.h"
 #include "LandscapeProxy.h"
 #include "LandscapeInfo.h"
+#include "LandscapeImportHelper.h"
 #include "EngineUtils.h"
 #include "Editor.h"
 
@@ -40,117 +44,22 @@ void UHktMapGeneratorSubsystem::Deinitialize()
 	Super::Deinitialize();
 }
 
-// ── JSON Parsing Helpers ────────────────────────────────────────────
+// ── JSON I/O (delegates to FHktMapJsonParser) ──────────────────────
+
+bool UHktMapGeneratorSubsystem::ParseMapFromJson(const FString& JsonStr, FHktMapData& OutMapData)
+{
+	return FHktMapJsonParser::Parse(JsonStr, OutMapData);
+}
+
+FString UHktMapGeneratorSubsystem::SerializeMapToJson(const FHktMapData& MapData)
+{
+	return FHktMapJsonParser::Serialize(MapData);
+}
+
+// ── GlobalEntityType string conversion (used by BuildGlobalEntities log) ──
 
 namespace
 {
-	FVector ParseJsonVector(const TSharedPtr<FJsonObject>& Obj, const FString& Key, FVector Default = FVector::ZeroVector)
-	{
-		const TArray<TSharedPtr<FJsonValue>>* Arr;
-		if (Obj->TryGetArrayField(Key, Arr) && Arr->Num() >= 3)
-		{
-			return FVector(
-				(*Arr)[0]->AsNumber(),
-				(*Arr)[1]->AsNumber(),
-				(*Arr)[2]->AsNumber()
-			);
-		}
-		return Default;
-	}
-
-	FVector2D ParseJsonVector2D(const TSharedPtr<FJsonObject>& Obj, const FString& Key, FVector2D Default = FVector2D::ZeroVector)
-	{
-		const TArray<TSharedPtr<FJsonValue>>* Arr;
-		if (Obj->TryGetArrayField(Key, Arr) && Arr->Num() >= 2)
-		{
-			return FVector2D((*Arr)[0]->AsNumber(), (*Arr)[1]->AsNumber());
-		}
-		return Default;
-	}
-
-	FLinearColor ParseJsonColor(const TSharedPtr<FJsonObject>& Obj, const FString& Key, FLinearColor Default = FLinearColor::White)
-	{
-		const TArray<TSharedPtr<FJsonValue>>* Arr;
-		if (Obj->TryGetArrayField(Key, Arr) && Arr->Num() >= 3)
-		{
-			float A = (Arr->Num() >= 4) ? (*Arr)[3]->AsNumber() : 1.0f;
-			return FLinearColor((*Arr)[0]->AsNumber(), (*Arr)[1]->AsNumber(), (*Arr)[2]->AsNumber(), A);
-		}
-		return Default;
-	}
-
-	TSharedPtr<FJsonValue> VectorToJsonArray(const FVector& V)
-	{
-		TArray<TSharedPtr<FJsonValue>> Arr;
-		Arr.Add(MakeShareable(new FJsonValueNumber(V.X)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(V.Y)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(V.Z)));
-		return MakeShareable(new FJsonValueArray(Arr));
-	}
-
-	TSharedPtr<FJsonValue> Vector2DToJsonArray(const FVector2D& V)
-	{
-		TArray<TSharedPtr<FJsonValue>> Arr;
-		Arr.Add(MakeShareable(new FJsonValueNumber(V.X)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(V.Y)));
-		return MakeShareable(new FJsonValueArray(Arr));
-	}
-
-	TSharedPtr<FJsonValue> ColorToJsonArray(const FLinearColor& C)
-	{
-		TArray<TSharedPtr<FJsonValue>> Arr;
-		Arr.Add(MakeShareable(new FJsonValueNumber(C.R)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(C.G)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(C.B)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(C.A)));
-		return MakeShareable(new FJsonValueArray(Arr));
-	}
-
-	TSharedPtr<FJsonValue> RotatorToJsonArray(const FRotator& R)
-	{
-		TArray<TSharedPtr<FJsonValue>> Arr;
-		Arr.Add(MakeShareable(new FJsonValueNumber(R.Pitch)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(R.Yaw)));
-		Arr.Add(MakeShareable(new FJsonValueNumber(R.Roll)));
-		return MakeShareable(new FJsonValueArray(Arr));
-	}
-
-	FRotator ParseJsonRotator(const TSharedPtr<FJsonObject>& Obj, const FString& Key)
-	{
-		const TArray<TSharedPtr<FJsonValue>>* Arr;
-		if (Obj->TryGetArrayField(Key, Arr) && Arr->Num() >= 3)
-		{
-			return FRotator((*Arr)[0]->AsNumber(), (*Arr)[1]->AsNumber(), (*Arr)[2]->AsNumber());
-		}
-		return FRotator::ZeroRotator;
-	}
-
-	EHktSpawnRule ParseSpawnRule(const FString& Str)
-	{
-		if (Str == TEXT("on_story_start")) return EHktSpawnRule::OnStoryStart;
-		if (Str == TEXT("on_trigger")) return EHktSpawnRule::OnTrigger;
-		if (Str == TEXT("timed")) return EHktSpawnRule::Timed;
-		return EHktSpawnRule::Always;
-	}
-
-	FString SpawnRuleToString(EHktSpawnRule Rule)
-	{
-		switch (Rule)
-		{
-		case EHktSpawnRule::OnStoryStart: return TEXT("on_story_start");
-		case EHktSpawnRule::OnTrigger: return TEXT("on_trigger");
-		case EHktSpawnRule::Timed: return TEXT("timed");
-		default: return TEXT("always");
-		}
-	}
-
-	EHktGlobalEntityType ParseGlobalEntityType(const FString& Str)
-	{
-		if (Str == TEXT("world_boss")) return EHktGlobalEntityType::WorldBoss;
-		if (Str == TEXT("npc_spawner")) return EHktGlobalEntityType::NPCSpawner;
-		return EHktGlobalEntityType::NPC;
-	}
-
 	FString GlobalEntityTypeToString(EHktGlobalEntityType Type)
 	{
 		switch (Type)
@@ -160,520 +69,7 @@ namespace
 		default: return TEXT("npc");
 		}
 	}
-
-	// ── Sub-struct Parsing ──────────────────────────────────────────
-
-	FHktTerrainFeature ParseTerrainFeature(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktTerrainFeature F;
-		Obj->TryGetStringField(TEXT("type"), F.Type);
-		F.Position = ParseJsonVector2D(Obj, TEXT("position"), FVector2D(0.5f, 0.5f));
-		Obj->TryGetNumberField(TEXT("radius"), F.Radius);
-		Obj->TryGetNumberField(TEXT("intensity"), F.Intensity);
-		Obj->TryGetStringField(TEXT("falloff"), F.Falloff);
-		return F;
-	}
-
-	FHktTerrainRecipe ParseTerrainRecipe(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktTerrainRecipe R;
-		Obj->TryGetStringField(TEXT("base_noise_type"), R.BaseNoiseType);
-		Obj->TryGetNumberField(TEXT("octaves"), R.Octaves);
-		Obj->TryGetNumberField(TEXT("frequency"), R.Frequency);
-		Obj->TryGetNumberField(TEXT("lacunarity"), R.Lacunarity);
-		Obj->TryGetNumberField(TEXT("persistence"), R.Persistence);
-		Obj->TryGetNumberField(TEXT("seed"), R.Seed);
-		Obj->TryGetNumberField(TEXT("erosion_passes"), R.ErosionPasses);
-
-		const TArray<TSharedPtr<FJsonValue>>* FeaturesArr;
-		if (Obj->TryGetArrayField(TEXT("features"), FeaturesArr))
-		{
-			for (auto& Val : *FeaturesArr)
-			{
-				R.Features.Add(ParseTerrainFeature(Val->AsObject()));
-			}
-		}
-		return R;
-	}
-
-	FHktMapLandscape ParseLandscape(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktMapLandscape L;
-		Obj->TryGetNumberField(TEXT("size_x"), L.SizeX);
-		Obj->TryGetNumberField(TEXT("size_y"), L.SizeY);
-		Obj->TryGetStringField(TEXT("heightmap_path"), L.HeightmapPath);
-
-		FString MaterialTagStr;
-		if (Obj->TryGetStringField(TEXT("material_tag"), MaterialTagStr))
-		{
-			L.MaterialTag = FGameplayTag::RequestGameplayTag(FName(*MaterialTagStr), false);
-		}
-		Obj->TryGetStringField(TEXT("biome"), L.Biome);
-
-		const TSharedPtr<FJsonObject>* HeightRange;
-		if (Obj->TryGetObjectField(TEXT("height_range"), HeightRange))
-		{
-			(*HeightRange)->TryGetNumberField(TEXT("min"), L.HeightMin);
-			(*HeightRange)->TryGetNumberField(TEXT("max"), L.HeightMax);
-		}
-
-		const TSharedPtr<FJsonObject>* RecipeObj;
-		if (Obj->TryGetObjectField(TEXT("terrain_recipe"), RecipeObj))
-		{
-			L.TerrainRecipe = ParseTerrainRecipe(*RecipeObj);
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* LayersArr;
-		if (Obj->TryGetArrayField(TEXT("layers"), LayersArr))
-		{
-			for (auto& Val : *LayersArr)
-			{
-				auto LayerObj = Val->AsObject();
-				FHktMapLandscapeLayer Layer;
-				LayerObj->TryGetStringField(TEXT("name"), Layer.Name);
-				FString MatTag;
-				if (LayerObj->TryGetStringField(TEXT("material_tag"), MatTag))
-				{
-					Layer.MaterialTag = FGameplayTag::RequestGameplayTag(FName(*MatTag), false);
-				}
-				LayerObj->TryGetStringField(TEXT("weight_map"), Layer.WeightMapPath);
-				L.Layers.Add(Layer);
-			}
-		}
-		return L;
-	}
-
-	FHktMapSpawner ParseSpawner(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktMapSpawner S;
-		FString EntityTagStr;
-		if (Obj->TryGetStringField(TEXT("entity_tag"), EntityTagStr))
-		{
-			S.EntityTag = FGameplayTag::RequestGameplayTag(FName(*EntityTagStr), false);
-		}
-		S.Position = ParseJsonVector(Obj, TEXT("position"));
-		S.Rotation = ParseJsonRotator(Obj, TEXT("rotation"));
-
-		FString RuleStr;
-		if (Obj->TryGetStringField(TEXT("spawn_rule"), RuleStr))
-		{
-			S.SpawnRule = ParseSpawnRule(RuleStr);
-		}
-
-		Obj->TryGetNumberField(TEXT("count"), S.Count);
-		if (S.Count < 1) S.Count = 1;
-		Obj->TryGetNumberField(TEXT("respawn_seconds"), S.RespawnSeconds);
-		return S;
-	}
-
-	FHktMapStoryRef ParseStoryRef(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktMapStoryRef St;
-		FString StoryTagStr;
-		if (Obj->TryGetStringField(TEXT("story_tag"), StoryTagStr))
-		{
-			St.StoryTag = FGameplayTag::RequestGameplayTag(FName(*StoryTagStr), false);
-		}
-		Obj->TryGetBoolField(TEXT("auto_load"), St.bAutoLoad);
-		return St;
-	}
-
-	FHktMapProp ParseProp(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktMapProp P;
-		FString MeshTagStr;
-		if (Obj->TryGetStringField(TEXT("mesh_tag"), MeshTagStr))
-		{
-			P.MeshTag = FGameplayTag::RequestGameplayTag(FName(*MeshTagStr), false);
-		}
-		P.Position = ParseJsonVector(Obj, TEXT("position"));
-		P.Rotation = ParseJsonRotator(Obj, TEXT("rotation"));
-		P.Scale = ParseJsonVector(Obj, TEXT("scale"), FVector::OneVector);
-		return P;
-	}
-
-	FHktMapGlobalEntity ParseGlobalEntity(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktMapGlobalEntity E;
-		FString TagStr;
-		if (Obj->TryGetStringField(TEXT("entity_tag"), TagStr))
-		{
-			E.EntityTag = FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
-		}
-		FString TypeStr;
-		if (Obj->TryGetStringField(TEXT("entity_type"), TypeStr))
-		{
-			E.EntityType = ParseGlobalEntityType(TypeStr);
-		}
-		E.Position = ParseJsonVector(Obj, TEXT("position"));
-		E.Rotation = ParseJsonRotator(Obj, TEXT("rotation"));
-		Obj->TryGetNumberField(TEXT("count"), E.Count);
-		if (E.Count < 1) E.Count = 1;
-
-		const TSharedPtr<FJsonObject>* PropsObj;
-		if (Obj->TryGetObjectField(TEXT("properties"), PropsObj))
-		{
-			for (auto& Pair : (*PropsObj)->Values)
-			{
-				E.Properties.Add(Pair.Key, Pair.Value->AsString());
-			}
-		}
-		return E;
-	}
-
-	FHktMapEnvironment ParseEnvironment(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktMapEnvironment Env;
-		Obj->TryGetStringField(TEXT("weather"), Env.Weather);
-		Obj->TryGetStringField(TEXT("time_of_day"), Env.TimeOfDay);
-		Obj->TryGetNumberField(TEXT("fog_density"), Env.FogDensity);
-		Env.WindDirection = ParseJsonVector(Obj, TEXT("wind_direction"), FVector(1.f, 0.f, 0.f));
-		Obj->TryGetNumberField(TEXT("wind_strength"), Env.WindStrength);
-		Env.AmbientColor = ParseJsonColor(Obj, TEXT("ambient_color"), FLinearColor(0.5f, 0.5f, 0.6f));
-		Env.SunColor = ParseJsonColor(Obj, TEXT("sun_color"), FLinearColor(1.f, 0.95f, 0.8f));
-
-		const TArray<TSharedPtr<FJsonValue>>* VFXArr;
-		if (Obj->TryGetArrayField(TEXT("ambient_vfx_tags"), VFXArr))
-		{
-			for (auto& Val : *VFXArr)
-			{
-				FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*Val->AsString()), false);
-				if (Tag.IsValid())
-				{
-					Env.AmbientVFXTags.Add(Tag);
-				}
-			}
-		}
-		return Env;
-	}
-
-	FHktMapRegion ParseRegion(const TSharedPtr<FJsonObject>& Obj)
-	{
-		FHktMapRegion Region;
-		Obj->TryGetStringField(TEXT("name"), Region.Name);
-
-		const TSharedPtr<FJsonObject>* BoundsObj;
-		if (Obj->TryGetObjectField(TEXT("bounds"), BoundsObj))
-		{
-			Region.Center = ParseJsonVector(*BoundsObj, TEXT("center"));
-			Region.Extent = ParseJsonVector(*BoundsObj, TEXT("extent"), FVector(1000.f));
-		}
-
-		const TSharedPtr<FJsonObject>* PropsObj;
-		if (Obj->TryGetObjectField(TEXT("properties"), PropsObj))
-		{
-			for (auto& Pair : (*PropsObj)->Values)
-			{
-				Region.Properties.Add(Pair.Key, Pair.Value->AsString());
-			}
-		}
-
-		const TSharedPtr<FJsonObject>* LandscapeObj;
-		if (Obj->TryGetObjectField(TEXT("landscape"), LandscapeObj))
-		{
-			Region.Landscape = ParseLandscape(*LandscapeObj);
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* SpawnersArr;
-		if (Obj->TryGetArrayField(TEXT("spawners"), SpawnersArr))
-		{
-			for (auto& Val : *SpawnersArr)
-			{
-				Region.Spawners.Add(ParseSpawner(Val->AsObject()));
-			}
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* StoriesArr;
-		if (Obj->TryGetArrayField(TEXT("stories"), StoriesArr))
-		{
-			for (auto& Val : *StoriesArr)
-			{
-				Region.Stories.Add(ParseStoryRef(Val->AsObject()));
-			}
-		}
-
-		const TArray<TSharedPtr<FJsonValue>>* PropsArr;
-		if (Obj->TryGetArrayField(TEXT("props"), PropsArr))
-		{
-			for (auto& Val : *PropsArr)
-			{
-				Region.Props.Add(ParseProp(Val->AsObject()));
-			}
-		}
-
-		return Region;
-	}
-
-	// ── Sub-struct Serialization ────────────────────────────────────
-
-	TSharedPtr<FJsonObject> SerializeTerrainFeature(const FHktTerrainFeature& F)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("type"), F.Type);
-		Obj->SetField(TEXT("position"), Vector2DToJsonArray(F.Position));
-		Obj->SetNumberField(TEXT("radius"), F.Radius);
-		Obj->SetNumberField(TEXT("intensity"), F.Intensity);
-		Obj->SetStringField(TEXT("falloff"), F.Falloff);
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeTerrainRecipe(const FHktTerrainRecipe& R)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("base_noise_type"), R.BaseNoiseType);
-		Obj->SetNumberField(TEXT("octaves"), R.Octaves);
-		Obj->SetNumberField(TEXT("frequency"), R.Frequency);
-		Obj->SetNumberField(TEXT("lacunarity"), R.Lacunarity);
-		Obj->SetNumberField(TEXT("persistence"), R.Persistence);
-		Obj->SetNumberField(TEXT("seed"), R.Seed);
-		Obj->SetNumberField(TEXT("erosion_passes"), R.ErosionPasses);
-
-		TArray<TSharedPtr<FJsonValue>> FeatArr;
-		for (auto& F : R.Features)
-		{
-			FeatArr.Add(MakeShareable(new FJsonValueObject(SerializeTerrainFeature(F))));
-		}
-		Obj->SetArrayField(TEXT("features"), FeatArr);
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeLandscape(const FHktMapLandscape& L)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetNumberField(TEXT("size_x"), L.SizeX);
-		Obj->SetNumberField(TEXT("size_y"), L.SizeY);
-		Obj->SetStringField(TEXT("heightmap_path"), L.HeightmapPath);
-		Obj->SetStringField(TEXT("material_tag"), L.MaterialTag.ToString());
-		Obj->SetStringField(TEXT("biome"), L.Biome);
-
-		auto HR = MakeShareable(new FJsonObject());
-		HR->SetNumberField(TEXT("min"), L.HeightMin);
-		HR->SetNumberField(TEXT("max"), L.HeightMax);
-		Obj->SetObjectField(TEXT("height_range"), HR);
-
-		Obj->SetObjectField(TEXT("terrain_recipe"), SerializeTerrainRecipe(L.TerrainRecipe));
-
-		TArray<TSharedPtr<FJsonValue>> LayerArr;
-		for (auto& Layer : L.Layers)
-		{
-			auto LObj = MakeShareable(new FJsonObject());
-			LObj->SetStringField(TEXT("name"), Layer.Name);
-			LObj->SetStringField(TEXT("material_tag"), Layer.MaterialTag.ToString());
-			LObj->SetStringField(TEXT("weight_map"), Layer.WeightMapPath);
-			LayerArr.Add(MakeShareable(new FJsonValueObject(LObj)));
-		}
-		Obj->SetArrayField(TEXT("layers"), LayerArr);
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeSpawner(const FHktMapSpawner& S)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("entity_tag"), S.EntityTag.ToString());
-		Obj->SetField(TEXT("position"), VectorToJsonArray(S.Position));
-		Obj->SetField(TEXT("rotation"), RotatorToJsonArray(S.Rotation));
-		Obj->SetStringField(TEXT("spawn_rule"), SpawnRuleToString(S.SpawnRule));
-		Obj->SetNumberField(TEXT("count"), S.Count);
-		Obj->SetNumberField(TEXT("respawn_seconds"), S.RespawnSeconds);
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeStoryRef(const FHktMapStoryRef& St)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("story_tag"), St.StoryTag.ToString());
-		Obj->SetBoolField(TEXT("auto_load"), St.bAutoLoad);
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeProp(const FHktMapProp& P)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("mesh_tag"), P.MeshTag.ToString());
-		Obj->SetField(TEXT("position"), VectorToJsonArray(P.Position));
-		Obj->SetField(TEXT("rotation"), RotatorToJsonArray(P.Rotation));
-		Obj->SetField(TEXT("scale"), VectorToJsonArray(P.Scale));
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeGlobalEntity(const FHktMapGlobalEntity& E)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("entity_tag"), E.EntityTag.ToString());
-		Obj->SetStringField(TEXT("entity_type"), GlobalEntityTypeToString(E.EntityType));
-		Obj->SetField(TEXT("position"), VectorToJsonArray(E.Position));
-		Obj->SetField(TEXT("rotation"), RotatorToJsonArray(E.Rotation));
-		Obj->SetNumberField(TEXT("count"), E.Count);
-
-		auto PropsObj = MakeShareable(new FJsonObject());
-		for (auto& Pair : E.Properties)
-		{
-			PropsObj->SetStringField(Pair.Key, Pair.Value);
-		}
-		Obj->SetObjectField(TEXT("properties"), PropsObj);
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeEnvironment(const FHktMapEnvironment& Env)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("weather"), Env.Weather);
-		Obj->SetStringField(TEXT("time_of_day"), Env.TimeOfDay);
-		Obj->SetNumberField(TEXT("fog_density"), Env.FogDensity);
-		Obj->SetField(TEXT("wind_direction"), VectorToJsonArray(Env.WindDirection));
-		Obj->SetNumberField(TEXT("wind_strength"), Env.WindStrength);
-		Obj->SetField(TEXT("ambient_color"), ColorToJsonArray(Env.AmbientColor));
-		Obj->SetField(TEXT("sun_color"), ColorToJsonArray(Env.SunColor));
-
-		TArray<TSharedPtr<FJsonValue>> VFXArr;
-		for (auto& Tag : Env.AmbientVFXTags)
-		{
-			VFXArr.Add(MakeShareable(new FJsonValueString(Tag.ToString())));
-		}
-		Obj->SetArrayField(TEXT("ambient_vfx_tags"), VFXArr);
-		return Obj;
-	}
-
-	TSharedPtr<FJsonObject> SerializeRegion(const FHktMapRegion& R)
-	{
-		auto Obj = MakeShareable(new FJsonObject());
-		Obj->SetStringField(TEXT("name"), R.Name);
-
-		auto BoundsObj = MakeShareable(new FJsonObject());
-		BoundsObj->SetField(TEXT("center"), VectorToJsonArray(R.Center));
-		BoundsObj->SetField(TEXT("extent"), VectorToJsonArray(R.Extent));
-		Obj->SetObjectField(TEXT("bounds"), BoundsObj);
-
-		auto PropsMapObj = MakeShareable(new FJsonObject());
-		for (auto& Pair : R.Properties)
-		{
-			PropsMapObj->SetStringField(Pair.Key, Pair.Value);
-		}
-		Obj->SetObjectField(TEXT("properties"), PropsMapObj);
-
-		Obj->SetObjectField(TEXT("landscape"), SerializeLandscape(R.Landscape));
-
-		TArray<TSharedPtr<FJsonValue>> SpawnArr;
-		for (auto& S : R.Spawners) SpawnArr.Add(MakeShareable(new FJsonValueObject(SerializeSpawner(S))));
-		Obj->SetArrayField(TEXT("spawners"), SpawnArr);
-
-		TArray<TSharedPtr<FJsonValue>> StoryArr;
-		for (auto& St : R.Stories) StoryArr.Add(MakeShareable(new FJsonValueObject(SerializeStoryRef(St))));
-		Obj->SetArrayField(TEXT("stories"), StoryArr);
-
-		TArray<TSharedPtr<FJsonValue>> PropArr;
-		for (auto& P : R.Props) PropArr.Add(MakeShareable(new FJsonValueObject(SerializeProp(P))));
-		Obj->SetArrayField(TEXT("props"), PropArr);
-
-		return Obj;
-	}
 } // anonymous namespace
-
-// ── JSON I/O ────────────────────────────────────────────────────────
-
-bool UHktMapGeneratorSubsystem::ParseMapFromJson(const FString& JsonStr, FHktMapData& OutMapData)
-{
-	TSharedPtr<FJsonObject> Root;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonStr);
-	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
-	{
-		UE_LOG(LogHktMapGenerator, Error, TEXT("Failed to parse HktMap JSON"));
-		return false;
-	}
-
-	Root->TryGetStringField(TEXT("map_id"), OutMapData.MapId);
-	Root->TryGetStringField(TEXT("map_name"), OutMapData.MapName);
-	Root->TryGetStringField(TEXT("description"), OutMapData.Description);
-
-	// Regions (each with own landscape)
-	const TArray<TSharedPtr<FJsonValue>>* RegionsArr;
-	if (Root->TryGetArrayField(TEXT("regions"), RegionsArr))
-	{
-		for (auto& Val : *RegionsArr)
-		{
-			OutMapData.Regions.Add(ParseRegion(Val->AsObject()));
-		}
-	}
-
-	// Global Entities
-	const TArray<TSharedPtr<FJsonValue>>* GlobalEntArr;
-	if (Root->TryGetArrayField(TEXT("global_entities"), GlobalEntArr))
-	{
-		for (auto& Val : *GlobalEntArr)
-		{
-			OutMapData.GlobalEntities.Add(ParseGlobalEntity(Val->AsObject()));
-		}
-	}
-
-	// Environment
-	const TSharedPtr<FJsonObject>* EnvObj;
-	if (Root->TryGetObjectField(TEXT("environment"), EnvObj))
-	{
-		OutMapData.Environment = ParseEnvironment(*EnvObj);
-	}
-
-	// Global Stories
-	const TArray<TSharedPtr<FJsonValue>>* GStoriesArr;
-	if (Root->TryGetArrayField(TEXT("global_stories"), GStoriesArr))
-	{
-		for (auto& Val : *GStoriesArr)
-		{
-			OutMapData.GlobalStories.Add(ParseStoryRef(Val->AsObject()));
-		}
-	}
-
-	int32 TotalSpawners = 0, TotalStories = 0;
-	for (auto& R : OutMapData.Regions)
-	{
-		TotalSpawners += R.Spawners.Num();
-		TotalStories += R.Stories.Num();
-	}
-	TotalStories += OutMapData.GlobalStories.Num();
-
-	UE_LOG(LogHktMapGenerator, Log, TEXT("Parsed HktMap '%s' — %d regions, %d spawners, %d stories, %d global entities"),
-		*OutMapData.MapId, OutMapData.Regions.Num(), TotalSpawners, TotalStories, OutMapData.GlobalEntities.Num());
-	return true;
-}
-
-FString UHktMapGeneratorSubsystem::SerializeMapToJson(const FHktMapData& MapData)
-{
-	TSharedPtr<FJsonObject> Root = MakeShareable(new FJsonObject());
-	Root->SetStringField(TEXT("map_id"), MapData.MapId);
-	Root->SetStringField(TEXT("map_name"), MapData.MapName);
-	Root->SetStringField(TEXT("description"), MapData.Description);
-
-	// Regions
-	TArray<TSharedPtr<FJsonValue>> RegArr;
-	for (auto& R : MapData.Regions)
-	{
-		RegArr.Add(MakeShareable(new FJsonValueObject(SerializeRegion(R))));
-	}
-	Root->SetArrayField(TEXT("regions"), RegArr);
-
-	// Global Entities
-	TArray<TSharedPtr<FJsonValue>> GEArr;
-	for (auto& E : MapData.GlobalEntities)
-	{
-		GEArr.Add(MakeShareable(new FJsonValueObject(SerializeGlobalEntity(E))));
-	}
-	Root->SetArrayField(TEXT("global_entities"), GEArr);
-
-	// Environment
-	Root->SetObjectField(TEXT("environment"), SerializeEnvironment(MapData.Environment));
-
-	// Global Stories
-	TArray<TSharedPtr<FJsonValue>> GSArr;
-	for (auto& St : MapData.GlobalStories)
-	{
-		GSArr.Add(MakeShareable(new FJsonValueObject(SerializeStoryRef(St))));
-	}
-	Root->SetArrayField(TEXT("global_stories"), GSArr);
-
-	FString Output;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
-	FJsonSerializer::Serialize(Root.ToSharedRef(), Writer);
-	return Output;
-}
 
 // ── Build ───────────────────────────────────────────────────────────
 
@@ -740,54 +136,163 @@ bool UHktMapGeneratorSubsystem::BuildMap(const FHktMapData& MapData)
 
 bool UHktMapGeneratorSubsystem::BuildRegionLandscape(const FHktMapRegion& Region, UWorld* World)
 {
-	const auto& Landscape = Region.Landscape;
+	const auto& LandscapeConfig = Region.Landscape;
 
-	// Generate or load heightmap data
+	// ── 1. Generate or load heightmap data ──────────────────────
 	TArray<uint16> HeightData;
 
-	if (!Landscape.HeightmapPath.IsEmpty())
+	if (!LandscapeConfig.HeightmapPath.IsEmpty())
 	{
-		// Load from file
 		TArray<uint8> RawData;
-		if (FFileHelper::LoadFileToArray(RawData, *Landscape.HeightmapPath))
+		if (FFileHelper::LoadFileToArray(RawData, *LandscapeConfig.HeightmapPath))
 		{
 			HeightData.SetNumUninitialized(RawData.Num() / 2);
 			FMemory::Memcpy(HeightData.GetData(), RawData.GetData(), RawData.Num());
 			UE_LOG(LogHktMapGenerator, Log, TEXT("Region '%s': Loaded heightmap from %s (%d samples)"),
-				*Region.Name, *Landscape.HeightmapPath, HeightData.Num());
+				*Region.Name, *LandscapeConfig.HeightmapPath, HeightData.Num());
 		}
 		else
 		{
 			UE_LOG(LogHktMapGenerator, Warning, TEXT("Region '%s': Failed to load heightmap '%s', using recipe"),
-				*Region.Name, *Landscape.HeightmapPath);
+				*Region.Name, *LandscapeConfig.HeightmapPath);
 		}
 	}
 
 	if (HeightData.Num() == 0)
 	{
-		// Generate from terrain recipe
 		HeightData = FHktTerrainRecipeBuilder::GenerateHeightmap(
-			Landscape.TerrainRecipe,
-			Landscape.SizeX, Landscape.SizeY,
-			Landscape.HeightMin, Landscape.HeightMax);
+			LandscapeConfig.TerrainRecipe,
+			LandscapeConfig.SizeX, LandscapeConfig.SizeY,
+			LandscapeConfig.HeightMin, LandscapeConfig.HeightMax);
 	}
 
-	if (HeightData.Num() != Landscape.SizeX * Landscape.SizeY)
+	if (HeightData.Num() != LandscapeConfig.SizeX * LandscapeConfig.SizeY)
 	{
 		UE_LOG(LogHktMapGenerator, Error, TEXT("Region '%s': Heightmap size mismatch (%d vs %dx%d)"),
-			*Region.Name, HeightData.Num(), Landscape.SizeX, Landscape.SizeY);
+			*Region.Name, HeightData.Num(), LandscapeConfig.SizeX, LandscapeConfig.SizeY);
 		return false;
 	}
 
-	// TODO: Create ALandscape from HeightData via LandscapeEditorUtils
-	// This requires LandscapeEditor module. The actual creation uses:
-	//   ALandscape* NewLandscape = World->SpawnActor<ALandscape>();
-	//   NewLandscape->Import(...)
-	// The landscape should be positioned at Region.Center
-	//
-	// For now, log success and track the intent
-	UE_LOG(LogHktMapGenerator, Log, TEXT("Region '%s': Landscape %dx%d generated (biome=%s, %d layers)"),
-		*Region.Name, Landscape.SizeX, Landscape.SizeY, *Landscape.Biome, Landscape.Layers.Num());
+	// ── 2. Determine component geometry ─────────────────────────
+	// UE5 Landscape valid component sizes: 7, 15, 31, 63, 127, 255
+	// Valid section sizes: 7, 15, 31, 63, 127
+	// Total size = NumComponents * SectionsPerComponent * QuadsPerSection + 1
+	const int32 QuadsPerSection = 63;
+	const int32 SectionsPerComponent = 1;
+	const int32 QuadsPerComponent = QuadsPerSection * SectionsPerComponent;
+
+	const int32 NumComponentsX = FMath::Max(1, (LandscapeConfig.SizeX - 1) / QuadsPerComponent);
+	const int32 NumComponentsY = FMath::Max(1, (LandscapeConfig.SizeY - 1) / QuadsPerComponent);
+
+	// ── 3. Prepare landscape material ───────────────────────────
+	const UHktMapGeneratorSettings* Settings = UHktMapGeneratorSettings::Get();
+	UMaterialInterface* LandscapeMaterial = nullptr;
+
+	if (LandscapeConfig.MaterialTag.IsValid())
+	{
+		FSoftObjectPath MatPath = UHktAssetSubsystem::ResolveConventionPath(LandscapeConfig.MaterialTag);
+		if (MatPath.IsValid())
+		{
+			LandscapeMaterial = Cast<UMaterialInterface>(MatPath.TryLoad());
+		}
+	}
+
+	if (!LandscapeMaterial && Settings->DefaultLandscapeMaterial.IsValid())
+	{
+		LandscapeMaterial = Cast<UMaterialInterface>(Settings->DefaultLandscapeMaterial.TryLoad());
+	}
+
+	// ── 4. Prepare layer infos ──────────────────────────────────
+	TArray<FLandscapeImportLayerInfo> ImportLayers;
+
+	// Generate weight maps from heightmap for automatic layer distribution
+	const int32 LayerCount = FMath::Max(LandscapeConfig.Layers.Num(), 1);
+	TArray<TArray<uint8>> WeightMaps = FHktTerrainRecipeBuilder::GenerateWeightMaps(
+		HeightData, LandscapeConfig.SizeX, LandscapeConfig.SizeY, LayerCount);
+
+	for (int32 i = 0; i < LandscapeConfig.Layers.Num(); ++i)
+	{
+		const auto& LayerDef = LandscapeConfig.Layers[i];
+		FLandscapeImportLayerInfo LayerInfo;
+		LayerInfo.LayerName = FName(*LayerDef.Name);
+
+		// Use weight map from file if provided, otherwise use generated
+		if (!LayerDef.WeightMapPath.IsEmpty())
+		{
+			TArray<uint8> FileWeightData;
+			if (FFileHelper::LoadFileToArray(FileWeightData, *LayerDef.WeightMapPath)
+				&& FileWeightData.Num() == LandscapeConfig.SizeX * LandscapeConfig.SizeY)
+			{
+				LayerInfo.LayerData = FileWeightData;
+			}
+			else if (i < WeightMaps.Num())
+			{
+				LayerInfo.LayerData = WeightMaps[i];
+			}
+		}
+		else if (i < WeightMaps.Num())
+		{
+			LayerInfo.LayerData = WeightMaps[i];
+		}
+
+		ImportLayers.Add(LayerInfo);
+	}
+
+	// ── 5. Spawn ALandscape actor ───────────────────────────────
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Name = FName(*FString::Printf(TEXT("HktLandscape_%s"), *Region.Name));
+
+	// Offset so that Region.Center is the center of the landscape
+	float ScaleXY = Region.Extent.X * 2.f / FMath::Max(LandscapeConfig.SizeX - 1, 1);
+	float ScaleZ = (LandscapeConfig.HeightMax - LandscapeConfig.HeightMin) / 512.f; // UE5 Landscape: 512 UU per unit at scale 1
+	FVector LandscapeScale(ScaleXY, ScaleXY, FMath::Max(ScaleZ, 0.01f));
+
+	// Position at the corner so that center of landscape matches Region.Center
+	FVector LandscapeOrigin = Region.Center - FVector(Region.Extent.X, Region.Extent.Y, 0.f);
+	LandscapeOrigin.Z = LandscapeConfig.HeightMin;
+
+	ALandscape* NewLandscape = World->SpawnActor<ALandscape>(
+		ALandscape::StaticClass(), &LandscapeOrigin, nullptr, SpawnParams);
+
+	if (!NewLandscape)
+	{
+		UE_LOG(LogHktMapGenerator, Error, TEXT("Region '%s': Failed to spawn ALandscape actor"), *Region.Name);
+		return false;
+	}
+
+	NewLandscape->SetActorScale3D(LandscapeScale);
+
+	// ── 6. Import heightmap data into landscape ─────────────────
+	TMap<FGuid, TArray<uint16>> HeightDataPerLayer;
+	TMap<FGuid, TArray<FLandscapeImportLayerInfo>> MaterialLayerDataPerLayer;
+
+	FGuid LandscapeGuid = FGuid::NewGuid();
+	HeightDataPerLayer.Add(LandscapeGuid, HeightData);
+	MaterialLayerDataPerLayer.Add(LandscapeGuid, ImportLayers);
+
+	NewLandscape->Import(
+		LandscapeGuid,
+		NumComponentsX, NumComponentsY,
+		QuadsPerSection, SectionsPerComponent,
+		HeightDataPerLayer, TEXT(""),
+		MaterialLayerDataPerLayer,
+		ELandscapeImportAlphamapType::Additive);
+
+	// ── 7. Apply landscape material ─────────────────────────────
+	if (LandscapeMaterial)
+	{
+		NewLandscape->LandscapeMaterial = LandscapeMaterial;
+	}
+
+	NewLandscape->SetFolderPath(FName(TEXT("HktMap/Landscapes")));
+	NewLandscape->MarkPackageDirty();
+	SpawnedActors.Add(NewLandscape);
+
+	UE_LOG(LogHktMapGenerator, Log, TEXT("Region '%s': ALandscape created — %dx%d, %d components (%dx%d), biome=%s, %d layers, scale=(%.2f, %.2f, %.2f)"),
+		*Region.Name, LandscapeConfig.SizeX, LandscapeConfig.SizeY,
+		NumComponentsX * NumComponentsY, NumComponentsX, NumComponentsY,
+		*LandscapeConfig.Biome, ImportLayers.Num(),
+		LandscapeScale.X, LandscapeScale.Y, LandscapeScale.Z);
 
 	return true;
 }
@@ -830,8 +335,6 @@ void UHktMapGeneratorSubsystem::BuildProps(const TArray<FHktMapProp>& Props, UWo
 {
 	for (const auto& Prop : Props)
 	{
-		// TODO: Resolve MeshTag → StaticMesh via ConventionPath/GeneratorRouter
-		// For now, create a placeholder StaticMeshActor at the right transform
 		FTransform Transform;
 		Transform.SetLocation(Prop.Position);
 		Transform.SetRotation(FQuat(Prop.Rotation));
@@ -840,11 +343,44 @@ void UHktMapGeneratorSubsystem::BuildProps(const TArray<FHktMapProp>& Props, UWo
 		AStaticMeshActor* PropActor = World->SpawnActor<AStaticMeshActor>(
 			AStaticMeshActor::StaticClass(), &Transform);
 
-		if (PropActor)
+		if (!PropActor) continue;
+
+		// Resolve MeshTag → StaticMesh via ConventionPath
+		if (Prop.MeshTag.IsValid())
 		{
-			PropActor->SetFolderPath(FName(TEXT("HktMap/Props")));
-			SpawnedActors.Add(PropActor);
+			FSoftObjectPath MeshPath = UHktAssetSubsystem::ResolveConventionPath(Prop.MeshTag);
+			UStaticMesh* Mesh = nullptr;
+
+			if (MeshPath.IsValid())
+			{
+				Mesh = Cast<UStaticMesh>(MeshPath.TryLoad());
+			}
+
+			if (!Mesh)
+			{
+				// Fallback: try standard naming convention
+				// Tag format: Entity.Item.{Cat}.{Sub} → {Root}/Items/{Cat}/SM_{Sub}
+				FString TagStr = Prop.MeshTag.ToString();
+				FString FallbackPath = FString::Printf(TEXT("/Game/Generated/Props/SM_%s"),
+					*TagStr.Replace(TEXT("."), TEXT("_")));
+				Mesh = Cast<UStaticMesh>(FSoftObjectPath(FallbackPath).TryLoad());
+			}
+
+			if (Mesh)
+			{
+				PropActor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
+				UE_LOG(LogHktMapGenerator, Log, TEXT("Prop '%s': Mesh resolved and applied"),
+					*Prop.MeshTag.ToString());
+			}
+			else
+			{
+				UE_LOG(LogHktMapGenerator, Warning, TEXT("Prop '%s': Could not resolve mesh, placed as placeholder"),
+					*Prop.MeshTag.ToString());
+			}
 		}
+
+		PropActor->SetFolderPath(FName(TEXT("HktMap/Props")));
+		SpawnedActors.Add(PropActor);
 	}
 }
 
@@ -892,22 +428,122 @@ void UHktMapGeneratorSubsystem::BuildGlobalEntities(const TArray<FHktMapGlobalEn
 
 void UHktMapGeneratorSubsystem::ApplyEnvironment(const FHktMapEnvironment& Env, UWorld* World)
 {
-	UE_LOG(LogHktMapGenerator, Log, TEXT("Applying environment — weather=%s, time=%s, fog=%.3f"),
-		*Env.Weather, *Env.TimeOfDay, Env.FogDensity);
+	UE_LOG(LogHktMapGenerator, Log, TEXT("Applying environment — weather=%s, time=%s, fog=%.3f, wind=%.2f"),
+		*Env.Weather, *Env.TimeOfDay, Env.FogDensity, Env.WindStrength);
 
-	// Find or create directional light
+	// ── 1. Sun / Directional Light ──────────────────────────────
+	// Compute sun rotation from time of day
+	float SunPitch = -45.f; // default noon
+	float SunIntensity = 10.f;
+	if (Env.TimeOfDay == TEXT("dawn"))        { SunPitch = -10.f; SunIntensity = 3.f; }
+	else if (Env.TimeOfDay == TEXT("morning")) { SunPitch = -30.f; SunIntensity = 7.f; }
+	else if (Env.TimeOfDay == TEXT("noon"))    { SunPitch = -70.f; SunIntensity = 10.f; }
+	else if (Env.TimeOfDay == TEXT("afternoon")) { SunPitch = -50.f; SunIntensity = 8.f; }
+	else if (Env.TimeOfDay == TEXT("dusk"))    { SunPitch = -15.f; SunIntensity = 3.f; }
+	else if (Env.TimeOfDay == TEXT("night"))   { SunPitch = 10.f; SunIntensity = 0.1f; }
+
+	ADirectionalLight* SunLight = nullptr;
 	for (TActorIterator<ADirectionalLight> It(World); It; ++It)
 	{
-		if (UDirectionalLightComponent* LightComp = It->GetComponent())
-		{
-			LightComp->SetLightColor(Env.SunColor);
-		}
-		break;  // Use first found
+		SunLight = *It;
+		break;
 	}
 
-	// TODO: Apply fog, wind, ambient VFX
-	// These require finding or creating ExponentialHeightFog, WindDirectionalSource, etc.
-	// Ambient VFX would be spawned via HktVFXGenerator using the AmbientVFXTags
+	if (!SunLight)
+	{
+		SunLight = World->SpawnActor<ADirectionalLight>();
+		if (SunLight)
+		{
+			SunLight->SetFolderPath(FName(TEXT("HktMap/Environment")));
+			SpawnedActors.Add(SunLight);
+		}
+	}
+
+	if (SunLight)
+	{
+		SunLight->SetActorRotation(FRotator(SunPitch, -45.f, 0.f));
+		if (UDirectionalLightComponent* LightComp = SunLight->GetComponent())
+		{
+			LightComp->SetLightColor(Env.SunColor);
+			LightComp->SetIntensity(SunIntensity);
+		}
+	}
+
+	// ── 2. Exponential Height Fog ───────────────────────────────
+	AExponentialHeightFog* FogActor = nullptr;
+	for (TActorIterator<AExponentialHeightFog> It(World); It; ++It)
+	{
+		FogActor = *It;
+		break;
+	}
+
+	if (!FogActor)
+	{
+		FogActor = World->SpawnActor<AExponentialHeightFog>();
+		if (FogActor)
+		{
+			FogActor->SetFolderPath(FName(TEXT("HktMap/Environment")));
+			SpawnedActors.Add(FogActor);
+		}
+	}
+
+	if (FogActor)
+	{
+		UExponentialHeightFogComponent* FogComp = FogActor->GetComponent();
+		if (FogComp)
+		{
+			// Adjust fog based on weather preset
+			float EffectiveDensity = Env.FogDensity;
+			if (Env.Weather == TEXT("fog"))         EffectiveDensity = FMath::Max(EffectiveDensity, 0.15f);
+			else if (Env.Weather == TEXT("rain"))   EffectiveDensity = FMath::Max(EffectiveDensity, 0.05f);
+			else if (Env.Weather == TEXT("snow"))   EffectiveDensity = FMath::Max(EffectiveDensity, 0.08f);
+			else if (Env.Weather == TEXT("storm"))  EffectiveDensity = FMath::Max(EffectiveDensity, 0.12f);
+
+			FogComp->SetFogDensity(EffectiveDensity);
+			FogComp->SetFogInscatteringColor(Env.AmbientColor);
+		}
+	}
+
+	// ── 3. Wind Directional Source ──────────────────────────────
+	AWindDirectionalSource* WindActor = nullptr;
+	for (TActorIterator<AWindDirectionalSource> It(World); It; ++It)
+	{
+		WindActor = *It;
+		break;
+	}
+
+	if (!WindActor && Env.WindStrength > KINDA_SMALL_NUMBER)
+	{
+		WindActor = World->SpawnActor<AWindDirectionalSource>();
+		if (WindActor)
+		{
+			WindActor->SetFolderPath(FName(TEXT("HktMap/Environment")));
+			SpawnedActors.Add(WindActor);
+		}
+	}
+
+	if (WindActor)
+	{
+		// Orient wind actor to match wind direction
+		FRotator WindRot = Env.WindDirection.GetSafeNormal().Rotation();
+		WindActor->SetActorRotation(WindRot);
+
+		if (UWindDirectionalSourceComponent* WindComp = WindActor->GetComponent())
+		{
+			// Weather modifiers for wind
+			float EffectiveStrength = Env.WindStrength;
+			if (Env.Weather == TEXT("storm"))     EffectiveStrength = FMath::Max(EffectiveStrength, 0.8f);
+			else if (Env.Weather == TEXT("rain")) EffectiveStrength = FMath::Max(EffectiveStrength, 0.4f);
+
+			WindComp->SetStrength(EffectiveStrength);
+			WindComp->SetSpeed(EffectiveStrength * 200.f);
+		}
+	}
+
+	UE_LOG(LogHktMapGenerator, Log, TEXT("Environment applied — sun pitch=%.1f intensity=%.1f, fog=%.3f, wind=%.2f"),
+		SunPitch, SunIntensity,
+		FogActor && FogActor->GetComponent() ? FogActor->GetComponent()->FogDensity : 0.f,
+		Env.WindStrength);
 }
 
 bool UHktMapGeneratorSubsystem::BuildMapFromJson(const FString& JsonStr)
