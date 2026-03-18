@@ -63,11 +63,12 @@ async def list_tools() -> list[Tool]:
     """Return all available MCP tools"""
     tools = []
     
-    # Asset Tools
+    # Asset Tools — Monolith project_query 우선 (search_assets 대체)
+    # list_assets, get_asset_info, modify_asset는 Monolith에 없는 고유 기능
     tools.extend([
         Tool(
             name="list_assets",
-            description="List assets in a specified path. Returns asset names, classes, and paths.",
+            description="List assets in a specified path. Returns asset names, classes, and paths. (Monolith에 없는 기능)",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -99,7 +100,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="search_assets",
-            description="Search for assets by name across the project",
+            description="[Monolith 우선] Search for assets by name. Prefer Monolith project_query for full-text asset search with FTS5 indexing.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -139,7 +140,7 @@ async def list_tools() -> list[Tool]:
         ),
     ])
     
-    # Level Tools
+    # Level Tools — Monolith에 없는 고유 기능 (actor spawning, transform, viewport)
     tools.extend([
         Tool(
             name="list_actors",
@@ -262,11 +263,11 @@ async def list_tools() -> list[Tool]:
         ),
     ])
     
-    # Query Tools
+    # Query Tools — Monolith source_query / project_query 우선
     tools.extend([
         Tool(
             name="search_classes",
-            description="Search for classes by name",
+            description="[Monolith 우선] Search for classes by name. Prefer Monolith source_query for C++ class hierarchy, callers/callees analysis.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -284,7 +285,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_class_properties",
-            description="Get all properties of a class",
+            description="[Monolith 우선] Get all properties of a class. Prefer Monolith source_query for detailed class/property analysis.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -298,7 +299,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_project_structure",
-            description="Get the folder structure of the project",
+            description="[Monolith 우선] Get the folder structure of the project. Prefer Monolith project_query for indexed asset exploration.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -311,7 +312,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_level_info",
-            description="Get information about the current level",
+            description="Get information about the current level (Monolith에 없는 기능)",
             inputSchema={
                 "type": "object",
                 "properties": {}
@@ -319,7 +320,7 @@ async def list_tools() -> list[Tool]:
         ),
     ])
     
-    # Runtime Tools
+    # Runtime Tools — Monolith에 없는 고유 기능 (PIE, console command)
     tools.extend([
         Tool(
             name="start_pie",
@@ -361,7 +362,7 @@ async def list_tools() -> list[Tool]:
         ),
     ])
     
-    # Editor Utility Tools
+    # Editor Utility Tools — Monolith에 없는 고유 기능 (viewport camera, notification)
     tools.extend([
         Tool(
             name="get_viewport_camera",
@@ -419,11 +420,12 @@ async def list_tools() -> list[Tool]:
         ),
     ])
 
-    # ==================== VFX Generator Tools ====================
+    # ==================== VFX Generator Tools (HKT 전용) ====================
+    # 완전한 Niagara 시스템을 JSON config로 생성. 기존 Niagara 에셋 편집은 Monolith niagara_query 사용
     tools.extend([
         Tool(
             name="build_vfx_system",
-            description="Build a Niagara VFX system from JSON config. Call get_vfx_prompt_guide first to learn the schema.",
+            description="[HKT 전용] Build a complete Niagara VFX system from JSON config via HktVFXGenerator. Creates full system from scratch using FHktVFXNiagaraConfig. For editing existing Niagara details, use Monolith niagara_query instead. Call get_vfx_prompt_guide first.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -604,7 +606,7 @@ async def list_tools() -> list[Tool]:
     tools.extend([
         Tool(
             name="request_animation",
-            description="Request animation generation. Returns convention path + generation prompt + expected type for external tools (Mixamo, Motion Diffusion).",
+            description="[HKT 전용] Request animation generation via HktAnimGenerator. Returns convention path + prompt for external tools. For editing existing animation curves/montages/blend spaces, use Monolith animation_query instead.",
             inputSchema={
                 "type": "object",
                 "properties": {
