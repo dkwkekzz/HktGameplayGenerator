@@ -23,6 +23,7 @@ LLM 기반 UE5 게임플레이 어셋 자동 생성 시스템. MCP(Model Context
 | `character_generation` | `/char-gen` | Mesh + Animation 생성 |
 | `item_generation` | `/item-gen` | Item Mesh + Icon 생성 |
 | `vfx_generation` | `/vfx-gen` | Niagara VFX 생성 |
+| `texture_generation` | `/texture-gen` | SD WebUI 텍스처 생성 |
 
 전체 파이프라인: `/full-pipeline <프로젝트이름> <컨셉>`
 
