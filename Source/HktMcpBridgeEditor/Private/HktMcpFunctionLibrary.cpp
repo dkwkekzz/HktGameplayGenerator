@@ -427,3 +427,16 @@ bool UHktMcpFunctionLibrary::McpSetViewportCamera(FVector Location, FRotator Rot
 
     return Subsystem->SetViewportCameraTransform(Location, Rotation);
 }
+
+// ==================== Python Script Executor ====================
+
+FString UHktMcpFunctionLibrary::McpExecutePythonScript(const FString& ScriptCode, float TimeoutSeconds)
+{
+    UHktMcpEditorSubsystem* Subsystem = GetSubsystem();
+    if (!Subsystem)
+    {
+        return TEXT("{\"success\":false,\"output\":\"\",\"error\":\"Subsystem not available\"}");
+    }
+
+    return Subsystem->ExecutePythonScript(ScriptCode, TimeoutSeconds);
+}
