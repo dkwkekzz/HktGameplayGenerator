@@ -15,6 +15,7 @@
  * EventType=Explosion, Element=Fire로 변환하여 Generator에 전달.
  *
  * Tag 규칙:
+ *   VFX.Niagara.{Name}                   → Niagara 직접 참조 (Convention Path)
  *   VFX.{EventType}.{Element}            → 기본 (Intensity=0.5)
  *   VFX.{EventType}.{Element}.{Surface}  → 표면 지정
  *   VFX.Custom.{Description}             → 커스텀 자연어
