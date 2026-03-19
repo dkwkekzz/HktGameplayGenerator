@@ -34,6 +34,19 @@ bool FHktVFXAutoResolver::ParseTagToIntent(const FGameplayTag& VFXTag, FHktVFXIn
 		return true;
 	}
 
+	// VFX.Niagara.{Name} — Niagara 직접 참조 태그 (이름 기반)
+	if (Parts.Num() >= 3 && Parts[1] == TEXT("Niagara"))
+	{
+		OutIntent.EventType = EHktVFXEventType::Custom;
+		OutIntent.Element = EHktVFXElement::Physical;
+		OutIntent.CustomDescription = Parts[2];
+		OutIntent.Intensity = 0.5f;
+		OutIntent.Radius = 200.f;
+		OutIntent.Duration = 1.0f;
+		OutIntent.SourcePower = 0.5f;
+		return true;
+	}
+
 	// VFX.{EventType}
 	if (Parts.Num() >= 2)
 	{
