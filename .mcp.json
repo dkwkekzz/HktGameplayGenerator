@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "hkt-unreal": {
+      "command": "python",
+      "args": ["-m", "hkt_mcp.server"],
+      "cwd": "McpServer",
+      "env": {
+        "PYTHONPATH": "McpServer/src"
+      }
+    }
+  }
+}
