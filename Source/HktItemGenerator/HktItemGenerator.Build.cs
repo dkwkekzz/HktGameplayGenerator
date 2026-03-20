@@ -12,6 +12,7 @@ public class HktItemGenerator : ModuleRules
 		PublicIncludePaths.AddRange(
 			new string[] {
 				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktAsset", "Public"),
+				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktPresentation", "Public"),
 				Path.Combine(PluginDirectory, "Source", "HktGeneratorCore", "Public"),
 				Path.Combine(PluginDirectory, "Source", "HktTextureGenerator", "Public"),
 			}
@@ -25,6 +26,7 @@ public class HktItemGenerator : ModuleRules
 				"Engine",
 				"GameplayTags",
 				"HktAsset",
+				"HktPresentation",
 				"HktGeneratorCore",
 				"HktTextureGenerator",
 				"Json",
