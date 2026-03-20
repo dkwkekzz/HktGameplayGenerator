@@ -119,8 +119,8 @@ FSoftObjectPath UHktVFXGeneratorHandler::CreateVFXDataAsset(const FGameplayTag& 
 	// IdentifierTag 설정
 	DataAsset->IdentifierTag = Tag;
 
-	// NiagaraSystem 소프트 참조 설정
-	DataAsset->NiagaraSystem = TSoftObjectPtr<UNiagaraSystem>(NiagaraSystemPath);
+	// NiagaraSystem 하드 참조 설정 (런타임에서 DataAsset 비동기 로드 시 함께 로드됨)
+	DataAsset->NiagaraSystem = Cast<UNiagaraSystem>(NiagaraSystemPath.TryLoad());
 
 	// 패키지 저장
 	DataAsset->MarkPackageDirty();
