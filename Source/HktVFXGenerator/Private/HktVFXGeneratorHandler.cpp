@@ -7,7 +7,10 @@
 #include "HktVFXNiagaraConfig.h"
 #include "HktVFXIntent.h"
 #include "HktAssetSubsystem.h"
+#include "DataAssets/HktVFXVisualDataAsset.h"
 #include "Editor.h"
+#include "UObject/SavePackage.h"
+#include "PackageTools.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktVFXGeneratorHandler, Log, All);
 
@@ -34,37 +37,29 @@ FSoftObjectPath UHktVFXGeneratorHandler::HandleTagMiss(const FGameplayTag& Tag)
 	}
 
 	// Convention Path에서 출력 경로와 에셋 이름 결정
-	// Settings 규칙: VFX.* → {Root}/VFX/{TagPath}
-	// Builder가 NS_ 접두사를 붙이므로 SystemName에서 제외
 	FSoftObjectPath ConventionPath = UHktAssetSubsystem::ResolveConventionPath(Tag);
 	FString OutputDir;
 	FString SystemName;
 
 	if (ConventionPath.IsValid())
 	{
-		// Convention Path에서 디렉토리와 에셋 이름 분리
-		// 예: /Game/Generated/VFX/VFX_Explosion_Fire.VFX_Explosion_Fire
-		FString FullPath = ConventionPath.GetAssetPathString();
+		// Package 경로만 추출 (.AssetName 제외)
+		FString PackageName = ConventionPath.GetLongPackageName();
 		int32 LastSlash;
-		if (FullPath.FindLastChar('/', LastSlash))
+		if (PackageName.FindLastChar('/', LastSlash))
 		{
-			OutputDir = FullPath.Left(LastSlash);
-			// Builder가 NS_ prefix를 추가하므로, convention 이름 그대로 사용
-			// Builder: NS_{SystemName} → 에셋명이 NS_VFX_Explosion_Fire 가 됨
-			// Convention path는 VFX_Explosion_Fire → 맞추려면 접두사 제거
-			SystemName = FullPath.Mid(LastSlash + 1);
+			OutputDir = PackageName.Left(LastSlash);
+			SystemName = PackageName.Mid(LastSlash + 1);
 		}
 	}
 
 	if (SystemName.IsEmpty())
 	{
-		// Fallback
 		FString TagStr = Tag.ToString();
 		SystemName = TagStr;
 		SystemName.ReplaceInline(TEXT("."), TEXT("_"));
 	}
 
-	// Intent → 기본 Config 생성
 	// Builder가 NS_ 접두사를 자동으로 붙이므로 SystemName에서 제거해서 전달
 	FString CleanName = SystemName;
 	if (CleanName.StartsWith(TEXT("NS_")))
@@ -73,7 +68,7 @@ FSoftObjectPath UHktVFXGeneratorHandler::HandleTagMiss(const FGameplayTag& Tag)
 	}
 	FHktVFXNiagaraConfig Config = BuildDefaultConfig(Intent, CleanName);
 
-	// Niagara 시스템 빌드 (Convention Path와 일치하는 디렉토리 지정)
+	// Niagara 시스템 빌드
 	UNiagaraSystem* System = Subsystem->BuildNiagaraFromConfig(Config, OutputDir);
 	if (!System)
 	{
@@ -81,13 +76,67 @@ FSoftObjectPath UHktVFXGeneratorHandler::HandleTagMiss(const FGameplayTag& Tag)
 		return FSoftObjectPath();
 	}
 
-	// Builder가 생성한 실제 에셋 경로를 반환
-	// 에셋 경로: {OutputDir}/NS_{CleanName}.NS_{CleanName}
+	// TagDataAsset 생성 — UHktVFXVisualDataAsset로 NiagaraSystem 참조 등록
 	FString ActualAssetName = FString::Printf(TEXT("NS_%s"), *CleanName);
-	FString ActualPath = FString::Printf(TEXT("%s/%s.%s"), *OutputDir, *ActualAssetName, *ActualAssetName);
-	FSoftObjectPath ResultPath(ActualPath);
+	FSoftObjectPath NiagaraPath(FString::Printf(TEXT("%s/%s.%s"), *OutputDir, *ActualAssetName, *ActualAssetName));
 
-	UE_LOG(LogHktVFXGeneratorHandler, Log, TEXT("VFX generated: %s → %s"), *Tag.ToString(), *ResultPath.ToString());
+	FSoftObjectPath DataAssetPath = CreateVFXDataAsset(Tag, NiagaraPath, OutputDir);
+	if (!DataAssetPath.IsValid())
+	{
+		UE_LOG(LogHktVFXGeneratorHandler, Warning, TEXT("Failed to create VFX DataAsset for tag: %s, falling back to NiagaraSystem path"), *Tag.ToString());
+		return NiagaraPath;
+	}
+
+	UE_LOG(LogHktVFXGeneratorHandler, Log, TEXT("VFX generated: %s → DataAsset=%s, Niagara=%s"), *Tag.ToString(), *DataAssetPath.ToString(), *NiagaraPath.ToString());
+	return DataAssetPath;
+}
+
+FSoftObjectPath UHktVFXGeneratorHandler::CreateVFXDataAsset(const FGameplayTag& Tag, const FSoftObjectPath& NiagaraSystemPath, const FString& OutputDir)
+{
+	// 에셋 이름: DA_VFX_{TagPath}
+	FString TagStr = Tag.ToString();
+	FString SafeTagStr = TagStr;
+	SafeTagStr.ReplaceInline(TEXT("."), TEXT("_"));
+	FString AssetName = FString::Printf(TEXT("DA_VFX_%s"), *SafeTagStr);
+
+	FString PackagePath = OutputDir.IsEmpty() ? TEXT("/Game/Generated/VFX") : OutputDir;
+	FString FullPackagePath = FString::Printf(TEXT("%s/%s"), *PackagePath, *AssetName);
+
+	UPackage* Package = CreatePackage(*FullPackagePath);
+	if (!Package)
+	{
+		UE_LOG(LogHktVFXGeneratorHandler, Error, TEXT("Failed to create package: %s"), *FullPackagePath);
+		return FSoftObjectPath();
+	}
+
+	UHktVFXVisualDataAsset* DataAsset = NewObject<UHktVFXVisualDataAsset>(Package, *AssetName, RF_Public | RF_Standalone);
+	if (!DataAsset)
+	{
+		UE_LOG(LogHktVFXGeneratorHandler, Error, TEXT("Failed to create VFX DataAsset: %s"), *AssetName);
+		return FSoftObjectPath();
+	}
+
+	// IdentifierTag 설정
+	DataAsset->IdentifierTag = Tag;
+
+	// NiagaraSystem 하드 참조 설정 (런타임에서 DataAsset 비동기 로드 시 함께 로드됨)
+	DataAsset->NiagaraSystem = Cast<UNiagaraSystem>(NiagaraSystemPath.TryLoad());
+
+	// 패키지 저장
+	DataAsset->MarkPackageDirty();
+
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+	FString PackageFilename = FPackageName::LongPackageNameToFilename(FullPackagePath, FPackageName::GetAssetPackageExtension());
+	FSavePackageResultStruct SaveResult = UPackage::SavePackage(Package, DataAsset, *PackageFilename, SaveArgs);
+	if (!SaveResult.IsSuccessful())
+	{
+		UE_LOG(LogHktVFXGeneratorHandler, Error, TEXT("Failed to save VFX DataAsset package: %s"), *FullPackagePath);
+		return FSoftObjectPath();
+	}
+
+	FSoftObjectPath ResultPath(FString::Printf(TEXT("%s.%s"), *FullPackagePath, *AssetName));
+	UE_LOG(LogHktVFXGeneratorHandler, Log, TEXT("Created VFX DataAsset: %s → Niagara=%s"), *ResultPath.ToString(), *NiagaraSystemPath.ToString());
 	return ResultPath;
 }
 
@@ -157,7 +206,6 @@ FHktVFXNiagaraConfig UHktVFXGeneratorHandler::BuildDefaultConfig(const FHktVFXIn
 	float GravityScale = (Intent.EventType == EHktVFXEventType::Explosion) ? 0.5f : 0.0f;
 	Emitter.Update.Gravity = FVector(0.f, 0.f, -980.f * GravityScale);
 	Emitter.Update.Drag = 0.5f;
-	// OpacityStart=1, OpacityEnd=0 이 기본값이므로 별도 설정 불필요
 
 	// Render 설정
 	Emitter.Render.RendererType = TEXT("sprite");

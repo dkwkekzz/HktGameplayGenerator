@@ -16,6 +16,7 @@ class UHktVFXGeneratorSubsystem;
  *
  * "VFX.*" 태그에 대한 IHktGeneratorHandler 구현.
  * VFXAutoResolver로 태그 파싱 → VFXGeneratorSubsystem으로 Niagara 빌드.
+ * 빌드 후 UHktVFXVisualDataAsset을 생성하여 TagDataAsset 시스템과 연결.
  */
 UCLASS()
 class HKTVFXGENERATOR_API UHktVFXGeneratorHandler : public UObject, public IHktGeneratorHandler
@@ -29,4 +30,7 @@ public:
 private:
 	/** Intent에서 기본 Config를 생성 */
 	FHktVFXNiagaraConfig BuildDefaultConfig(const struct FHktVFXIntent& Intent, const FString& SystemName);
+
+	/** NiagaraSystem을 참조하는 UHktVFXVisualDataAsset 생성 및 저장 */
+	FSoftObjectPath CreateVFXDataAsset(const FGameplayTag& Tag, const FSoftObjectPath& NiagaraSystemPath, const FString& OutputDir);
 };
