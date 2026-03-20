@@ -43,12 +43,13 @@ FSoftObjectPath UHktVFXGeneratorHandler::HandleTagMiss(const FGameplayTag& Tag)
 
 	if (ConventionPath.IsValid())
 	{
-		FString FullPath = ConventionPath.GetAssetPathString();
+		// Package 경로만 추출 (.AssetName 제외)
+		FString PackageName = ConventionPath.GetLongPackageName();
 		int32 LastSlash;
-		if (FullPath.FindLastChar('/', LastSlash))
+		if (PackageName.FindLastChar('/', LastSlash))
 		{
-			OutputDir = FullPath.Left(LastSlash);
-			SystemName = FullPath.Mid(LastSlash + 1);
+			OutputDir = PackageName.Left(LastSlash);
+			SystemName = PackageName.Mid(LastSlash + 1);
 		}
 	}
 
