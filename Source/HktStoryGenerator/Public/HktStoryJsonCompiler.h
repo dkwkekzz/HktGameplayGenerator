@@ -1,5 +1,5 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
-// JSON → FHktStoryBuilder 컴파일러
+// JSON → FHktStoryBuilder 컴파일러 (FHktStoryOpRegistry 기반 — 자동 dispatch)
 
 #pragma once
 
@@ -29,6 +29,11 @@ struct HKTSTORYGENERATOR_API FHktStoryCompileResult
  * FHktStoryJsonCompiler
  *
  * JSON Story 정의를 FHktStoryBuilder 호출로 변환.
+ * FHktStoryOpRegistry(HktCore)에 등록된 Operation 정의를 기반으로 자동 dispatch.
+ *
+ * === HktStoryGenerator 무변경 보장 ===
+ * 새 Builder 메서드는 FHktStoryOpRegistry에 등록하면
+ * 이 컴파일러가 자동으로 인식 — 코드 수정 불필요.
  *
  * JSON 포맷:
  * {
@@ -41,23 +46,6 @@ struct HKTSTORYGENERATOR_API FHktStoryCompileResult
  *     ...
  *   ]
  * }
- *
- * 지원 Operations (op):
- *   Control: Label, Jump, JumpIf, JumpIfNot, Yield, WaitSeconds, Halt
- *   Wait: WaitCollision, WaitAnimEnd, WaitMoveEnd
- *   Data: LoadConst, LoadStore, LoadEntityProperty, SaveStore, SaveEntityProperty, Move
- *   Arithmetic: Add, Sub, Mul, Div, AddImm
- *   Comparison: CmpEq, CmpNe, CmpLt, CmpLe, CmpGt, CmpGe
- *   Entity: SpawnEntity, DestroyEntity
- *   Position: GetPosition, SetPosition, MoveToward, MoveForward, StopMovement, GetDistance
- *   Spatial: FindInRadius, NextFound, ForEachInRadius, EndForEach
- *   Combat: ApplyDamage, ApplyDamageConst, ApplyEffect, RemoveEffect
- *   VFX: PlayVFX, PlayVFXAttached
- *   Audio: PlaySound, PlaySoundAtLocation
- *   Tags: AddTag, RemoveTag, HasTag, CountByTag
- *   Query: GetWorldTime, RandomInt, HasPlayerInGroup, CountByOwner, FindByOwner
- *   Utility: Log
- *   Policy: CancelOnDuplicate
  */
 struct HKTSTORYGENERATOR_API FHktStoryJsonCompiler
 {
@@ -75,6 +63,7 @@ struct HKTSTORYGENERATOR_API FHktStoryJsonCompiler
 
 	/**
 	 * Story Builder API 스키마 (JSON) — AI Agent 학습용
+	 * FHktStoryOpRegistry에서 자동 생성.
 	 */
 	static FString GetStorySchema();
 
@@ -84,16 +73,13 @@ struct HKTSTORYGENERATOR_API FHktStoryJsonCompiler
 	static FString GetStoryExamples();
 
 private:
-	/** Register 이름 → RegisterIndex 변환 */
-	static int32 ParseRegister(const FString& RegStr);
-
 	/** 태그 alias 해결 (tags 맵에서 찾거나 직접 GameplayTag 생성) */
 	static FGameplayTag ResolveTag(const FString& TagStr, const TMap<FString, FGameplayTag>& TagAliases);
 
-	/** PropertyId 이름 → uint16 변환 */
-	static uint16 ParsePropertyId(const FString& PropStr);
-
-	/** 개별 step을 Builder에 적용 */
+	/**
+	 * 개별 step을 Builder에 적용 — FHktStoryOpRegistry 기반 자동 dispatch.
+	 * Op 이름으로 레지스트리 검색 → 파라미터 파싱 → 핸들러 호출.
+	 */
 	static bool ApplyStep(
 		FHktStoryBuilder& Builder,
 		const TSharedPtr<class FJsonObject>& StepObj,

@@ -440,3 +440,32 @@ FString UHktMcpFunctionLibrary::McpExecutePythonScript(const FString& ScriptCode
 
     return Subsystem->ExecutePythonScript(ScriptCode, TimeoutSeconds);
 }
+
+// ==================== DataAsset Creation ====================
+
+FString UHktMcpFunctionLibrary::McpCreateDataAsset(const FString& AssetPath, const FString& ParentClassName)
+{
+    UHktMcpEditorSubsystem* Subsystem = GetSubsystem();
+    if (!Subsystem)
+    {
+        return TEXT("{\"success\":false,\"error\":\"Subsystem not available\"}");
+    }
+
+    bool bResult = Subsystem->CreateDataAsset(AssetPath, ParentClassName);
+
+    TSharedRef<FJsonObject> Result = MakeShareable(new FJsonObject);
+    Result->SetBoolField(TEXT("success"), bResult);
+    if (!bResult)
+    {
+        Result->SetStringField(TEXT("error"), TEXT("Failed to create DataAsset"));
+    }
+    else
+    {
+        Result->SetStringField(TEXT("asset_path"), AssetPath);
+    }
+
+    FString Output;
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+    FJsonSerializer::Serialize(Result, Writer);
+    return Output;
+}

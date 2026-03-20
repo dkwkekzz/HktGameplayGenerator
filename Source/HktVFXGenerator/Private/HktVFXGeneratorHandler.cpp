@@ -7,6 +7,7 @@
 #include "HktVFXNiagaraConfig.h"
 #include "HktVFXIntent.h"
 #include "HktAssetSubsystem.h"
+#include "NiagaraSystem.h"
 #include "DataAssets/HktVFXVisualDataAsset.h"
 #include "Editor.h"
 #include "UObject/SavePackage.h"
@@ -128,8 +129,8 @@ FSoftObjectPath UHktVFXGeneratorHandler::CreateVFXDataAsset(const FGameplayTag& 
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 	FString PackageFilename = FPackageName::LongPackageNameToFilename(FullPackagePath, FPackageName::GetAssetPackageExtension());
-	FSavePackageResultStruct SaveResult = UPackage::SavePackage(Package, DataAsset, *PackageFilename, SaveArgs);
-	if (!SaveResult.IsSuccessful())
+	bool bSaveResult = UPackage::SavePackage(Package, DataAsset, *PackageFilename, SaveArgs);
+	if (!bSaveResult)
 	{
 		UE_LOG(LogHktVFXGeneratorHandler, Error, TEXT("Failed to save VFX DataAsset package: %s"), *FullPackagePath);
 		return FSoftObjectPath();

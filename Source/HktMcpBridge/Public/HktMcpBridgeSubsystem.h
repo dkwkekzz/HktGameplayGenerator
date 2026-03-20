@@ -31,7 +31,7 @@ struct FMcpRpcResponse
 	FString Id;
 
 	UPROPERTY(BlueprintReadWrite, Category = "MCP")
-	bool bSuccess;
+	bool bSuccess = false;
 
 	UPROPERTY(BlueprintReadWrite, Category = "MCP")
 	FString Result;  // JSON string

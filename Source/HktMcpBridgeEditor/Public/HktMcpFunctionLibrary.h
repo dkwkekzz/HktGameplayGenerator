@@ -139,6 +139,12 @@ public:
     UFUNCTION(BlueprintCallable, Category = "MCP|Python")
     static FString McpExecutePythonScript(const FString& ScriptCode, float TimeoutSeconds = 30.0f);
 
+    // ==================== DataAsset Creation ====================
+
+    /** Create a DataAsset of specified class at the given path */
+    UFUNCTION(BlueprintCallable, Category = "MCP|Assets")
+    static FString McpCreateDataAsset(const FString& AssetPath, const FString& ParentClassName);
+
 private:
     static UHktMcpEditorSubsystem* GetSubsystem();
 };

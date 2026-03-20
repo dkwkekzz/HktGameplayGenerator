@@ -1000,17 +1000,60 @@ FString UHktAnimGeneratorSubsystem::McpCreateMontage(const FString& JsonConfig)
 
 	FString Name = Cfg->GetStringField(TEXT("name"));
 	FString PackagePath = Cfg->GetStringField(TEXT("packagePath"));
-	FString AnimSequencePath = Cfg->GetStringField(TEXT("animSequencePath"));
 
-	if (Name.IsEmpty() || AnimSequencePath.IsEmpty())
-		return MakeErrorJson(TEXT("name and animSequencePath are required"));
+	if (Name.IsEmpty())
+		return MakeErrorJson(TEXT("name is required"));
 
 	if (PackagePath.IsEmpty())
 		PackagePath = ResolveOutputDir(TEXT("")) + TEXT("/Montages");
 
-	UAnimSequence* AnimSeq = LoadObject<UAnimSequence>(nullptr, *AnimSequencePath);
-	if (!AnimSeq)
-		return MakeErrorJson(FString::Printf(TEXT("AnimSequence not found: %s"), *AnimSequencePath));
+	// 다중 AnimSequence 지원: "animSequences" 배열 또는 단일 "animSequencePath"
+	struct FAnimEntry
+	{
+		FString SectionName;
+		FString Path;
+		UAnimSequence* Seq = nullptr;
+	};
+	TArray<FAnimEntry> AnimEntries;
+
+	const TArray<TSharedPtr<FJsonValue>>* AnimSequencesArr;
+	if (Cfg->TryGetArrayField(TEXT("animSequences"), AnimSequencesArr))
+	{
+		// 다중 모드: [{ "name": "Jab", "path": "/Game/.../Anim" }, ...]
+		for (const auto& Val : *AnimSequencesArr)
+		{
+			TSharedPtr<FJsonObject> Obj = Val->AsObject();
+			if (!Obj.IsValid()) continue;
+
+			FAnimEntry Entry;
+			Entry.SectionName = Obj->GetStringField(TEXT("name"));
+			Entry.Path = Obj->GetStringField(TEXT("path"));
+			Entry.Seq = LoadObject<UAnimSequence>(nullptr, *Entry.Path);
+			if (!Entry.Seq)
+			{
+				UE_LOG(LogHktAnimGeneratorSubsystem, Warning, TEXT("AnimSequence not found: %s"), *Entry.Path);
+				continue;
+			}
+			AnimEntries.Add(Entry);
+		}
+	}
+	else
+	{
+		// 기존 단일 모드: "animSequencePath"
+		FString AnimSequencePath = Cfg->GetStringField(TEXT("animSequencePath"));
+		if (AnimSequencePath.IsEmpty())
+			return MakeErrorJson(TEXT("animSequencePath or animSequences is required"));
+
+		FAnimEntry Entry;
+		Entry.Path = AnimSequencePath;
+		Entry.Seq = LoadObject<UAnimSequence>(nullptr, *AnimSequencePath);
+		if (!Entry.Seq)
+			return MakeErrorJson(FString::Printf(TEXT("AnimSequence not found: %s"), *AnimSequencePath));
+		AnimEntries.Add(Entry);
+	}
+
+	if (AnimEntries.Num() == 0)
+		return MakeErrorJson(TEXT("No valid AnimSequences found"));
 
 	// 패키지 생성
 	FString FullPath = PackagePath / Name;
@@ -1018,7 +1061,7 @@ FString UHktAnimGeneratorSubsystem::McpCreateMontage(const FString& JsonConfig)
 	if (!Pkg) return MakeErrorJson(TEXT("Failed to create package"));
 
 	UAnimMontage* Montage = NewObject<UAnimMontage>(Pkg, FName(*Name), RF_Public | RF_Standalone);
-	Montage->SetSkeleton(AnimSeq->GetSkeleton());
+	Montage->SetSkeleton(AnimEntries[0].Seq->GetSkeleton());
 
 	// SlotAnimTrack 설정
 	if (Montage->SlotAnimTracks.Num() == 0)
@@ -1034,19 +1077,45 @@ FString UHktAnimGeneratorSubsystem::McpCreateMontage(const FString& JsonConfig)
 		Montage->SlotAnimTracks[0].SlotName = FName(*SlotName);
 	}
 
-	// AnimSegment 추가
-	FAnimSegment Segment;
-	Segment.SetAnimReference(AnimSeq);
-	Segment.AnimStartTime = 0.0f;
-	Segment.AnimEndTime = AnimSeq->GetPlayLength();
-	Segment.AnimPlayRate = 1.0f;
-	Segment.StartPos = 0.0f;
-	Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Add(Segment);
+	// AnimSegments 순차 배치 + Section 자동 생성
+	float CurrentPos = 0.0f;
+	TSharedRef<FJsonObject> ResultSections = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> SectionArray;
+
+	for (int32 i = 0; i < AnimEntries.Num(); ++i)
+	{
+		const FAnimEntry& Entry = AnimEntries[i];
+		float PlayLength = Entry.Seq->GetPlayLength();
+
+		// AnimSegment 추가
+		FAnimSegment Segment;
+		Segment.SetAnimReference(Entry.Seq);
+		Segment.AnimStartTime = 0.0f;
+		Segment.AnimEndTime = PlayLength;
+		Segment.AnimPlayRate = 1.0f;
+		Segment.StartPos = CurrentPos;
+		Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Add(Segment);
+
+		// Section 자동 생성 (다중 모드에서 이름이 있으면)
+		if (!Entry.SectionName.IsEmpty())
+		{
+			int32 Idx = Montage->AddAnimCompositeSection(FName(*Entry.SectionName), CurrentPos);
+			UE_LOG(LogHktAnimGeneratorSubsystem, Log, TEXT("Montage section: %s at %.3f (idx=%d)"), *Entry.SectionName, CurrentPos, Idx);
+
+			TSharedRef<FJsonObject> SecInfo = MakeShared<FJsonObject>();
+			SecInfo->SetStringField(TEXT("name"), Entry.SectionName);
+			SecInfo->SetNumberField(TEXT("startTime"), CurrentPos);
+			SecInfo->SetNumberField(TEXT("duration"), PlayLength);
+			SectionArray.Add(MakeShared<FJsonValueObject>(SecInfo));
+		}
+
+		CurrentPos += PlayLength;
+	}
 
 	// 전체 길이 설정
 	Montage->UpdateLinkableElements();
 
-	// Section 추가
+	// 수동 Section 추가 (기존 호환)
 	const TArray<TSharedPtr<FJsonValue>>* Sections;
 	if (Cfg->TryGetArrayField(TEXT("sections"), Sections))
 	{
@@ -1068,8 +1137,12 @@ FString UHktAnimGeneratorSubsystem::McpCreateMontage(const FString& JsonConfig)
 	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
 	Result->SetStringField(TEXT("assetPath"), Montage->GetPathName());
 	Result->SetStringField(TEXT("name"), Name);
-	Result->SetStringField(TEXT("animSequence"), AnimSequencePath);
 	Result->SetNumberField(TEXT("duration"), Montage->GetPlayLength());
+	Result->SetNumberField(TEXT("segmentCount"), AnimEntries.Num());
+	if (SectionArray.Num() > 0)
+	{
+		Result->SetArrayField(TEXT("sections"), SectionArray);
+	}
 	return MakeSuccessJson(Result);
 }
 

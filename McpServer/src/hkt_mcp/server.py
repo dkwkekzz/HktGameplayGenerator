@@ -776,11 +776,11 @@ async def list_tools() -> list[Tool]:
         # --- Montage ---
         Tool(
             name="create_montage",
-            description="Create an AnimMontage from an AnimSequence with optional sections and slot.",
+            description="Create an AnimMontage. Supports single anim (animSequencePath) or multi-anim with auto-sections (animSequences array).",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "json_config": {"type": "string", "description": "JSON: {name, packagePath?, animSequencePath, slotName?, sections?: [{name, startTime}]}"}
+                    "json_config": {"type": "string", "description": "JSON: {name, packagePath?, slotName?, animSequencePath? (single), animSequences?: [{name, path}] (multi — each becomes a Section), sections?: [{name, startTime}]}"}
                 },
                 "required": ["json_config"]
             }

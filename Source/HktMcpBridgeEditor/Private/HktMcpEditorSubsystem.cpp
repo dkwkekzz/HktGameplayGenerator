@@ -22,6 +22,8 @@
 #include "SLevelViewport.h"
 #include "EditorViewportClient.h"
 #include "IPythonScriptPlugin.h"
+#include "UObject/SavePackage.h"
+#include "Factories/DataAssetFactory.h"
 
 void UHktMcpEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -129,9 +131,49 @@ TArray<FHktAssetInfo> UHktMcpEditorSubsystem::SearchAssets(const FString& Search
 
 bool UHktMcpEditorSubsystem::CreateDataAsset(const FString& AssetPath, const FString& ParentClassName)
 {
-	// DataAsset 생성은 복잡하므로 기본 구현
-	UE_LOG(LogHktMcpEditor, Warning, TEXT("CreateDataAsset not fully implemented yet"));
-	return false;
+	// 클래스 검색
+	UClass* ParentClass = FindObject<UClass>(nullptr, *ParentClassName);
+	if (!ParentClass)
+	{
+		ParentClass = LoadObject<UClass>(nullptr, *ParentClassName);
+	}
+	if (!ParentClass)
+	{
+		UE_LOG(LogHktMcpEditor, Error, TEXT("CreateDataAsset: Class not found: %s"), *ParentClassName);
+		return false;
+	}
+
+	if (!ParentClass->IsChildOf(UDataAsset::StaticClass()))
+	{
+		UE_LOG(LogHktMcpEditor, Error, TEXT("CreateDataAsset: %s is not a DataAsset subclass"), *ParentClassName);
+		return false;
+	}
+
+	// 패키지 경로와 에셋 이름 분리
+	FString PackagePath, AssetName;
+	AssetPath.Split(TEXT("/"), &PackagePath, &AssetName, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+	if (AssetName.IsEmpty())
+	{
+		UE_LOG(LogHktMcpEditor, Error, TEXT("CreateDataAsset: Invalid asset path: %s"), *AssetPath);
+		return false;
+	}
+
+	// DataAssetFactory 사용
+	UDataAssetFactory* Factory = NewObject<UDataAssetFactory>();
+	Factory->DataAssetClass = ParentClass;
+
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	UObject* NewAsset = AssetTools.CreateAsset(AssetName, PackagePath, UDataAsset::StaticClass(), Factory);
+	if (!NewAsset)
+	{
+		UE_LOG(LogHktMcpEditor, Error, TEXT("CreateDataAsset: Failed to create asset: %s"), *AssetPath);
+		return false;
+	}
+
+	// 저장
+	UEditorAssetLibrary::SaveAsset(NewAsset->GetPathName(), false);
+	UE_LOG(LogHktMcpEditor, Log, TEXT("CreateDataAsset: Created %s (%s)"), *AssetPath, *ParentClassName);
+	return true;
 }
 
 bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const FString& PropertyName, const FString& NewValue)

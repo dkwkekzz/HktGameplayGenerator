@@ -143,13 +143,14 @@ async def create_data_asset(
     Create a new DataAsset
     """
     logger.info(f"Creating DataAsset: {asset_path} ({parent_class})")
-    
-    # Not implemented in C++ lib yet
-    result = {
-        "asset_path": asset_path,
-        "parent_class": parent_class,
-        "success": False,
-        "message": "Create DataAsset not implemented yet"
-    }
-    
-    return json.dumps(result, indent=2)
+
+    data = await bridge.call_method(
+        "McpCreateDataAsset",
+        AssetPath=asset_path,
+        ParentClassName=parent_class,
+    )
+
+    if isinstance(data, dict):
+        return json.dumps(data, indent=2)
+
+    return json.dumps({"success": False, "error": "Unexpected response"}, indent=2)
