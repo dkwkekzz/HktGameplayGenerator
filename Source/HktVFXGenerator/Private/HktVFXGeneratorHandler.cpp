@@ -124,12 +124,16 @@ FSoftObjectPath UHktVFXGeneratorHandler::CreateVFXDataAsset(const FGameplayTag& 
 
 	// 패키지 저장
 	DataAsset->MarkPackageDirty();
-	Package->FullyLoad();
 
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 	FString PackageFilename = FPackageName::LongPackageNameToFilename(FullPackagePath, FPackageName::GetAssetPackageExtension());
-	UPackage::SavePackage(Package, DataAsset, *PackageFilename, SaveArgs);
+	FSavePackageResultStruct SaveResult = UPackage::SavePackage(Package, DataAsset, *PackageFilename, SaveArgs);
+	if (!SaveResult.IsSuccessful())
+	{
+		UE_LOG(LogHktVFXGeneratorHandler, Error, TEXT("Failed to save VFX DataAsset package: %s"), *FullPackagePath);
+		return FSoftObjectPath();
+	}
 
 	FSoftObjectPath ResultPath(FString::Printf(TEXT("%s.%s"), *FullPackagePath, *AssetName));
 	UE_LOG(LogHktVFXGeneratorHandler, Log, TEXT("Created VFX DataAsset: %s → Niagara=%s"), *ResultPath.ToString(), *NiagaraSystemPath.ToString());
