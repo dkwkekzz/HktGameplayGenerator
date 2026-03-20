@@ -9,10 +9,11 @@ public class HktVFXGenerator : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// HktVFX, HktGeneratorCore Public 헤더 접근
+		// HktVFX, HktPresentation, HktGeneratorCore Public 헤더 접근
 		PublicIncludePaths.AddRange(
 			new string[] {
 				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktVFX", "Public"),
+				Path.Combine(PluginDirectory, "..", "HktGameplay", "Source", "HktPresentation", "Public"),
 				Path.Combine(PluginDirectory, "Source", "HktGeneratorCore", "Public"),
 			}
 		);
@@ -25,6 +26,7 @@ public class HktVFXGenerator : ModuleRules
 				"Engine",
 				"GameplayTags",
 				"HktAsset",
+				"HktPresentation",
 				"HktVFX",
 				"HktGeneratorCore",
 				"HktTextureGenerator",
