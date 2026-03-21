@@ -1,28 +1,19 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
 
 #include "HktStoryJsonCompiler.h"
+#include "HktStoryJsonParser.h"
 #include "HktStoryBuilder.h"
-#include "HktStoryTypes.h"
-#include "HktStoryOpRegistry.h"
-#include "HktCoreProperties.h"
 #include "GameplayTagsManager.h"
 #include "GameplayTagsSettings.h"
-#include "Dom/JsonObject.h"
-#include "Serialization/JsonSerializer.h"
-#include "Serialization/JsonWriter.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktStoryJsonCompiler, Log, All);
 
 // ============================================================================
-// 태그 자동 등록 + INI 영속화
+// 태그 자동 등록 + INI 영속화 (에디터 전용)
 // ============================================================================
 
-/**
- * 프로젝트 DefaultGameplayTags.ini에 태그를 영속화.
- * 에디터 재시작 시에도 태그가 유지되도록 보장.
- */
 static void PersistTagToProjectConfig(const FString& TagName)
 {
 	const FString IniPath = FPaths::ProjectConfigDir() / TEXT("DefaultGameplayTags.ini");
@@ -47,10 +38,7 @@ static void PersistTagToProjectConfig(const FString& TagName)
 	UE_LOG(LogHktStoryJsonCompiler, Log, TEXT("Persisted tag to %s: %s"), *IniPath, *TagName);
 }
 
-/**
- * GameplayTag가 유효한지 확인하고, 없으면 동적 등록 + INI 영속화.
- */
-static FGameplayTag EnsureTagRegistered(const FString& TagName)
+FGameplayTag FHktStoryJsonCompiler::EnsureTagRegistered(const FString& TagName)
 {
 	FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
 	if (Tag.IsValid())
@@ -88,260 +76,38 @@ FGameplayTag FHktStoryJsonCompiler::ResolveTag(const FString& TagStr, const TMap
 }
 
 // ============================================================================
-// ApplyStep — FHktStoryOpRegistry 기반 자동 dispatch
-// ============================================================================
-
-bool FHktStoryJsonCompiler::ApplyStep(
-	FHktStoryBuilder& Builder,
-	const TSharedPtr<FJsonObject>& Step,
-	const TMap<FString, FGameplayTag>& TagAliases,
-	TArray<FGameplayTag>& OutReferencedTags,
-	TArray<FString>& OutErrors,
-	int32 StepIndex)
-{
-	FString Op = Step->GetStringField(TEXT("op"));
-
-	// 레지스트리에서 Operation 정의 검색
-	const FHktStoryOpDef* OpDef = FHktStoryOpRegistry::Get().Find(Op);
-	if (!OpDef)
-	{
-		OutErrors.Add(FString::Printf(TEXT("Step %d: unknown operation '%s'"), StepIndex, *Op));
-		return false;
-	}
-
-	// 파라미터 파싱: OpDef의 파라미터 정의에 따라 JSON → FHktStoryOpArg 변환
-	TMap<FString, FHktStoryOpArg> ParsedArgs;
-	bool bHasError = false;
-
-	for (const FHktStoryParamDef& ParamDef : OpDef->Params)
-	{
-		FHktStoryOpArg Arg;
-
-		switch (ParamDef.Type)
-		{
-		case EHktStoryParamType::Register:
-		{
-			FString Val;
-			if (!Step->TryGetStringField(ParamDef.Name, Val))
-			{
-				if (ParamDef.bOptional)
-				{
-					Arg.RegIdx = ParamDef.DefaultInt;
-				}
-				else
-				{
-					OutErrors.Add(FString::Printf(TEXT("Step %d (%s): missing field '%s'"), StepIndex, *Op, *ParamDef.Name));
-					bHasError = true;
-					continue;
-				}
-			}
-			else
-			{
-				Arg.RegIdx = FHktStoryOpRegistry::ParseRegister(Val);
-				if (Arg.RegIdx < 0)
-				{
-					OutErrors.Add(FString::Printf(TEXT("Step %d (%s): invalid register '%s'"), StepIndex, *Op, *Val));
-					bHasError = true;
-					continue;
-				}
-			}
-			break;
-		}
-		case EHktStoryParamType::Int:
-		{
-			double Val;
-			if (Step->TryGetNumberField(ParamDef.Name, Val))
-			{
-				Arg.IntVal = static_cast<int32>(Val);
-			}
-			else if (ParamDef.bOptional)
-			{
-				Arg.IntVal = ParamDef.DefaultInt;
-			}
-			else
-			{
-				OutErrors.Add(FString::Printf(TEXT("Step %d (%s): missing field '%s'"), StepIndex, *Op, *ParamDef.Name));
-				bHasError = true;
-				continue;
-			}
-			break;
-		}
-		case EHktStoryParamType::Float:
-		{
-			double Val;
-			if (Step->TryGetNumberField(ParamDef.Name, Val))
-			{
-				Arg.FloatVal = static_cast<float>(Val);
-			}
-			else if (ParamDef.bOptional)
-			{
-				Arg.FloatVal = ParamDef.DefaultFloat;
-			}
-			else
-			{
-				OutErrors.Add(FString::Printf(TEXT("Step %d (%s): missing field '%s'"), StepIndex, *Op, *ParamDef.Name));
-				bHasError = true;
-				continue;
-			}
-			break;
-		}
-		case EHktStoryParamType::String:
-		{
-			Step->TryGetStringField(ParamDef.Name, Arg.StrVal);
-			break;
-		}
-		case EHktStoryParamType::Tag:
-		{
-			FString Val;
-			if (!Step->TryGetStringField(ParamDef.Name, Val))
-			{
-				if (!ParamDef.bOptional)
-				{
-					OutErrors.Add(FString::Printf(TEXT("Step %d (%s): missing field '%s'"), StepIndex, *Op, *ParamDef.Name));
-					bHasError = true;
-					continue;
-				}
-			}
-			else
-			{
-				Arg.TagVal = ResolveTag(Val, TagAliases);
-				if (Arg.TagVal.IsValid())
-				{
-					OutReferencedTags.AddUnique(Arg.TagVal);
-				}
-			}
-			break;
-		}
-		case EHktStoryParamType::PropertyId:
-		{
-			FString Val;
-			if (!Step->TryGetStringField(ParamDef.Name, Val))
-			{
-				if (!ParamDef.bOptional)
-				{
-					OutErrors.Add(FString::Printf(TEXT("Step %d (%s): missing field '%s'"), StepIndex, *Op, *ParamDef.Name));
-					bHasError = true;
-					continue;
-				}
-			}
-			else
-			{
-				Arg.PropId = FHktStoryOpRegistry::ParsePropertyId(Val);
-				if (Arg.PropId == 0xFFFF)
-				{
-					OutErrors.Add(FString::Printf(TEXT("Step %d (%s): invalid PropertyId '%s'"), StepIndex, *Op, *Val));
-					bHasError = true;
-					continue;
-				}
-			}
-			break;
-		}
-		}
-
-		ParsedArgs.Add(ParamDef.Name, MoveTemp(Arg));
-	}
-
-	if (bHasError)
-	{
-		return false;
-	}
-
-	// 핸들러 호출
-	OpDef->Handler(Builder, ParsedArgs);
-	return true;
-}
-
-// ============================================================================
-// CompileAndRegister
+// CompileAndRegister — FHktStoryJsonParser에 위임
 // ============================================================================
 
 FHktStoryCompileResult FHktStoryJsonCompiler::CompileAndRegister(const FString& JsonStr)
 {
+	// 에디터 전용 태그 해석기: alias 해결 + 자동등록 + INI 영속화
+	auto EditorResolveTag = [](const FString& TagStr) -> FGameplayTag
+	{
+		return EnsureTagRegistered(TagStr);
+	};
+
+	FHktStoryParseResult ParseResult = FHktStoryJsonParser::Get().ParseAndBuild(JsonStr, EditorResolveTag);
+
+	// ParseResult → CompileResult 변환
 	FHktStoryCompileResult Result;
+	Result.bSuccess = ParseResult.bSuccess;
+	Result.StoryTag = ParseResult.StoryTag;
+	Result.Errors = MoveTemp(ParseResult.Errors);
+	Result.Warnings = MoveTemp(ParseResult.Warnings);
+	Result.ReferencedTags = MoveTemp(ParseResult.ReferencedTags);
 
-	// Parse JSON
-	TSharedPtr<FJsonObject> Root;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonStr);
-	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+	if (Result.bSuccess)
 	{
-		Result.Errors.Add(TEXT("Invalid JSON syntax"));
-		return Result;
+		UE_LOG(LogHktStoryJsonCompiler, Log, TEXT("Story compiled and registered: %s (%d tags referenced)"),
+			*Result.StoryTag, Result.ReferencedTags.Num());
 	}
-
-	// Story tag
-	FString StoryTagStr;
-	if (!Root->TryGetStringField(TEXT("storyTag"), StoryTagStr) || StoryTagStr.IsEmpty())
-	{
-		Result.Errors.Add(TEXT("Missing or empty 'storyTag' field"));
-		return Result;
-	}
-	Result.StoryTag = StoryTagStr;
-	EnsureTagRegistered(StoryTagStr);
-
-	// Parse tag aliases
-	TMap<FString, FGameplayTag> TagAliases;
-	const TSharedPtr<FJsonObject>* TagsObj;
-	if (Root->TryGetObjectField(TEXT("tags"), TagsObj))
-	{
-		for (const auto& Pair : (*TagsObj)->Values)
-		{
-			FString TagName = Pair.Value->AsString();
-			FGameplayTag Tag = EnsureTagRegistered(TagName);
-			if (!Tag.IsValid())
-			{
-				Result.Warnings.Add(FString::Printf(TEXT("Tag '%s' (%s) could not be registered"), *Pair.Key, *TagName));
-			}
-			TagAliases.Add(Pair.Key, Tag);
-		}
-	}
-
-	// Create builder
-	FHktStoryBuilder Builder = FHktStoryBuilder::Create(FName(*StoryTagStr));
-
-	// CancelOnDuplicate policy
-	bool bCancelOnDuplicate = false;
-	if (Root->TryGetBoolField(TEXT("cancelOnDuplicate"), bCancelOnDuplicate) && bCancelOnDuplicate)
-	{
-		Builder.CancelOnDuplicate();
-	}
-
-	// Parse steps
-	const TArray<TSharedPtr<FJsonValue>>* Steps;
-	if (!Root->TryGetArrayField(TEXT("steps"), Steps))
-	{
-		Result.Errors.Add(TEXT("Missing 'steps' array"));
-		return Result;
-	}
-
-	for (int32 i = 0; i < Steps->Num(); ++i)
-	{
-		const TSharedPtr<FJsonObject>* StepObj;
-		if (!(*Steps)[i]->TryGetObject(StepObj))
-		{
-			Result.Errors.Add(FString::Printf(TEXT("Step %d: not a JSON object"), i));
-			continue;
-		}
-
-		ApplyStep(Builder, *StepObj, TagAliases, Result.ReferencedTags, Result.Errors, i);
-	}
-
-	if (Result.Errors.Num() > 0)
-	{
-		return Result;
-	}
-
-	// Build and register
-	Builder.BuildAndRegister();
-	Result.bSuccess = true;
-
-	UE_LOG(LogHktStoryJsonCompiler, Log, TEXT("Story compiled and registered: %s (%d steps, %d tags referenced)"),
-		*StoryTagStr, Steps->Num(), Result.ReferencedTags.Num());
 
 	return Result;
 }
 
 // ============================================================================
-// Validate — FHktStoryOpRegistry 기반 자동 검증
+// Validate — FHktStoryJsonParser::GetValidOpNames 기반
 // ============================================================================
 
 FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
@@ -365,7 +131,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 	Result.StoryTag = StoryTagStr;
 	EnsureTagRegistered(StoryTagStr);
 
-	// Parse tag aliases
+	// Tag aliases
 	TMap<FString, FGameplayTag> TagAliases;
 	const TSharedPtr<FJsonObject>* TagsObj;
 	if (Root->TryGetObjectField(TEXT("tags"), TagsObj))
@@ -376,7 +142,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		}
 	}
 
-	// Validate steps — 레지스트리에서 유효 op 목록 자동 생성
+	// Steps 검증
 	const TArray<TSharedPtr<FJsonValue>>* Steps;
 	if (!Root->TryGetArrayField(TEXT("steps"), Steps))
 	{
@@ -384,7 +150,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		return Result;
 	}
 
-	const TSet<FString> ValidOps = FHktStoryOpRegistry::Get().GetValidOpNames();
+	const TSet<FString> ValidOps = FHktStoryJsonParser::Get().GetValidOpNames();
 
 	for (int32 i = 0; i < Steps->Num(); ++i)
 	{
@@ -407,7 +173,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 			Result.Errors.Add(FString::Printf(TEXT("Step %d: unknown operation '%s'"), i, *Op));
 		}
 
-		// Collect referenced tags
+		// 참조 태그 수집
 		for (const FString& TagField : { TEXT("tag"), TEXT("classTag"), TEXT("effectTag"), TEXT("stanceTag"), TEXT("skillTag") })
 		{
 			FString TagStr;
@@ -427,12 +193,26 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 }
 
 // ============================================================================
-// 스키마 / 예제 — 레지스트리에서 자동 생성
+// 스키마 / 예제
 // ============================================================================
 
 FString FHktStoryJsonCompiler::GetStorySchema()
 {
-	return FHktStoryOpRegistry::Get().GenerateSchemaJson();
+	FString SchemaPath = FPaths::ProjectDir() / TEXT("../../HktGameplayGenerator/.claude/skills/story-gen/story_schema.json");
+	FString SchemaStr;
+	if (FFileHelper::LoadFileToString(SchemaStr, *SchemaPath))
+	{
+		return SchemaStr;
+	}
+
+	SchemaPath = FPaths::ProjectContentDir() / TEXT("HktStorySchema.json");
+	if (FFileHelper::LoadFileToString(SchemaStr, *SchemaPath))
+	{
+		return SchemaStr;
+	}
+
+	UE_LOG(LogHktStoryJsonCompiler, Warning, TEXT("Story schema not found. Returning minimal schema."));
+	return TEXT("{\"error\": \"Schema file not found.\"}");
 }
 
 FString FHktStoryJsonCompiler::GetStoryExamples()
@@ -505,48 +285,6 @@ FString FHktStoryJsonCompiler::GetStoryExamples()
     }
   },
   {
-    "name": "CharacterSpawn",
-    "description": "캐릭터 입장 — 스폰 + 장비 + 애니메이션",
-    "story": {
-      "storyTag": "Event.Character.Spawn",
-      "tags": {
-        "PlayerEntity": "Entity.Character.Player",
-        "AnimSpawn": "Anim.FullBody.Action.Spawn",
-        "AnimIntro": "Anim.Montage.Intro",
-        "AnimIdle": "Anim.FullBody.Locomotion.Idle",
-        "VFX_Spawn": "VFX.SpawnEffect",
-        "Sound_Spawn": "Sound.Spawn",
-        "Weapon_Sword": "Entity.Item.Weapon.Sword",
-        "Shield": "Entity.Item.Shield"
-      },
-      "steps": [
-        { "op": "SpawnEntity", "classTag": "PlayerEntity" },
-        { "op": "Move", "dst": "Self", "src": "Spawned" },
-        { "op": "LoadStore", "dst": "R0", "property": "TargetPosX" },
-        { "op": "LoadStore", "dst": "R1", "property": "TargetPosY" },
-        { "op": "LoadStore", "dst": "R2", "property": "TargetPosZ" },
-        { "op": "SetPosition", "entity": "Self", "src": "R0" },
-        { "op": "PlayVFXAttached", "entity": "Self", "tag": "VFX_Spawn" },
-        { "op": "PlaySound", "tag": "Sound_Spawn" },
-        { "op": "AddTag", "entity": "Self", "tag": "AnimSpawn" },
-        { "op": "WaitSeconds", "seconds": 0.5 },
-        { "op": "SpawnEntity", "classTag": "Weapon_Sword" },
-        { "op": "SaveEntityProperty", "entity": "Spawned", "property": "OwnerEntity", "src": "Self" },
-        { "op": "SaveConstEntity", "entity": "Spawned", "property": "BagSlot", "value": 0 },
-        { "op": "SpawnEntity", "classTag": "Shield" },
-        { "op": "SaveEntityProperty", "entity": "Spawned", "property": "OwnerEntity", "src": "Self" },
-        { "op": "SaveConstEntity", "entity": "Spawned", "property": "BagSlot", "value": 1 },
-        { "op": "SaveConstEntity", "entity": "Self", "property": "Stance", "value": 2 },
-        { "op": "AddTag", "entity": "Self", "tag": "AnimIntro" },
-        { "op": "WaitAnimEnd", "entity": "Self" },
-        { "op": "RemoveTag", "entity": "Self", "tag": "AnimSpawn" },
-        { "op": "RemoveTag", "entity": "Self", "tag": "AnimIntro" },
-        { "op": "AddTag", "entity": "Self", "tag": "AnimIdle" },
-        { "op": "Halt" }
-      ]
-    }
-  },
-  {
     "name": "WaveSpawner",
     "description": "웨이브 스포너 — 반복 + 조건 + NPC 스폰",
     "story": {
@@ -567,7 +305,6 @@ FString FHktStoryJsonCompiler::GetStoryExamples()
         { "op": "SpawnEntity", "classTag": "NPC_Goblin" },
         { "op": "SaveConstEntity", "entity": "Spawned", "property": "IsNPC", "value": 1 },
         { "op": "SaveConstEntity", "entity": "Spawned", "property": "Health", "value": 80 },
-        { "op": "SaveConstEntity", "entity": "Spawned", "property": "MaxHealth", "value": 80 },
         { "op": "AddTag", "entity": "Spawned", "tag": "NPC_Tag" },
         { "op": "AddTag", "entity": "Spawned", "tag": "Hostile" },
         { "op": "GetPosition", "dst": "R3", "entity": "Self" },
