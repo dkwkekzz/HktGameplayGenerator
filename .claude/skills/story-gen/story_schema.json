@@ -1,0 +1,140 @@
+{
+  "description": "HktStory JSON Format — AI Agent가 게임 Story/Flow를 정의하는 형식",
+  "format": {
+    "storyTag": "GameplayTag (이벤트 이름, e.g. 'Ability.Skill.IceBlast')",
+    "description": "Story 설명 (선택)",
+    "cancelOnDuplicate": "bool — 같은 엔티티에 동일 이벤트 중복 시 기존 취소 (선택, 기본 false)",
+    "tags": { "alias": "Full.GameplayTag.Name (단축 이름 → 전체 태그 매핑)" },
+    "steps": [ { "op": "OperationName", "...params": "..." } ]
+  },
+  "registers": {
+    "R0-R8": "범용 레지스터",
+    "R9(Temp)": "Builder 내부용 — 직접 사용 금지",
+    "Self": "이벤트 소스 엔티티 (R10)",
+    "Target": "이벤트 타겟 엔티티 (R11)",
+    "Spawned": "마지막 스폰된 엔티티 (R12)",
+    "Hit": "충돌 대상 (R13)",
+    "Iter": "ForEach 순회 대상 (R14)",
+    "Flag": "조건 결과 / Count (R15)"
+  },
+  "operations": {
+    "control": {
+      "Label": { "name": "string — 라벨 이름" },
+      "Jump": { "label": "string — 점프 대상 라벨" },
+      "JumpIf": { "cond": "register — 조건", "label": "string — 점프 대상" },
+      "JumpIfNot": { "cond": "register — 조건", "label": "string — 점프 대상" },
+      "Yield": { "frames": "int — 대기 프레임 수 (선택, 기본 1)" },
+      "WaitSeconds": { "seconds": "float — 대기 초" },
+      "Halt": {},
+      "Fail": {}
+    },
+    "wait": {
+      "WaitCollision": { "entity": "register — 감시 대상 (선택, 기본 Spawned)" },
+      "WaitAnimEnd": { "entity": "register — 대상 (선택, 기본 Self)" },
+      "WaitMoveEnd": { "entity": "register — 대상 (선택, 기본 Self)" }
+    },
+    "data": {
+      "LoadConst": { "dst": "register", "value": "int — 상수값" },
+      "LoadStore": { "dst": "register", "property": "propertyId" },
+      "LoadEntityProperty": { "dst": "register", "entity": "register", "property": "propertyId" },
+      "SaveStore": { "property": "propertyId", "src": "register" },
+      "SaveEntityProperty": { "entity": "register", "property": "propertyId", "src": "register" },
+      "SaveConst": { "property": "propertyId", "value": "int" },
+      "SaveConstEntity": { "entity": "register", "property": "propertyId", "value": "int" },
+      "Move": { "dst": "register", "src": "register" }
+    },
+    "arithmetic": {
+      "Add": { "dst": "register", "src1": "register", "src2": "register" },
+      "Sub": { "dst": "register", "src1": "register", "src2": "register" },
+      "Mul": { "dst": "register", "src1": "register", "src2": "register" },
+      "Div": { "dst": "register", "src1": "register", "src2": "register" },
+      "AddImm": { "dst": "register", "src": "register", "imm": "int — 즉시값" }
+    },
+    "comparison": {
+      "CmpEq": { "dst": "register (1/0)", "src1": "register", "src2": "register" },
+      "CmpNe": { "dst": "register (1/0)", "src1": "register", "src2": "register" },
+      "CmpLt": { "dst": "register (1/0)", "src1": "register", "src2": "register" },
+      "CmpLe": { "dst": "register (1/0)", "src1": "register", "src2": "register" },
+      "CmpGt": { "dst": "register (1/0)", "src1": "register", "src2": "register" },
+      "CmpGe": { "dst": "register (1/0)", "src1": "register", "src2": "register" }
+    },
+    "entity": {
+      "SpawnEntity": { "classTag": "tag — Entity 클래스 태그" },
+      "DestroyEntity": { "entity": "register — 제거 대상" }
+    },
+    "position": {
+      "GetPosition": { "dst": "register — 3연속 (X,Y,Z)", "entity": "register" },
+      "SetPosition": { "entity": "register", "src": "register — 3연속 (X,Y,Z)" },
+      "MoveToward": { "entity": "register", "targetPos": "register — 3연속", "force": "int" },
+      "MoveForward": { "entity": "register", "force": "int (cm/s)" },
+      "StopMovement": { "entity": "register" },
+      "GetDistance": { "dst": "register (cm)", "entity1": "register", "entity2": "register" }
+    },
+    "spatial": {
+      "FindInRadius": { "center": "register — 중심 엔티티", "radius": "int (cm)" },
+      "NextFound": {},
+      "ForEachInRadius": { "center": "register — 중심 엔티티", "radius": "int (cm)" },
+      "EndForEach": {}
+    },
+    "combat": {
+      "ApplyDamage": { "target": "register", "amount": "register — 피해량" },
+      "ApplyDamageConst": { "target": "register", "amount": "int — 피해량" },
+      "ApplyEffect": { "target": "register", "effectTag": "tag" },
+      "RemoveEffect": { "target": "register", "effectTag": "tag" }
+    },
+    "vfx": {
+      "PlayVFX": { "pos": "register — 3연속 (X,Y,Z)", "tag": "tag" },
+      "PlayVFXAttached": { "entity": "register", "tag": "tag" }
+    },
+    "audio": {
+      "PlaySound": { "tag": "tag" },
+      "PlaySoundAtLocation": { "pos": "register — 3연속", "tag": "tag" }
+    },
+    "tags": {
+      "AddTag": { "entity": "register", "tag": "tag" },
+      "RemoveTag": { "entity": "register", "tag": "tag" },
+      "HasTag": { "dst": "register (1/0)", "entity": "register", "tag": "tag" },
+      "CountByTag": { "dst": "register — 카운트", "tag": "tag" }
+    },
+    "query": {
+      "GetWorldTime": { "dst": "register — 프레임 번호" },
+      "RandomInt": { "dst": "register", "modulus": "register — 범위" },
+      "HasPlayerInGroup": { "dst": "register (1/0)" }
+    },
+    "item": {
+      "CountByOwner": { "dst": "register", "owner": "register", "tag": "tag" },
+      "FindByOwner": { "owner": "register", "tag": "tag" },
+      "SetOwnerUid": { "entity": "register" },
+      "ClearOwnerUid": { "entity": "register" }
+    },
+    "stance": {
+      "SetStance": { "entity": "register", "stanceTag": "tag" },
+      "SetItemSkillTag": { "entity": "register", "skillTag": "tag" }
+    },
+    "utility": {
+      "Log": { "message": "string — 로그 메시지" }
+    }
+  },
+  "propertyIds": [
+    "PosX", "PosY", "PosZ", "RotYaw",
+    "MoveTargetX", "MoveTargetY", "MoveTargetZ", "MoveForce", "IsMoving", "MaxSpeed",
+    "Health", "MaxHealth", "AttackPower", "Defense", "Team", "Mana", "MaxMana",
+    "OwnerEntity", "EntitySpawnTag", "Stance",
+    "CP", "MaxCP", "AttackSpeed", "NextActionFrame",
+    "TargetPosX", "TargetPosY", "TargetPosZ",
+    "Param0", "Param1", "Param2", "Param3",
+    "AnimState", "VisualState", "AnimStateUpper",
+    "VelX", "VelY", "VelZ", "Mass", "CollisionRadius",
+    "ItemState", "ItemId", "BagSlot", "ActionSlot", "BagCapacity",
+    "IsNPC", "SpawnFlowTag",
+    "ItemSkillTag", "SkillCPCost", "RecoveryFrame"
+  ],
+  "tagPrefixes": {
+    "VFX.*": "VFXGenerator에서 자동 생성 가능",
+    "Entity.*": "MeshGenerator에서 자동 생성 가능",
+    "Anim.*": "AnimGenerator에서 자동 생성 가능",
+    "Entity.Item.*": "ItemGenerator에서 자동 생성 가능",
+    "Sound.*": "사운드 에셋 (수동 등록 필요)",
+    "Effect.*": "게임플레이 이펙트 (수동 등록 필요)"
+  }
+}
