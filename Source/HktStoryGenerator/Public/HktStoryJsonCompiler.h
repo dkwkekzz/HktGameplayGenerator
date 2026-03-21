@@ -5,7 +5,6 @@
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
-#include "HktStoryJsonParser.h"
 
 /**
  * Story JSON 컴파일 결과 (에디터 전용 필드 포함)

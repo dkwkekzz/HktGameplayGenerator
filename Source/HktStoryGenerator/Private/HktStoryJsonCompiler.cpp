@@ -5,6 +5,8 @@
 #include "HktStoryBuilder.h"
 #include "GameplayTagsManager.h"
 #include "GameplayTagsSettings.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
