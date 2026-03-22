@@ -1,15 +1,13 @@
 // Copyright Hkt Studios, Inc. All Rights Reserved.
-// JSON → FHktStoryBuilder 컴파일러 (FHktStoryOpRegistry 기반 — 자동 dispatch)
+// Story JSON 에디터 컴파일러 — FHktStoryJsonParser(런타임) 위에 에디터 전용 기능 추가
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameplayTagContainer.h"
 
-class FHktStoryBuilder;
-
 /**
- * Story JSON 컴파일 결과
+ * Story JSON 컴파일 결과 (에디터 전용 필드 포함)
  */
 struct HKTSTORYGENERATOR_API FHktStoryCompileResult
 {
@@ -26,33 +24,24 @@ struct HKTSTORYGENERATOR_API FHktStoryCompileResult
 };
 
 /**
- * FHktStoryJsonCompiler
+ * FHktStoryJsonCompiler — 에디터 전용 컴파일러
  *
- * JSON Story 정의를 FHktStoryBuilder 호출로 변환.
- * FHktStoryOpRegistry(HktCore)에 등록된 Operation 정의를 기반으로 자동 dispatch.
+ * FHktStoryJsonParser(런타임)에 위임하되, 에디터 전용 기능을 추가:
+ * - 태그 자동등록 + INI 영속화 (EnsureTagRegistered)
+ * - 스키마/예제 제공 (AI Agent 학습용)
+ * - 의존성 분석 (에셋 존재 여부 확인)
  *
- * === HktStoryGenerator 무변경 보장 ===
- * 새 Builder 메서드는 FHktStoryOpRegistry에 등록하면
- * 이 컴파일러가 자동으로 인식 — 코드 수정 불필요.
- *
- * JSON 포맷:
- * {
- *   "storyTag": "Ability.Skill.IceBlast",
- *   "description": "Ice blast skill",
- *   "cancelOnDuplicate": false,
- *   "tags": { "alias": "Full.Tag.Name", ... },
- *   "steps": [
- *     { "op": "AddTag", "entity": "Self", "tag": "alias_or_full_tag" },
- *     ...
- *   ]
- * }
+ * === 새 op 추가 시 ===
+ * 1. FHktStoryBuilder에 메서드 추가
+ * 2. FHktStoryJsonParser::InitializeCoreCommands()에 RegisterCommand 1줄 추가
+ * 3. skill 스키마 JSON 업데이트
+ * → HktStoryGenerator 코드 변경 불필요
  */
 struct HKTSTORYGENERATOR_API FHktStoryJsonCompiler
 {
 	/**
 	 * JSON 문자열로부터 Story 컴파일 및 등록.
-	 * @param JsonStr JSON Story 정의
-	 * @return 컴파일 결과 (성공 여부, 에러, 참조 태그 등)
+	 * 태그 자동등록 + alias 해결 포함.
 	 */
 	static FHktStoryCompileResult CompileAndRegister(const FString& JsonStr);
 
@@ -62,8 +51,7 @@ struct HKTSTORYGENERATOR_API FHktStoryJsonCompiler
 	static FHktStoryCompileResult Validate(const FString& JsonStr);
 
 	/**
-	 * Story Builder API 스키마 (JSON) — AI Agent 학습용
-	 * FHktStoryOpRegistry에서 자동 생성.
+	 * Story Builder API 스키마 (JSON) — skill 디렉토리의 정적 파일에서 로드
 	 */
 	static FString GetStorySchema();
 
@@ -73,18 +61,9 @@ struct HKTSTORYGENERATOR_API FHktStoryJsonCompiler
 	static FString GetStoryExamples();
 
 private:
-	/** 태그 alias 해결 (tags 맵에서 찾거나 직접 GameplayTag 생성) */
-	static FGameplayTag ResolveTag(const FString& TagStr, const TMap<FString, FGameplayTag>& TagAliases);
+	/** 태그 등록 + INI 영속화 (에디터 전용) */
+	static FGameplayTag EnsureTagRegistered(const FString& TagName);
 
-	/**
-	 * 개별 step을 Builder에 적용 — FHktStoryOpRegistry 기반 자동 dispatch.
-	 * Op 이름으로 레지스트리 검색 → 파라미터 파싱 → 핸들러 호출.
-	 */
-	static bool ApplyStep(
-		FHktStoryBuilder& Builder,
-		const TSharedPtr<class FJsonObject>& StepObj,
-		const TMap<FString, FGameplayTag>& TagAliases,
-		TArray<FGameplayTag>& OutReferencedTags,
-		TArray<FString>& OutErrors,
-		int32 StepIndex);
+	/** 태그 alias 해결 */
+	static FGameplayTag ResolveTag(const FString& TagStr, const TMap<FString, FGameplayTag>& TagAliases);
 };

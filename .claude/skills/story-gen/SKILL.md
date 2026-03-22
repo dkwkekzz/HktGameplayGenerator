@@ -24,10 +24,9 @@ MCP 도구 `step_begin`을 호출한다:
 - `project_id`: $1
 - `step_type`: "story_generation"
 
-### 2. 스키마 및 예제 확인
-순서대로 호출:
-1. `get_story_schema` → Story JSON 스키마 확인
-2. `get_story_examples` → 기존 패턴 학습
+### 2. 스키마 확인
+`story_schema.json` 파일을 읽어 사용 가능한 operations, registers, propertyIds를 확인한다:
+- 경로: `.claude/skills/story-gen/story_schema.json`
 
 ### 3. 스토리별 JSON 생성
 concept_design 출력의 각 story에 대해:
