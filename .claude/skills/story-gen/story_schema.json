@@ -5,6 +5,12 @@
     "description": "Story 설명 (선택)",
     "cancelOnDuplicate": "bool — 같은 엔티티에 동일 이벤트 중복 시 기존 취소 (선택, 기본 false)",
     "tags": { "alias": "Full.GameplayTag.Name (단축 이름 → 전체 태그 매핑)" },
+    "preconditions": [
+      "steps와 동일한 op 형식. 읽기 전용 ops만 허용 (선택)",
+      "실행 후 Flag 레지스터 != 0이면 실행 허용, Fail op 시 즉시 차단",
+      "허용 ops: LoadConst, LoadStore, LoadEntityProperty, Move, Add, Sub, Mul, Div, AddImm, CmpEq/Ne/Lt/Le/Gt/Ge, GetDistance, HasTag, CountByTag, GetWorldTime, RandomInt, HasPlayerInGroup, CountByOwner, Label, Jump, JumpIf, JumpIfNot, Halt, Fail, Log",
+      "금지 ops: SaveStore, SaveEntityProperty, SpawnEntity, DestroyEntity, AddTag, RemoveTag, ApplyEffect, RemoveEffect, PlayVFX*, PlaySound*, SetOwnerUid, ClearOwnerUid, Yield*, Wait*"
+    ],
     "steps": [ { "op": "OperationName", "...params": "..." } ]
   },
   "registers": {

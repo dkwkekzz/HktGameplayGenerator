@@ -144,6 +144,59 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		}
 	}
 
+	const TSet<FString> ValidOps = FHktStoryJsonParser::Get().GetValidOpNames();
+
+	// 공통 op 검증 람다
+	auto ValidateOpArray = [&](const TArray<TSharedPtr<FJsonValue>>& OpArray, const TCHAR* SectionName, bool bReadOnlyOnly)
+	{
+		for (int32 i = 0; i < OpArray.Num(); ++i)
+		{
+			const TSharedPtr<FJsonObject>* StepObj;
+			if (!OpArray[i]->TryGetObject(StepObj))
+			{
+				Result.Errors.Add(FString::Printf(TEXT("%s %d: not a JSON object"), SectionName, i));
+				continue;
+			}
+
+			FString Op;
+			if (!(*StepObj)->TryGetStringField(TEXT("op"), Op))
+			{
+				Result.Errors.Add(FString::Printf(TEXT("%s %d: missing 'op' field"), SectionName, i));
+				continue;
+			}
+
+			if (!ValidOps.Contains(Op))
+			{
+				Result.Errors.Add(FString::Printf(TEXT("%s %d: unknown operation '%s'"), SectionName, i, *Op));
+			}
+			else if (bReadOnlyOnly && !FHktStoryJsonParser::IsReadOnlyOp(Op))
+			{
+				Result.Errors.Add(FString::Printf(TEXT("%s %d: operation '%s' is not allowed in preconditions"), SectionName, i, *Op));
+			}
+
+			// 참조 태그 수집
+			for (const FString& TagField : { TEXT("tag"), TEXT("classTag"), TEXT("effectTag"), TEXT("stanceTag"), TEXT("skillTag") })
+			{
+				FString TagStr;
+				if ((*StepObj)->TryGetStringField(TagField, TagStr))
+				{
+					FGameplayTag Tag = ResolveTag(TagStr, TagAliases);
+					if (Tag.IsValid())
+					{
+						Result.ReferencedTags.AddUnique(Tag);
+					}
+				}
+			}
+		}
+	};
+
+	// Preconditions 검증 (선택)
+	const TArray<TSharedPtr<FJsonValue>>* Preconditions;
+	if (Root->TryGetArrayField(TEXT("preconditions"), Preconditions))
+	{
+		ValidateOpArray(*Preconditions, TEXT("Precondition"), /*bReadOnlyOnly=*/true);
+	}
+
 	// Steps 검증
 	const TArray<TSharedPtr<FJsonValue>>* Steps;
 	if (!Root->TryGetArrayField(TEXT("steps"), Steps))
@@ -152,43 +205,7 @@ FHktStoryCompileResult FHktStoryJsonCompiler::Validate(const FString& JsonStr)
 		return Result;
 	}
 
-	const TSet<FString> ValidOps = FHktStoryJsonParser::Get().GetValidOpNames();
-
-	for (int32 i = 0; i < Steps->Num(); ++i)
-	{
-		const TSharedPtr<FJsonObject>* StepObj;
-		if (!(*Steps)[i]->TryGetObject(StepObj))
-		{
-			Result.Errors.Add(FString::Printf(TEXT("Step %d: not a JSON object"), i));
-			continue;
-		}
-
-		FString Op;
-		if (!(*StepObj)->TryGetStringField(TEXT("op"), Op))
-		{
-			Result.Errors.Add(FString::Printf(TEXT("Step %d: missing 'op' field"), i));
-			continue;
-		}
-
-		if (!ValidOps.Contains(Op))
-		{
-			Result.Errors.Add(FString::Printf(TEXT("Step %d: unknown operation '%s'"), i, *Op));
-		}
-
-		// 참조 태그 수집
-		for (const FString& TagField : { TEXT("tag"), TEXT("classTag"), TEXT("effectTag"), TEXT("stanceTag"), TEXT("skillTag") })
-		{
-			FString TagStr;
-			if ((*StepObj)->TryGetStringField(TagField, TagStr))
-			{
-				FGameplayTag Tag = ResolveTag(TagStr, TagAliases);
-				if (Tag.IsValid())
-				{
-					Result.ReferencedTags.AddUnique(Tag);
-				}
-			}
-		}
-	}
+	ValidateOpArray(*Steps, TEXT("Step"), /*bReadOnlyOnly=*/false);
 
 	Result.bSuccess = Result.Errors.Num() == 0;
 	return Result;
@@ -221,8 +238,8 @@ FString FHktStoryJsonCompiler::GetStoryExamples()
 {
 	return TEXT(R"([
   {
-    "name": "BasicAttack",
-    "description": "근접 공격 — 태그 기반 애니메이션 + 데미지",
+    "name": "BasicAttackWithPreconditions",
+    "description": "근접 공격 — precondition으로 쿨타임 검증 + 태그 기반 애니메이션 + 데미지",
     "story": {
       "storyTag": "Ability.Attack.Basic",
       "tags": {
@@ -230,6 +247,11 @@ FString FHktStoryJsonCompiler::GetStoryExamples()
         "VFX_HitSpark": "VFX.HitSpark",
         "Sound_Hit": "Sound.Hit"
       },
+      "preconditions": [
+        { "op": "LoadEntityProperty", "dst": "R0", "entity": "Self", "property": "NextActionFrame" },
+        { "op": "GetWorldTime", "dst": "R1" },
+        { "op": "CmpGe", "dst": "Flag", "src1": "R1", "src2": "R0" }
+      ],
       "steps": [
         { "op": "AddTag", "entity": "Self", "tag": "AnimAttack" },
         { "op": "WaitAnimEnd", "entity": "Self" },
