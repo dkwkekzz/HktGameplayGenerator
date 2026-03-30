@@ -9,6 +9,31 @@
 #include "NiagaraScript.h"
 #include "NiagaraParameterStore.h"
 #include "NiagaraRendererProperties.h"
+#include "NiagaraSpriteRendererProperties.h"
+#include "NiagaraRibbonRendererProperties.h"
+#include "NiagaraComponent.h"
+
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceConstant.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Factories/MaterialInstanceConstantFactoryNew.h"
+#include "Engine/Texture2D.h"
+
+#include "LevelEditor.h"
+#include "LevelEditorViewport.h"
+#include "Editor.h"
+#include "EditorViewportClient.h"
+#include "UnrealEdGlobals.h"
+#include "Editor/UnrealEdEngine.h"
+#include "HighResScreenshot.h"
+#include "ImageUtils.h"
+#include "Framework/Application/SlateApplication.h"
+#include "UObject/SavePackage.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktVFXGenerator, Log, All);
 
@@ -425,4 +450,478 @@ FString UHktVFXGeneratorSubsystem::DumpAllTemplateParameters()
 	}
 
 	return Result;
+}
+
+// ============================================================================
+// Phase 2: 머티리얼 동적 생성
+// ============================================================================
+
+FString UHktVFXGeneratorSubsystem::CreateParticleMaterial(
+	const FString& MaterialName,
+	const FString& TexturePath,
+	const FString& BlendMode,
+	float EmissiveIntensity,
+	const FString& OutputDir)
+{
+	const FString ResolvedDir = ResolveOutputDir(OutputDir);
+	const FString MaterialDir = ResolvedDir / TEXT("Materials");
+
+	// 마스터 머티리얼 로드
+	const UHktVFXGeneratorSettings* Settings = UHktVFXGeneratorSettings::Get();
+	const FSoftObjectPath& MasterMatPath = (BlendMode == TEXT("translucent"))
+		? Settings->TranslucentMaterial
+		: Settings->AdditiveMaterial;
+
+	UMaterialInterface* MasterMat = nullptr;
+	if (MasterMatPath.IsValid())
+	{
+		MasterMat = Cast<UMaterialInterface>(MasterMatPath.TryLoad());
+	}
+
+	if (!MasterMat)
+	{
+		UE_LOG(LogHktVFXGenerator, Error,
+			TEXT("CreateParticleMaterial: Master material not found for BlendMode '%s'"), *BlendMode);
+		return FString();
+	}
+
+	// MI 패키지 생성
+	const FString MIName = FString::Printf(TEXT("MI_%s"), *MaterialName);
+	const FString PackagePath = MaterialDir / MIName;
+
+	UPackage* Package = CreatePackage(*PackagePath);
+	if (!Package)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("Failed to create package: %s"), *PackagePath);
+		return FString();
+	}
+	Package->FullyLoad();
+
+	// MaterialInstanceConstant 생성
+	UMaterialInstanceConstantFactoryNew* Factory = NewObject<UMaterialInstanceConstantFactoryNew>();
+	Factory->InitialParent = MasterMat;
+
+	UMaterialInstanceConstant* MIC = Cast<UMaterialInstanceConstant>(
+		Factory->FactoryCreateNew(
+			UMaterialInstanceConstant::StaticClass(),
+			Package, *MIName,
+			RF_Public | RF_Standalone,
+			nullptr, GWarn));
+
+	if (!MIC)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("Failed to create MaterialInstanceConstant"));
+		return FString();
+	}
+
+	// 텍스처 바인딩 (TexturePath가 유효한 경우)
+	if (!TexturePath.IsEmpty())
+	{
+		UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *TexturePath);
+		if (Texture)
+		{
+			static const FName TextureParamNames[] = {
+				TEXT("BaseTexture"), TEXT("ParticleTexture"), TEXT("Texture"),
+				TEXT("BaseColor"), TEXT("DiffuseTexture")
+			};
+
+			bool bBound = false;
+			for (const FName& ParamName : TextureParamNames)
+			{
+				UTexture* Dummy = nullptr;
+				if (MasterMat->GetTextureParameterValue(ParamName, Dummy))
+				{
+					MIC->SetTextureParameterValueEditorOnly(ParamName, Texture);
+					bBound = true;
+					UE_LOG(LogHktVFXGenerator, Log,
+						TEXT("Bound texture to parameter '%s'"), *ParamName.ToString());
+					break;
+				}
+			}
+
+			if (!bBound)
+			{
+				UE_LOG(LogHktVFXGenerator, Warning,
+					TEXT("Could not find matching texture parameter in master material"));
+			}
+		}
+		else
+		{
+			UE_LOG(LogHktVFXGenerator, Warning, TEXT("Texture not found: %s"), *TexturePath);
+		}
+	}
+
+	// Emissive Intensity 설정
+	if (!FMath::IsNearlyEqual(EmissiveIntensity, 1.f))
+	{
+		static const FName EmissiveParamNames[] = {
+			TEXT("EmissiveIntensity"), TEXT("EmissivePower"), TEXT("Intensity"),
+			TEXT("EmissiveMultiplier"), TEXT("Brightness")
+		};
+
+		for (const FName& ParamName : EmissiveParamNames)
+		{
+			float Dummy = 0.f;
+			if (MasterMat->GetScalarParameterValue(ParamName, Dummy))
+			{
+				MIC->SetScalarParameterValueEditorOnly(ParamName, EmissiveIntensity);
+				UE_LOG(LogHktVFXGenerator, Log,
+					TEXT("Set %s = %.2f"), *ParamName.ToString(), EmissiveIntensity);
+				break;
+			}
+		}
+	}
+
+	// 저장
+	MIC->MarkPackageDirty();
+	FString PackageFileName = FPackageName::LongPackageNameToFilename(
+		PackagePath, FPackageName::GetAssetPackageExtension());
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+	UPackage::SavePackage(Package, MIC, *PackageFileName, SaveArgs);
+
+	FAssetRegistryModule::AssetCreated(MIC);
+
+	UE_LOG(LogHktVFXGenerator, Log, TEXT("Created particle material: %s"), *MIC->GetPathName());
+	return MIC->GetPathName();
+}
+
+bool UHktVFXGeneratorSubsystem::AssignMaterialToEmitter(
+	const FString& NiagaraSystemPath,
+	const FString& EmitterName,
+	const FString& MaterialPath)
+{
+	UNiagaraSystem* System = LoadObject<UNiagaraSystem>(nullptr, *NiagaraSystemPath);
+	if (!System)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("NiagaraSystem not found: %s"), *NiagaraSystemPath);
+		return false;
+	}
+
+	UMaterialInterface* Material = LoadObject<UMaterialInterface>(nullptr, *MaterialPath);
+	if (!Material)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("Material not found: %s"), *MaterialPath);
+		return false;
+	}
+
+	// 에미터 찾기
+	const TArray<FNiagaraEmitterHandle>& Handles = System->GetEmitterHandles();
+	int32 EmitterIndex = INDEX_NONE;
+	for (int32 i = 0; i < Handles.Num(); ++i)
+	{
+		if (Handles[i].GetName().ToString() == EmitterName)
+		{
+			EmitterIndex = i;
+			break;
+		}
+	}
+
+	if (EmitterIndex == INDEX_NONE)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("Emitter '%s' not found in system"), *EmitterName);
+		return false;
+	}
+
+	FVersionedNiagaraEmitterData* EmitterData = Handles[EmitterIndex].GetEmitterData();
+	if (!EmitterData)
+	{
+		return false;
+	}
+
+	// 모든 렌더러에 머티리얼 적용
+	bool bApplied = false;
+	for (UNiagaraRendererProperties* Renderer : EmitterData->GetRenderers())
+	{
+		if (UNiagaraSpriteRendererProperties* SR = Cast<UNiagaraSpriteRendererProperties>(Renderer))
+		{
+			SR->Material = Material;
+			bApplied = true;
+		}
+		else if (UNiagaraRibbonRendererProperties* RR = Cast<UNiagaraRibbonRendererProperties>(Renderer))
+		{
+			RR->Material = Material;
+			bApplied = true;
+		}
+	}
+
+	if (bApplied)
+	{
+		System->RequestCompile(false);
+		System->MarkPackageDirty();
+
+		FString PackageFileName = FPackageName::LongPackageNameToFilename(
+			System->GetOutermost()->GetName(), FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		UPackage::SavePackage(System->GetOutermost(), System, *PackageFileName, SaveArgs);
+	}
+
+	return bApplied;
+}
+
+// ============================================================================
+// Phase 4: 프리뷰 / 튜닝
+// ============================================================================
+
+FString UHktVFXGeneratorSubsystem::PreviewVFX(
+	const FString& NiagaraSystemPath,
+	float Duration,
+	const FString& ScreenshotPath)
+{
+	UNiagaraSystem* System = LoadObject<UNiagaraSystem>(nullptr, *NiagaraSystemPath);
+	if (!System)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("NiagaraSystem not found: %s"), *NiagaraSystemPath);
+		return FString();
+	}
+
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (!World)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("No editor world available"));
+		return FString();
+	}
+
+	// 카메라 위치 기준 전방에 스폰
+	FVector SpawnLocation = FVector::ZeroVector;
+	FRotator SpawnRotation = FRotator::ZeroRotator;
+
+	if (GCurrentLevelEditingViewportClient)
+	{
+		const FVector CameraLocation = GCurrentLevelEditingViewportClient->GetViewLocation();
+		const FRotator CameraRotation = GCurrentLevelEditingViewportClient->GetViewRotation();
+		SpawnLocation = CameraLocation + CameraRotation.Vector() * 500.f;
+	}
+
+	// 임시 액터 스폰 — SceneComponent를 Root로 가지는 Actor
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AActor* TempActor = World->SpawnActor<AActor>(AActor::StaticClass(), SpawnLocation, SpawnRotation, SpawnParams);
+	if (!TempActor)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("Failed to spawn preview actor"));
+		return FString();
+	}
+
+	// RootComponent가 없으면 생성
+	if (!TempActor->GetRootComponent())
+	{
+		USceneComponent* Root = NewObject<USceneComponent>(TempActor, TEXT("Root"));
+		Root->RegisterComponentWithWorld(World);
+		TempActor->SetRootComponent(Root);
+	}
+
+	UNiagaraComponent* NiagaraComp = NewObject<UNiagaraComponent>(TempActor);
+	NiagaraComp->SetAsset(System);
+	NiagaraComp->RegisterComponentWithWorld(World);
+	NiagaraComp->SetWorldLocation(SpawnLocation);
+	NiagaraComp->AttachToComponent(TempActor->GetRootComponent(),
+		FAttachmentTransformRules::KeepRelativeTransform);
+	NiagaraComp->Activate(true);
+
+	// 스크린샷 경로 결정
+	FString FinalScreenshotPath = ScreenshotPath;
+	if (FinalScreenshotPath.IsEmpty())
+	{
+		const FString ScreenshotDir = FPaths::ProjectSavedDir() / TEXT("VFXPreviews");
+		IFileManager::Get().MakeDirectory(*ScreenshotDir, true);
+		FinalScreenshotPath = ScreenshotDir / FString::Printf(
+			TEXT("VFXPreview_%s_%s.png"),
+			*FPaths::GetBaseFilename(NiagaraSystemPath),
+			*FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")));
+	}
+
+	// 워밍업: VFX 파티클이 충분히 생성될 때까지 시뮬레이션
+	{
+		const float WarmupTime = FMath::Clamp(Duration * 0.5f, 0.1f, 2.0f);
+		const float DeltaTime = 0.033f;
+		const int32 WarmupFrames = FMath::Max(3, FMath::RoundToInt(WarmupTime / DeltaTime));
+		for (int32 i = 0; i < WarmupFrames; ++i)
+		{
+			NiagaraComp->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
+		}
+	}
+
+	// 뷰포트 렌더링 후 스크린샷 캡처
+	if (GCurrentLevelEditingViewportClient)
+	{
+		// 뷰포트를 한 프레임 렌더링하여 VFX 반영
+		GCurrentLevelEditingViewportClient->Invalidate();
+		FSlateApplication::Get().Tick();
+		FSlateApplication::Get().GetRenderer()->Sync();
+
+		FScreenshotRequest::RequestScreenshot(FinalScreenshotPath, false, false);
+		UE_LOG(LogHktVFXGenerator, Log, TEXT("VFX Preview screenshot requested: %s"), *FinalScreenshotPath);
+	}
+
+	// Duration 후 자동 정리
+	FTimerHandle TimerHandle;
+	TWeakObjectPtr<AActor> WeakActor = TempActor;
+	World->GetTimerManager().SetTimer(TimerHandle, [WeakActor]()
+	{
+		if (AActor* Actor = WeakActor.Get())
+		{
+			Actor->Destroy();
+		}
+	}, Duration, false);
+
+	return FinalScreenshotPath;
+}
+
+bool UHktVFXGeneratorSubsystem::UpdateEmitterParameters(
+	const FString& NiagaraSystemPath,
+	const FString& EmitterName,
+	const FString& JsonOverrides)
+{
+	UNiagaraSystem* System = LoadObject<UNiagaraSystem>(nullptr, *NiagaraSystemPath);
+	if (!System)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("NiagaraSystem not found: %s"), *NiagaraSystemPath);
+		return false;
+	}
+
+	// JSON 파싱
+	TSharedPtr<FJsonObject> RootObj;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonOverrides);
+	if (!FJsonSerializer::Deserialize(Reader, RootObj) || !RootObj.IsValid())
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("Failed to parse JSON overrides"));
+		return false;
+	}
+
+	// 에미터 인덱스 찾기
+	const TArray<FNiagaraEmitterHandle>& Handles = System->GetEmitterHandles();
+	int32 EmitterIndex = INDEX_NONE;
+	for (int32 i = 0; i < Handles.Num(); ++i)
+	{
+		if (Handles[i].GetName().ToString() == EmitterName)
+		{
+			EmitterIndex = i;
+			break;
+		}
+	}
+
+	if (EmitterIndex == INDEX_NONE)
+	{
+		UE_LOG(LogHktVFXGenerator, Error, TEXT("Emitter '%s' not found"), *EmitterName);
+		return false;
+	}
+
+	bool bAnyChanged = false;
+
+	// RapidIterationParameter를 직접 설정하여 부분 오버라이드 수행.
+	// Setup*Module()은 Config 전체를 적용하므로, 여기서는 JSON에 있는 필드만
+	// Builder의 파라미터 setter를 통해 개별 적용한다.
+
+	// === Spawn 오버라이드 ===
+	const TSharedPtr<FJsonObject>* SpawnObj = nullptr;
+	if (RootObj->TryGetObjectField(TEXT("spawn"), SpawnObj))
+	{
+		double TempVal = 0.0;
+		if ((*SpawnObj)->TryGetNumberField(TEXT("rate"), TempVal))
+		{
+			Builder.SetEmitterParamFloat(System, EmitterIndex,
+				TEXT("SpawnRate"), TEXT("SpawnRate"), static_cast<float>(TempVal));
+		}
+		if ((*SpawnObj)->TryGetNumberField(TEXT("burstCount"), TempVal))
+		{
+			Builder.SetEmitterParamInt(System, EmitterIndex,
+				TEXT("SpawnBurst_Instantaneous"), TEXT("SpawnCount"), static_cast<int32>(TempVal));
+		}
+		bAnyChanged = true;
+	}
+
+	// === Init 오버라이드 ===
+	const TSharedPtr<FJsonObject>* InitObj = nullptr;
+	if (RootObj->TryGetObjectField(TEXT("init"), InitObj))
+	{
+		double TempVal = 0.0;
+		if ((*InitObj)->TryGetNumberField(TEXT("lifetimeMin"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Lifetime Minimum"), static_cast<float>(TempVal));
+		if ((*InitObj)->TryGetNumberField(TEXT("lifetimeMax"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Lifetime Maximum"), static_cast<float>(TempVal));
+		if ((*InitObj)->TryGetNumberField(TEXT("sizeMin"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Uniform Sprite Size Minimum"), static_cast<float>(TempVal));
+		if ((*InitObj)->TryGetNumberField(TEXT("sizeMax"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Uniform Sprite Size Maximum"), static_cast<float>(TempVal));
+
+		// Color 오버라이드
+		const TSharedPtr<FJsonObject>* ColorObj = nullptr;
+		if ((*InitObj)->TryGetObjectField(TEXT("color"), ColorObj))
+		{
+			double R = 1.0, G = 1.0, B = 1.0, A = 1.0;
+			(*ColorObj)->TryGetNumberField(TEXT("r"), R);
+			(*ColorObj)->TryGetNumberField(TEXT("g"), G);
+			(*ColorObj)->TryGetNumberField(TEXT("b"), B);
+			(*ColorObj)->TryGetNumberField(TEXT("a"), A);
+			Builder.SetParticleParamColor(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Color"),
+				FLinearColor(static_cast<float>(R), static_cast<float>(G),
+					static_cast<float>(B), static_cast<float>(A)));
+		}
+		bAnyChanged = true;
+	}
+
+	// === Update 오버라이드 ===
+	const TSharedPtr<FJsonObject>* UpdateObj = nullptr;
+	if (RootObj->TryGetObjectField(TEXT("update"), UpdateObj))
+	{
+		double TempVal = 0.0;
+		if ((*UpdateObj)->TryGetNumberField(TEXT("drag"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Drag"), TEXT("Drag"), static_cast<float>(TempVal));
+		if ((*UpdateObj)->TryGetNumberField(TEXT("opacityStart"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Color"), TEXT("Opacity Start"), static_cast<float>(TempVal));
+		if ((*UpdateObj)->TryGetNumberField(TEXT("opacityEnd"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Color"), TEXT("Opacity End"), static_cast<float>(TempVal));
+		if ((*UpdateObj)->TryGetNumberField(TEXT("sizeScaleStart"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Sprite Size"), TEXT("Scale Factor Start"), static_cast<float>(TempVal));
+		if ((*UpdateObj)->TryGetNumberField(TEXT("sizeScaleEnd"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Sprite Size"), TEXT("Scale Factor End"), static_cast<float>(TempVal));
+		if ((*UpdateObj)->TryGetNumberField(TEXT("noiseStrength"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Curl Noise Force"), TEXT("Noise Strength"), static_cast<float>(TempVal));
+		if ((*UpdateObj)->TryGetNumberField(TEXT("vortexStrength"), TempVal))
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Vortex Velocity"), TEXT("Vortex Strength"), static_cast<float>(TempVal));
+
+		// Gravity 오버라이드
+		const TSharedPtr<FJsonObject>* GravityObj = nullptr;
+		if ((*UpdateObj)->TryGetObjectField(TEXT("gravity"), GravityObj))
+		{
+			double X = 0.0, Y = 0.0, Z = -980.0;
+			(*GravityObj)->TryGetNumberField(TEXT("x"), X);
+			(*GravityObj)->TryGetNumberField(TEXT("y"), Y);
+			(*GravityObj)->TryGetNumberField(TEXT("z"), Z);
+			Builder.SetParticleParamVec3(System, EmitterIndex,
+				TEXT("Gravity Force"), TEXT("Gravity"),
+				FVector(X, Y, Z));
+		}
+		bAnyChanged = true;
+	}
+
+	if (bAnyChanged)
+	{
+		System->RequestCompile(false);
+		System->MarkPackageDirty();
+
+		FString PackageFileName = FPackageName::LongPackageNameToFilename(
+			System->GetOutermost()->GetName(), FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		UPackage::SavePackage(System->GetOutermost(), System, *PackageFileName, SaveArgs);
+
+		UE_LOG(LogHktVFXGenerator, Log, TEXT("Updated emitter '%s' and saved"), *EmitterName);
+	}
+
+	return bAnyChanged;
 }

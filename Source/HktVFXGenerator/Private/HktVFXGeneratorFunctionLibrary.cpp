@@ -790,3 +790,110 @@ FString UHktVFXGeneratorFunctionLibrary::McpDumpAllTemplateParameters()
 
 	return Subsystem->DumpAllTemplateParameters();
 }
+
+// ============================================================================
+// Phase 2: 머티리얼 / 텍스처
+// ============================================================================
+
+FString UHktVFXGeneratorFunctionLibrary::McpCreateParticleMaterial(
+	const FString& MaterialName,
+	const FString& TexturePath,
+	const FString& BlendMode,
+	float EmissiveIntensity,
+	const FString& OutputDir)
+{
+	UHktVFXGeneratorSubsystem* Subsystem = GetSubsystem();
+	if (!Subsystem)
+	{
+		return MakeErrorResponse(TEXT("VFXGenerator subsystem not available"));
+	}
+
+	FString ResultPath = Subsystem->CreateParticleMaterial(
+		MaterialName, TexturePath, BlendMode, EmissiveIntensity, OutputDir);
+	if (ResultPath.IsEmpty())
+	{
+		return MakeErrorResponse(TEXT("Failed to create particle material"));
+	}
+
+	UE_LOG(LogHktVFXMcp, Log, TEXT("MCP: Created particle material: %s"), *ResultPath);
+	return MakeSuccessResponse(ResultPath);
+}
+
+FString UHktVFXGeneratorFunctionLibrary::McpAssignVFXMaterial(
+	const FString& NiagaraSystemPath,
+	const FString& EmitterName,
+	const FString& MaterialPath)
+{
+	UHktVFXGeneratorSubsystem* Subsystem = GetSubsystem();
+	if (!Subsystem)
+	{
+		return MakeErrorResponse(TEXT("VFXGenerator subsystem not available"));
+	}
+
+	bool bSuccess = Subsystem->AssignMaterialToEmitter(NiagaraSystemPath, EmitterName, MaterialPath);
+	if (!bSuccess)
+	{
+		return MakeErrorResponse(
+			FString::Printf(TEXT("Failed to assign material '%s' to emitter '%s' in '%s'"),
+				*MaterialPath, *EmitterName, *NiagaraSystemPath));
+	}
+
+	UE_LOG(LogHktVFXMcp, Log, TEXT("MCP: Assigned material '%s' to emitter '%s'"), *MaterialPath, *EmitterName);
+	return MakeSuccessResponse(NiagaraSystemPath);
+}
+
+// ============================================================================
+// Phase 4: 프리뷰 / 튜닝
+// ============================================================================
+
+FString UHktVFXGeneratorFunctionLibrary::McpPreviewVFX(
+	const FString& NiagaraSystemPath,
+	float Duration,
+	const FString& ScreenshotPath)
+{
+	UHktVFXGeneratorSubsystem* Subsystem = GetSubsystem();
+	if (!Subsystem)
+	{
+		return MakeErrorResponse(TEXT("VFXGenerator subsystem not available"));
+	}
+
+	FString ResultScreenshotPath = Subsystem->PreviewVFX(NiagaraSystemPath, Duration, ScreenshotPath);
+	if (ResultScreenshotPath.IsEmpty())
+	{
+		return MakeErrorResponse(TEXT("Failed to preview VFX"));
+	}
+
+	// 스크린샷 경로 포함 응답
+	FString Output;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	Writer->WriteObjectStart();
+	Writer->WriteValue(TEXT("success"), true);
+	Writer->WriteValue(TEXT("assetPath"), NiagaraSystemPath);
+	Writer->WriteValue(TEXT("screenshotPath"), ResultScreenshotPath);
+	Writer->WriteObjectEnd();
+	Writer->Close();
+	return Output;
+}
+
+FString UHktVFXGeneratorFunctionLibrary::McpUpdateVFXEmitter(
+	const FString& NiagaraSystemPath,
+	const FString& EmitterName,
+	const FString& JsonOverrides)
+{
+	UHktVFXGeneratorSubsystem* Subsystem = GetSubsystem();
+	if (!Subsystem)
+	{
+		return MakeErrorResponse(TEXT("VFXGenerator subsystem not available"));
+	}
+
+	bool bSuccess = Subsystem->UpdateEmitterParameters(NiagaraSystemPath, EmitterName, JsonOverrides);
+	if (!bSuccess)
+	{
+		return MakeErrorResponse(
+			FString::Printf(TEXT("Failed to update emitter '%s' in '%s'"),
+				*EmitterName, *NiagaraSystemPath));
+	}
+
+	UE_LOG(LogHktVFXMcp, Log, TEXT("MCP: Updated emitter '%s' in '%s'"), *EmitterName, *NiagaraSystemPath);
+	return MakeSuccessResponse(NiagaraSystemPath);
+}

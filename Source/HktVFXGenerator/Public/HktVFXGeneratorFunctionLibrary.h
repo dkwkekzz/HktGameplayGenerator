@@ -13,12 +13,15 @@
  * LLM/MCP에서 호출 가능한 VFX 생성 함수 모음.
  * 모든 함수는 JSON 문자열을 반환.
  *
- * === LLM 워크플로우 ===
- * 1. McpGetVFXPromptGuide()   → 디자인 가이드 + 스키마 + 에미터 레이어 패턴
- * 2. McpGetVFXExampleConfigs() → 예제 Config JSON (패턴 학습용)
- * 3. LLM이 사용자 요청 기반으로 Config JSON 생성
- * 4. McpBuildNiagaraSystem(json) → Niagara 에셋 빌드
- * 5. McpListGeneratedVFX()     → 생성된 에셋 확인
+ * === LLM 워크플로우 (4-Phase Pipeline) ===
+ * Phase 1 — Design:
+ *   McpGetVFXPromptGuide() → McpGetVFXExampleConfigs() → 에미터 레이어 설계
+ * Phase 2 — Material Prep:
+ *   McpCreateParticleMaterial() → 텍스처/머티리얼 생성
+ * Phase 3 — Build:
+ *   McpBuildNiagaraSystem(json) → McpAssignVFXMaterial() → Niagara 빌드
+ * Phase 4 — Preview & Refine:
+ *   McpPreviewVFX() → McpUpdateVFXEmitter() → 시각 검증 + 파라미터 튜닝
  */
 UCLASS()
 class HKTVFXGENERATOR_API UHktVFXGeneratorFunctionLibrary : public UBlueprintFunctionLibrary
@@ -67,6 +70,58 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
 	static FString McpGetVFXExampleConfigs();
+
+	// =========================================================================
+	// 머티리얼 / 텍스처 (Phase 2: Material Prep)
+	// =========================================================================
+
+	/**
+	 * 파티클용 MaterialInstance 동적 생성.
+	 * 마스터 머티리얼(Additive/Translucent) 기반으로 텍스처를 바인딩한 MI를 생성.
+	 * 반환: {"success":true, "assetPath":"..."} 또는 에러.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
+	static FString McpCreateParticleMaterial(
+		const FString& MaterialName,
+		const FString& TexturePath = TEXT(""),
+		const FString& BlendMode = TEXT("additive"),
+		float EmissiveIntensity = 1.f,
+		const FString& OutputDir = TEXT(""));
+
+	/**
+	 * 기존 Niagara 시스템의 특정 에미터에 머티리얼을 할당.
+	 * Phase 2에서 생성한 머티리얼을 Phase 3 빌드 후 적용할 때 사용.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
+	static FString McpAssignVFXMaterial(
+		const FString& NiagaraSystemPath,
+		const FString& EmitterName,
+		const FString& MaterialPath);
+
+	// =========================================================================
+	// 프리뷰 / 튜닝 (Phase 4: Preview & Refine)
+	// =========================================================================
+
+	/**
+	 * VFX를 뷰포트에 스폰하고 스크린샷을 캡처.
+	 * Duration초 후 자동 제거. 스크린샷 경로 반환.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
+	static FString McpPreviewVFX(
+		const FString& NiagaraSystemPath,
+		float Duration = 2.f,
+		const FString& ScreenshotPath = TEXT(""));
+
+	/**
+	 * 기존 Niagara 시스템의 에미터 파라미터를 부분 업데이트.
+	 * 전체 리빌드 없이 파라미터만 변경 (Spawn/Init/Update/Render).
+	 * JsonOverrides: 에미터 이름별 파라미터 오버라이드 JSON.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|VFXGenerator|MCP")
+	static FString McpUpdateVFXEmitter(
+		const FString& NiagaraSystemPath,
+		const FString& EmitterName,
+		const FString& JsonOverrides);
 
 	// =========================================================================
 	// 조회 / 디버그
