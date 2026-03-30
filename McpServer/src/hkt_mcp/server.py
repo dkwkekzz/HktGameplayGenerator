@@ -493,6 +493,105 @@ async def list_tools() -> list[Tool]:
                 }
             }
         ),
+        # --- Phase 2: Material Prep ---
+        Tool(
+            name="create_particle_material",
+            description="Create a particle MaterialInstance from master material with texture binding and emissive control. Use in Phase 2 (Material Prep) before building Niagara system.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "material_name": {
+                        "type": "string",
+                        "description": "Name for the new MaterialInstance (will be prefixed with MI_)"
+                    },
+                    "texture_path": {
+                        "type": "string",
+                        "description": "UE asset path to texture (e.g. /Game/Generated/Textures/T_Fire). Empty = no texture."
+                    },
+                    "blend_mode": {
+                        "type": "string",
+                        "enum": ["additive", "translucent"],
+                        "description": "Blend mode: additive (default, glow/fire) or translucent (smoke/dust)"
+                    },
+                    "emissive_intensity": {
+                        "type": "number",
+                        "description": "Emissive multiplier (default 1.0, use >1 for HDR glow)"
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Output directory (default: auto)"
+                    }
+                },
+                "required": ["material_name"]
+            }
+        ),
+        Tool(
+            name="assign_vfx_material",
+            description="Assign a material to a specific emitter in an existing Niagara system. Use after Phase 3 build or to swap materials on existing VFX.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "niagara_system_path": {
+                        "type": "string",
+                        "description": "UE asset path to the Niagara system"
+                    },
+                    "emitter_name": {
+                        "type": "string",
+                        "description": "Name of the emitter to update"
+                    },
+                    "material_path": {
+                        "type": "string",
+                        "description": "UE asset path to the material to assign"
+                    }
+                },
+                "required": ["niagara_system_path", "emitter_name", "material_path"]
+            }
+        ),
+        # --- Phase 4: Preview & Refine ---
+        Tool(
+            name="preview_vfx",
+            description="Spawn VFX in editor viewport, capture screenshot for visual verification. Returns screenshot file path. Use in Phase 4 to validate VFX quality.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "niagara_system_path": {
+                        "type": "string",
+                        "description": "UE asset path to the Niagara system to preview"
+                    },
+                    "duration": {
+                        "type": "number",
+                        "description": "How long to keep VFX alive in seconds (default 2.0)"
+                    },
+                    "screenshot_path": {
+                        "type": "string",
+                        "description": "Custom screenshot save path (default: auto-generated in Saved/VFXPreviews/)"
+                    }
+                },
+                "required": ["niagara_system_path"]
+            }
+        ),
+        Tool(
+            name="update_vfx_emitter",
+            description="Update specific emitter parameters in an existing Niagara system without full rebuild. Supports spawn/init/update section overrides. Use in Phase 4 refinement loop.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "niagara_system_path": {
+                        "type": "string",
+                        "description": "UE asset path to the Niagara system"
+                    },
+                    "emitter_name": {
+                        "type": "string",
+                        "description": "Name of the emitter to update"
+                    },
+                    "json_overrides": {
+                        "type": "string",
+                        "description": "JSON with section overrides: {\"spawn\":{...}, \"init\":{...}, \"update\":{...}}"
+                    }
+                },
+                "required": ["niagara_system_path", "emitter_name", "json_overrides"]
+            }
+        ),
     ])
 
     # ==================== Story Generator Tools ====================
@@ -1356,6 +1455,32 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await vfx_tools.list_generated_vfx(bridge, arguments.get("directory", ""))
     elif name == "dump_vfx_template_parameters":
         return await vfx_tools.dump_template_parameters(bridge, arguments.get("renderer_type", "sprite"))
+    # Phase 2: Material Prep
+    elif name == "create_particle_material":
+        return await vfx_tools.create_particle_material(
+            bridge, arguments["material_name"],
+            arguments.get("texture_path", ""),
+            arguments.get("blend_mode", "additive"),
+            arguments.get("emissive_intensity", 1.0),
+            arguments.get("output_dir", ""),
+        )
+    elif name == "assign_vfx_material":
+        return await vfx_tools.assign_vfx_material(
+            bridge, arguments["niagara_system_path"],
+            arguments["emitter_name"], arguments["material_path"],
+        )
+    # Phase 4: Preview & Refine
+    elif name == "preview_vfx":
+        return await vfx_tools.preview_vfx(
+            bridge, arguments["niagara_system_path"],
+            arguments.get("duration", 2.0),
+            arguments.get("screenshot_path", ""),
+        )
+    elif name == "update_vfx_emitter":
+        return await vfx_tools.update_vfx_emitter(
+            bridge, arguments["niagara_system_path"],
+            arguments["emitter_name"], arguments["json_overrides"],
+        )
 
     # Story Generator Tools
     elif name == "get_story_schema":

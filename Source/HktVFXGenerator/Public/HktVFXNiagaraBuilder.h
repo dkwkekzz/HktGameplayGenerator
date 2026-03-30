@@ -31,14 +31,15 @@ public:
 		const FHktVFXNiagaraConfig& Config,
 		const FString& OutputDirectory);
 
-private:
-	void ConfigureEmitter(UNiagaraSystem* System, const FHktVFXEmitterConfig& Config);
-	UNiagaraEmitter* LoadEmitterTemplate(const FString& RendererType);
-
+	// Phase 4: 개별 모듈 업데이트용 public 접근자
 	void SetupSpawnModule(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterSpawnConfig& Config);
 	void SetupInitializeModule(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterInitConfig& Config);
 	void SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterUpdateConfig& Config);
 	void SetupRenderer(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterRenderConfig& Config);
+
+private:
+	void ConfigureEmitter(UNiagaraSystem* System, const FHktVFXEmitterConfig& Config);
+	UNiagaraEmitter* LoadEmitterTemplate(const FString& RendererType);
 	void SetupShapeLocation(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXShapeLocationConfig& Config);
 	void SetupCollision(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXCollisionConfig& Config);
 	void SetupEventSpawn(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEventSpawnConfig& Config, const FString& EmitterName);
