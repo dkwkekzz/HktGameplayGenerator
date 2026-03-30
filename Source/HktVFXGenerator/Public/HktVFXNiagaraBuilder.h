@@ -31,15 +31,26 @@ public:
 		const FHktVFXNiagaraConfig& Config,
 		const FString& OutputDirectory);
 
-	// Phase 4: 개별 모듈 업데이트용 public 접근자
-	void SetupSpawnModule(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterSpawnConfig& Config);
-	void SetupInitializeModule(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterInitConfig& Config);
-	void SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterUpdateConfig& Config);
-	void SetupRenderer(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterRenderConfig& Config);
+	// Phase 4: 개별 파라미터 setter (부분 오버라이드용)
+	void SetParticleParamFloat(UNiagaraSystem* System, int32 EmitterIndex,
+		const FString& ModuleName, const FString& ParamName, float Value);
+	void SetParticleParamVec3(UNiagaraSystem* System, int32 EmitterIndex,
+		const FString& ModuleName, const FString& ParamName, FVector Value);
+	void SetParticleParamColor(UNiagaraSystem* System, int32 EmitterIndex,
+		const FString& ModuleName, const FString& ParamName, FLinearColor Value);
+	void SetEmitterParamFloat(UNiagaraSystem* System, int32 EmitterIndex,
+		const FString& ModuleName, const FString& ParamName, float Value);
+	void SetEmitterParamInt(UNiagaraSystem* System, int32 EmitterIndex,
+		const FString& ModuleName, const FString& ParamName, int32 Value);
 
 private:
 	void ConfigureEmitter(UNiagaraSystem* System, const FHktVFXEmitterConfig& Config);
 	UNiagaraEmitter* LoadEmitterTemplate(const FString& RendererType);
+
+	void SetupSpawnModule(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterSpawnConfig& Config);
+	void SetupInitializeModule(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterInitConfig& Config);
+	void SetupUpdateModules(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterUpdateConfig& Config);
+	void SetupRenderer(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEmitterRenderConfig& Config);
 	void SetupShapeLocation(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXShapeLocationConfig& Config);
 	void SetupCollision(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXCollisionConfig& Config);
 	void SetupEventSpawn(UNiagaraSystem* System, int32 EmitterIndex, const FHktVFXEventSpawnConfig& Config, const FString& EmitterName);
@@ -60,21 +71,9 @@ private:
 	void SetupDataInterfaces(UNiagaraSystem* System, int32 EmitterIndex,
 		const TArray<FHktVFXDataInterfaceBinding>& DataInterfaces);
 
-	// Particle-level 파라미터 (SpawnScript + UpdateScript)
-	void SetParticleParamFloat(UNiagaraSystem* System, int32 EmitterIndex,
-		const FString& ModuleName, const FString& ParamName, float Value);
-	void SetParticleParamVec3(UNiagaraSystem* System, int32 EmitterIndex,
-		const FString& ModuleName, const FString& ParamName, FVector Value);
+	// private 파라미터 setter (public에 없는 것들)
 	void SetParticleParamVec4(UNiagaraSystem* System, int32 EmitterIndex,
 		const FString& ModuleName, const FString& ParamName, FVector4 Value);
-	void SetParticleParamColor(UNiagaraSystem* System, int32 EmitterIndex,
-		const FString& ModuleName, const FString& ParamName, FLinearColor Value);
-
-	// Emitter-level 파라미터 (EmitterUpdateScript)
-	void SetEmitterParamFloat(UNiagaraSystem* System, int32 EmitterIndex,
-		const FString& ModuleName, const FString& ParamName, float Value);
-	void SetEmitterParamInt(UNiagaraSystem* System, int32 EmitterIndex,
-		const FString& ModuleName, const FString& ParamName, int32 Value);
 
 	// 디버그: 에미터의 기존 RapidIterationParameter 이름을 모두 로그 출력
 	void LogExistingParameters(UNiagaraSystem* System, int32 EmitterIndex);

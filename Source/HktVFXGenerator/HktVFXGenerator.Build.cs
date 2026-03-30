@@ -46,7 +46,10 @@ public class HktVFXGenerator : ModuleRules
 				"AssetRegistry",
 				"AssetTools",
 				"RenderCore",
-				"Projects"
+				"Projects",
+				"Slate",
+				"SlateCore",
+				"InputCore",
 			}
 		);
 	}

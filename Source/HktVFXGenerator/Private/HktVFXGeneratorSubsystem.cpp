@@ -27,6 +27,7 @@
 #include "Editor/UnrealEdEngine.h"
 #include "HighResScreenshot.h"
 #include "ImageUtils.h"
+#include "Framework/Application/SlateApplication.h"
 #include "UObject/SavePackage.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 
@@ -693,17 +694,28 @@ FString UHktVFXGeneratorSubsystem::PreviewVFX(
 		SpawnLocation = CameraLocation + CameraRotation.Vector() * 500.f;
 	}
 
-	// 임시 액터에 NiagaraComponent 부착
-	AActor* TempActor = World->SpawnActor<AActor>(AActor::StaticClass(), SpawnLocation, SpawnRotation);
+	// 임시 액터 스폰 — SceneComponent를 Root로 가지는 Actor
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AActor* TempActor = World->SpawnActor<AActor>(AActor::StaticClass(), SpawnLocation, SpawnRotation, SpawnParams);
 	if (!TempActor)
 	{
 		UE_LOG(LogHktVFXGenerator, Error, TEXT("Failed to spawn preview actor"));
 		return FString();
 	}
 
+	// RootComponent가 없으면 생성
+	if (!TempActor->GetRootComponent())
+	{
+		USceneComponent* Root = NewObject<USceneComponent>(TempActor, TEXT("Root"));
+		Root->RegisterComponentWithWorld(World);
+		TempActor->SetRootComponent(Root);
+	}
+
 	UNiagaraComponent* NiagaraComp = NewObject<UNiagaraComponent>(TempActor);
 	NiagaraComp->SetAsset(System);
 	NiagaraComp->RegisterComponentWithWorld(World);
+	NiagaraComp->SetWorldLocation(SpawnLocation);
 	NiagaraComp->AttachToComponent(TempActor->GetRootComponent(),
 		FAttachmentTransformRules::KeepRelativeTransform);
 	NiagaraComp->Activate(true);
@@ -720,19 +732,27 @@ FString UHktVFXGeneratorSubsystem::PreviewVFX(
 			*FDateTime::Now().ToString(TEXT("%Y%m%d_%H%M%S")));
 	}
 
-	// 워밍업 후 스크린샷 캡처
-	if (GCurrentLevelEditingViewportClient)
+	// 워밍업: VFX 파티클이 충분히 생성될 때까지 시뮬레이션
 	{
-		const float WarmupTime = FMath::Min(Duration * 0.5f, 1.0f);
-		const int32 WarmupFrames = FMath::Max(1, FMath::RoundToInt(WarmupTime / 0.033f));
+		const float WarmupTime = FMath::Clamp(Duration * 0.5f, 0.1f, 2.0f);
+		const float DeltaTime = 0.033f;
+		const int32 WarmupFrames = FMath::Max(3, FMath::RoundToInt(WarmupTime / DeltaTime));
 		for (int32 i = 0; i < WarmupFrames; ++i)
 		{
-			World->Tick(LEVELTICK_ViewportsOnly, 0.033f);
-			NiagaraComp->TickComponent(0.033f, ELevelTick::LEVELTICK_TimeOnly, nullptr);
+			NiagaraComp->TickComponent(DeltaTime, ELevelTick::LEVELTICK_TimeOnly, nullptr);
 		}
+	}
+
+	// 뷰포트 렌더링 후 스크린샷 캡처
+	if (GCurrentLevelEditingViewportClient)
+	{
+		// 뷰포트를 한 프레임 렌더링하여 VFX 반영
+		GCurrentLevelEditingViewportClient->Invalidate();
+		FSlateApplication::Get().Tick();
+		FSlateApplication::Get().GetRenderer()->Sync();
 
 		FScreenshotRequest::RequestScreenshot(FinalScreenshotPath, false, false);
-		UE_LOG(LogHktVFXGenerator, Log, TEXT("VFX Preview screenshot: %s"), *FinalScreenshotPath);
+		UE_LOG(LogHktVFXGenerator, Log, TEXT("VFX Preview screenshot requested: %s"), *FinalScreenshotPath);
 	}
 
 	// Duration 후 자동 정리
@@ -790,23 +810,25 @@ bool UHktVFXGeneratorSubsystem::UpdateEmitterParameters(
 
 	bool bAnyChanged = false;
 
+	// RapidIterationParameter를 직접 설정하여 부분 오버라이드 수행.
+	// Setup*Module()은 Config 전체를 적용하므로, 여기서는 JSON에 있는 필드만
+	// Builder의 파라미터 setter를 통해 개별 적용한다.
+
 	// === Spawn 오버라이드 ===
 	const TSharedPtr<FJsonObject>* SpawnObj = nullptr;
 	if (RootObj->TryGetObjectField(TEXT("spawn"), SpawnObj))
 	{
-		FHktVFXEmitterSpawnConfig SpawnConfig;
-		FString ModeStr;
-		if ((*SpawnObj)->TryGetStringField(TEXT("mode"), ModeStr))
-			SpawnConfig.Mode = ModeStr;
-
 		double TempVal = 0.0;
 		if ((*SpawnObj)->TryGetNumberField(TEXT("rate"), TempVal))
-			SpawnConfig.Rate = static_cast<float>(TempVal);
-		int64 TempInt = 0;
+		{
+			Builder.SetEmitterParamFloat(System, EmitterIndex,
+				TEXT("SpawnRate"), TEXT("SpawnRate"), static_cast<float>(TempVal));
+		}
 		if ((*SpawnObj)->TryGetNumberField(TEXT("burstCount"), TempVal))
-			SpawnConfig.BurstCount = static_cast<int32>(TempVal);
-
-		Builder.SetupSpawnModule(System, EmitterIndex, SpawnConfig);
+		{
+			Builder.SetEmitterParamInt(System, EmitterIndex,
+				TEXT("SpawnBurst_Instantaneous"), TEXT("SpawnCount"), static_cast<int32>(TempVal));
+		}
 		bAnyChanged = true;
 	}
 
@@ -814,18 +836,34 @@ bool UHktVFXGeneratorSubsystem::UpdateEmitterParameters(
 	const TSharedPtr<FJsonObject>* InitObj = nullptr;
 	if (RootObj->TryGetObjectField(TEXT("init"), InitObj))
 	{
-		FHktVFXEmitterInitConfig InitConfig;
 		double TempVal = 0.0;
 		if ((*InitObj)->TryGetNumberField(TEXT("lifetimeMin"), TempVal))
-			InitConfig.LifetimeMin = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Lifetime Minimum"), static_cast<float>(TempVal));
 		if ((*InitObj)->TryGetNumberField(TEXT("lifetimeMax"), TempVal))
-			InitConfig.LifetimeMax = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Lifetime Maximum"), static_cast<float>(TempVal));
 		if ((*InitObj)->TryGetNumberField(TEXT("sizeMin"), TempVal))
-			InitConfig.SizeMin = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Uniform Sprite Size Minimum"), static_cast<float>(TempVal));
 		if ((*InitObj)->TryGetNumberField(TEXT("sizeMax"), TempVal))
-			InitConfig.SizeMax = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Uniform Sprite Size Maximum"), static_cast<float>(TempVal));
 
-		Builder.SetupInitializeModule(System, EmitterIndex, InitConfig);
+		// Color 오버라이드
+		const TSharedPtr<FJsonObject>* ColorObj = nullptr;
+		if ((*InitObj)->TryGetObjectField(TEXT("color"), ColorObj))
+		{
+			double R = 1.0, G = 1.0, B = 1.0, A = 1.0;
+			(*ColorObj)->TryGetNumberField(TEXT("r"), R);
+			(*ColorObj)->TryGetNumberField(TEXT("g"), G);
+			(*ColorObj)->TryGetNumberField(TEXT("b"), B);
+			(*ColorObj)->TryGetNumberField(TEXT("a"), A);
+			Builder.SetParticleParamColor(System, EmitterIndex,
+				TEXT("Initialize Particle"), TEXT("Color"),
+				FLinearColor(static_cast<float>(R), static_cast<float>(G),
+					static_cast<float>(B), static_cast<float>(A)));
+		}
 		bAnyChanged = true;
 	}
 
@@ -833,24 +871,41 @@ bool UHktVFXGeneratorSubsystem::UpdateEmitterParameters(
 	const TSharedPtr<FJsonObject>* UpdateObj = nullptr;
 	if (RootObj->TryGetObjectField(TEXT("update"), UpdateObj))
 	{
-		FHktVFXEmitterUpdateConfig UpdateConfig;
 		double TempVal = 0.0;
 		if ((*UpdateObj)->TryGetNumberField(TEXT("drag"), TempVal))
-			UpdateConfig.Drag = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Drag"), TEXT("Drag"), static_cast<float>(TempVal));
 		if ((*UpdateObj)->TryGetNumberField(TEXT("opacityStart"), TempVal))
-			UpdateConfig.OpacityStart = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Color"), TEXT("Opacity Start"), static_cast<float>(TempVal));
 		if ((*UpdateObj)->TryGetNumberField(TEXT("opacityEnd"), TempVal))
-			UpdateConfig.OpacityEnd = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Color"), TEXT("Opacity End"), static_cast<float>(TempVal));
 		if ((*UpdateObj)->TryGetNumberField(TEXT("sizeScaleStart"), TempVal))
-			UpdateConfig.SizeScaleStart = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Sprite Size"), TEXT("Scale Factor Start"), static_cast<float>(TempVal));
 		if ((*UpdateObj)->TryGetNumberField(TEXT("sizeScaleEnd"), TempVal))
-			UpdateConfig.SizeScaleEnd = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Scale Sprite Size"), TEXT("Scale Factor End"), static_cast<float>(TempVal));
 		if ((*UpdateObj)->TryGetNumberField(TEXT("noiseStrength"), TempVal))
-			UpdateConfig.NoiseStrength = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Curl Noise Force"), TEXT("Noise Strength"), static_cast<float>(TempVal));
 		if ((*UpdateObj)->TryGetNumberField(TEXT("vortexStrength"), TempVal))
-			UpdateConfig.VortexStrength = static_cast<float>(TempVal);
+			Builder.SetParticleParamFloat(System, EmitterIndex,
+				TEXT("Vortex Velocity"), TEXT("Vortex Strength"), static_cast<float>(TempVal));
 
-		Builder.SetupUpdateModules(System, EmitterIndex, UpdateConfig);
+		// Gravity 오버라이드
+		const TSharedPtr<FJsonObject>* GravityObj = nullptr;
+		if ((*UpdateObj)->TryGetObjectField(TEXT("gravity"), GravityObj))
+		{
+			double X = 0.0, Y = 0.0, Z = -980.0;
+			(*GravityObj)->TryGetNumberField(TEXT("x"), X);
+			(*GravityObj)->TryGetNumberField(TEXT("y"), Y);
+			(*GravityObj)->TryGetNumberField(TEXT("z"), Z);
+			Builder.SetParticleParamVec3(System, EmitterIndex,
+				TEXT("Gravity Force"), TEXT("Gravity"),
+				FVector(X, Y, Z));
+		}
 		bAnyChanged = true;
 	}
 
