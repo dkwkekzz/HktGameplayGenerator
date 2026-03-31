@@ -18,9 +18,6 @@ FHktClaudeProcess::FReadRunnable::FReadRunnable(FHktClaudeProcess* InOwner, void
 
 uint32 FHktClaudeProcess::FReadRunnable::Run()
 {
-	const int32 BufferSize = 4096;
-	char Buffer[4096];
-
 	while (!bStopping)
 	{
 		FString Output = FPlatformProcess::ReadPipe(ReadPipe);
@@ -137,37 +134,57 @@ bool FHktClaudeProcess::Start(const FString& Prompt, const FString& SystemPrompt
 	FString TempDir = FPaths::ProjectSavedDir() / TEXT("HktGenerator");
 	IFileManager::Get().MakeDirectory(*TempDir, true);
 
-	FString PromptFilePath = TempDir / TEXT("prompt.txt");
-	FString SystemPromptFilePath = TempDir / TEXT("system_prompt.txt");
-
-	FFileHelper::SaveStringToFile(Prompt, *PromptFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-	FFileHelper::SaveStringToFile(SystemPrompt, *SystemPromptFilePath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
-
-	// 커맨드라인 조립
-	// claude --print --output-format stream-json --system-prompt "$(cat file)" -p "$(cat file)"
-	// 파일 기반으로 전달하기 위해 stdin 대신 파일 경로 사용
-	FString Args = FString::Printf(
-		TEXT("--print --output-format stream-json --system-prompt-file \"%s\" --prompt-file \"%s\""),
-		*SystemPromptFilePath,
-		*PromptFilePath
-	);
+	// 시스템 프롬프트 + 유저 프롬프트를 하나의 파일로 합침
+	// claude CLI에 파일 기반 플래그가 없으므로, stdin 파이프로 전달
+	// 시스템 프롬프트는 프롬프트 상단에 ## System Instructions로 구분
+	FString CombinedPromptPath = FPaths::ConvertRelativePathToFull(TempDir / TEXT("prompt.txt"));
+	FString CombinedContent = TEXT("## System Instructions\n\n")
+		+ SystemPrompt
+		+ TEXT("\n\n---\n\n## User Request\n\n")
+		+ Prompt;
+	FFileHelper::SaveStringToFile(CombinedContent, *CombinedPromptPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 
 	FString ActualWorkingDir = WorkingDir;
 	if (ActualWorkingDir.IsEmpty())
 	{
-		// 프로젝트 루트의 상위 (McpServer 등이 있는 플러그인 디렉토리)
 		ActualWorkingDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 	}
 
-	UE_LOG(LogHktGenEditor, Log, TEXT("Starting claude CLI: %s %s"), *ClaudeCLI, *Args);
+	// 임시 쉘 스크립트를 생성하여 파일 내용을 stdin으로 파이프
+	// 이 방식은 쉘 이스케이프 문제를 완전히 회피
+	FString ScriptPath;
+	FString ShellExe;
+	FString ShellArgs;
+
+#if PLATFORM_WINDOWS
+	ScriptPath = FPaths::ConvertRelativePathToFull(TempDir / TEXT("run_claude.bat"));
+	FString ScriptContent = FString::Printf(
+		TEXT("@echo off\r\ntype \"%s\" | \"%s\" --print --output-format stream-json\r\n"),
+		*CombinedPromptPath, *ClaudeCLI);
+	FFileHelper::SaveStringToFile(ScriptContent, *ScriptPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	ShellExe = TEXT("cmd.exe");
+	ShellArgs = FString::Printf(TEXT("/c \"\"%s\"\""), *ScriptPath);
+#else
+	ScriptPath = FPaths::ConvertRelativePathToFull(TempDir / TEXT("run_claude.sh"));
+	FString ScriptContent = FString::Printf(
+		TEXT("#!/bin/sh\nexec cat \"%s\" | \"%s\" --print --output-format stream-json\n"),
+		*CombinedPromptPath, *ClaudeCLI);
+	FFileHelper::SaveStringToFile(ScriptContent, *ScriptPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
+	// 실행 권한 부여
+	FPlatformProcess::ExecProcess(TEXT("/bin/chmod"), *FString::Printf(TEXT("+x \"%s\""), *ScriptPath), nullptr, nullptr, nullptr);
+	ShellExe = TEXT("/bin/sh");
+	ShellArgs = FString::Printf(TEXT("\"%s\""), *ScriptPath);
+#endif
+
+	UE_LOG(LogHktGenEditor, Log, TEXT("Starting claude via shell script: %s"), *ScriptPath);
 	UE_LOG(LogHktGenEditor, Log, TEXT("Working directory: %s"), *ActualWorkingDir);
 
 	// 파이프 생성
 	FPlatformProcess::CreatePipe(ReadPipe, WritePipe);
 
 	ProcessHandle = FPlatformProcess::CreateProc(
-		*ClaudeCLI,
-		*Args,
+		*ShellExe,
+		*ShellArgs,
 		false,    // bLaunchDetached
 		true,     // bLaunchHidden
 		true,     // bLaunchReallyHidden

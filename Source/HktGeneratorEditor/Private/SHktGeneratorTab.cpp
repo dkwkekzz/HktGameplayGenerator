@@ -419,8 +419,11 @@ void SHktGeneratorTab::OnLoadFromStep()
 	// Generator에 따라 다른 이전 스텝의 output을 로드
 	// VFX/Character/Item → asset_discovery output
 	// Map/Story → concept_design output
+	// Texture → 독립 스텝이 아니므로 concept_design 전체
 	FString SourceStep;
-	if (GeneratorInfo.Type == EHktGeneratorType::Map || GeneratorInfo.Type == EHktGeneratorType::Story)
+	if (GeneratorInfo.Type == EHktGeneratorType::Map
+		|| GeneratorInfo.Type == EHktGeneratorType::Story
+		|| GeneratorInfo.Type == EHktGeneratorType::Texture)
 	{
 		SourceStep = TEXT("concept_design");
 	}
@@ -438,43 +441,69 @@ void SHktGeneratorTab::OnLoadFromStep()
 		return;
 	}
 
-	// InputKey에 해당하는 데이터만 추출하여 표시
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-	TSharedPtr<FJsonObject> Root;
-	if (FJsonSerializer::Deserialize(Reader, Root) && Root.IsValid())
-	{
-		const TSharedPtr<FJsonObject>* SubObj = nullptr;
-		const TArray<TSharedPtr<FJsonValue>>* SubArr = nullptr;
+	// Map은 concept_design 전체가 필요 (terrain_spec + stories)
+	// Texture는 별도 InputKey가 없으므로 전체 로드
+	// 나머지는 InputKey로 서브셋만 추출
+	bool bLoadFull = (GeneratorInfo.Type == EHktGeneratorType::Map
+		|| GeneratorInfo.Type == EHktGeneratorType::Texture);
 
-		FString PrettyJson;
-		if (Root->TryGetObjectField(GeneratorInfo.InputKey, SubObj))
+	if (bLoadFull)
+	{
+		// Pretty-print 시도
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+		TSharedPtr<FJsonObject> Root;
+		if (FJsonSerializer::Deserialize(Reader, Root) && Root.IsValid())
 		{
+			FString PrettyJson;
 			TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
 				TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&PrettyJson);
-			FJsonSerializer::Serialize((*SubObj)->ToSharedRef(), Writer);
-		}
-		else if (Root->TryGetArrayField(GeneratorInfo.InputKey, SubArr))
-		{
-			TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
-				TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&PrettyJson);
-			// Wrap array in object for the intent
-			TSharedRef<FJsonObject> Wrapper = MakeShared<FJsonObject>();
-			Wrapper->SetArrayField(GeneratorInfo.InputKey, *SubArr);
-			FJsonSerializer::Serialize(Wrapper, Writer);
+			FJsonSerializer::Serialize(Root.ToSharedRef(), Writer);
+			IntentEditor->SetText(FText::FromString(PrettyJson));
 		}
 		else
 		{
-			// 전체 JSON 사용
-			PrettyJson = JsonString;
+			IntentEditor->SetText(FText::FromString(JsonString));
 		}
-
-		IntentEditor->SetText(FText::FromString(PrettyJson));
-		AddLogLine(FString::Printf(TEXT("[Info] Loaded %s data from %s output"), *GeneratorInfo.InputKey, *SourceStep));
+		AddLogLine(FString::Printf(TEXT("[Info] Loaded full %s output"), *SourceStep));
 	}
 	else
 	{
-		IntentEditor->SetText(FText::FromString(JsonString));
-		AddLogLine(TEXT("[Warning] Could not parse JSON, loaded raw content"));
+		// InputKey에 해당하는 데이터만 추출하여 표시
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
+		TSharedPtr<FJsonObject> Root;
+		if (FJsonSerializer::Deserialize(Reader, Root) && Root.IsValid())
+		{
+			const TSharedPtr<FJsonObject>* SubObj = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* SubArr = nullptr;
+
+			FString PrettyJson;
+			if (Root->TryGetObjectField(GeneratorInfo.InputKey, SubObj))
+			{
+				TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
+					TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&PrettyJson);
+				FJsonSerializer::Serialize((*SubObj)->ToSharedRef(), Writer);
+			}
+			else if (Root->TryGetArrayField(GeneratorInfo.InputKey, SubArr))
+			{
+				TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
+					TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&PrettyJson);
+				TSharedRef<FJsonObject> Wrapper = MakeShared<FJsonObject>();
+				Wrapper->SetArrayField(GeneratorInfo.InputKey, *SubArr);
+				FJsonSerializer::Serialize(Wrapper, Writer);
+			}
+			else
+			{
+				PrettyJson = JsonString;
+			}
+
+			IntentEditor->SetText(FText::FromString(PrettyJson));
+			AddLogLine(FString::Printf(TEXT("[Info] Loaded %s data from %s output"), *GeneratorInfo.InputKey, *SourceStep));
+		}
+		else
+		{
+			IntentEditor->SetText(FText::FromString(JsonString));
+			AddLogLine(TEXT("[Warning] Could not parse JSON, loaded raw content"));
+		}
 	}
 }
 
@@ -511,6 +540,13 @@ void SHktGeneratorTab::OnGenerate()
 	}
 
 	AddLogLine(FString::Printf(TEXT("[Start] %s generation (iteration %d)"), *GeneratorInfo.DisplayName, IterationCount));
+
+	// 기존 Tick 핸들이 있으면 해제
+	if (TickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
+		TickHandle.Reset();
+	}
 
 	// CLI 프로세스 시작
 	ClaudeProcess = MakeShared<FHktClaudeProcess>();
@@ -593,6 +629,13 @@ void SHktGeneratorTab::OnRefine()
 
 	IterationCount++;
 	AddLogLine(FString::Printf(TEXT("[Refine] %s generation (iteration %d) with feedback"), *GeneratorInfo.DisplayName, IterationCount));
+
+	// 기존 Tick 핸들이 있으면 해제
+	if (TickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
+		TickHandle.Reset();
+	}
 
 	ClaudeProcess = MakeShared<FHktClaudeProcess>();
 	ClaudeProcess->OnOutput.BindSP(this, &SHktGeneratorTab::OnClaudeOutput);

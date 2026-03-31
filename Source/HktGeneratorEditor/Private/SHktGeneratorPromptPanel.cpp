@@ -94,6 +94,9 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 		]
 	];
 
+	// 초기 프로젝트 버튼 표시
+	RebuildProjectSelector();
+
 	// 초기 탭 선택
 	OnTabSelected(0);
 }
