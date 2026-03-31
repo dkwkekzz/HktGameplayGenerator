@@ -1,59 +1,21 @@
 #include "HktMcpBridgeEditorModule.h"
 #include "HktMcpEditorSubsystem.h"
 #include "HktMcpBridgeModule.h"
-#include "SHktPipelinePanel.h"
-#include "LevelEditor.h"
-#include "Widgets/Docking/SDockTab.h"
-#include "Framework/Docking/TabManager.h"
-#include "WorkspaceMenuStructure.h"
-#include "WorkspaceMenuStructureModule.h"
 
 DEFINE_LOG_CATEGORY(LogHktMcpEditor);
-
-const FName FHktMcpBridgeEditorModule::PipelineTabName(TEXT("HktPipelineMonitor"));
 
 #define LOCTEXT_NAMESPACE "FHktMcpBridgeEditorModule"
 
 void FHktMcpBridgeEditorModule::StartupModule()
 {
 	RegisterConsoleCommands();
-	RegisterPipelineTab();
 	UE_LOG(LogHktMcpEditor, Log, TEXT("HktMcpBridgeEditor Module Started"));
 }
 
 void FHktMcpBridgeEditorModule::ShutdownModule()
 {
 	UnregisterConsoleCommands();
-	UnregisterPipelineTab();
 	UE_LOG(LogHktMcpEditor, Log, TEXT("HktMcpBridgeEditor Module Shutdown"));
-}
-
-// ==================== Pipeline Tab ====================
-
-void FHktMcpBridgeEditorModule::RegisterPipelineTab()
-{
-	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
-		PipelineTabName,
-		FOnSpawnTab::CreateRaw(this, &FHktMcpBridgeEditorModule::SpawnPipelineTab))
-		.SetDisplayName(LOCTEXT("PipelineTabTitle", "Pipeline Monitor"))
-		.SetTooltipText(LOCTEXT("PipelineTabTooltip", "Track automation pipeline progress, tasks, and checkpoints"))
-		.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsMiscCategory())
-		.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Outliner"));
-}
-
-void FHktMcpBridgeEditorModule::UnregisterPipelineTab()
-{
-	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(PipelineTabName);
-}
-
-TSharedRef<SDockTab> FHktMcpBridgeEditorModule::SpawnPipelineTab(const FSpawnTabArgs& Args)
-{
-	return SNew(SDockTab)
-		.TabRole(NomadTab)
-		.Label(LOCTEXT("PipelineTabLabel", "Pipeline Monitor"))
-		[
-			SNew(SHktPipelinePanel)
-		];
 }
 
 // ==================== Console Commands ====================
@@ -95,17 +57,6 @@ void FHktMcpBridgeEditorModule::RegisterConsoleCommands()
 					UE_LOG(LogHktMcpEditor, Log, TEXT("  - %s (%s)"), *Asset.AssetName, *Asset.AssetClass);
 				}
 			}
-		}),
-		ECVF_Default
-	));
-
-	// 파이프라인 모니터 탭 열기
-	ConsoleCommands.Add(IConsoleManager::Get().RegisterConsoleCommand(
-		TEXT("HktMcp.Pipeline"),
-		TEXT("Open Pipeline Monitor tab"),
-		FConsoleCommandDelegate::CreateLambda([]()
-		{
-			FGlobalTabmanager::Get()->TryInvokeTab(FHktMcpBridgeEditorModule::PipelineTabName);
 		}),
 		ECVF_Default
 	));

@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class HktMcpBridgeEditor : ModuleRules
+public class HktGeneratorEditor : ModuleRules
 {
-	public HktMcpBridgeEditor(ReadOnlyTargetRules Target) : base(Target)
+	public HktGeneratorEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -13,8 +13,7 @@ public class HktMcpBridgeEditor : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"Json",
-				"JsonUtilities",
-				"HktMcpBridge"
+				"JsonUtilities"
 			}
 		);
 
@@ -27,14 +26,10 @@ public class HktMcpBridgeEditor : ModuleRules
 				"UnrealEd",
 				"EditorSubsystem",
 				"LevelEditor",
-				"AssetTools",
-				"AssetRegistry",
-				"ContentBrowser",
-				"EditorScriptingUtilities",
-				"PythonScriptPlugin",
-				"HktMcpBridge"
+				"WorkspaceMenuStructure",
+				"HktMcpBridge",
+				"HktMcpBridgeEditor"
 			}
 		);
 	}
 }
-

@@ -23,16 +23,9 @@ public:
 		return FModuleManager::Get().IsModuleLoaded("HktMcpBridgeEditor");
 	}
 
-	/** Pipeline Monitor tab name */
-	static const FName PipelineTabName;
-
 private:
 	void RegisterConsoleCommands();
 	void UnregisterConsoleCommands();
-
-	void RegisterPipelineTab();
-	void UnregisterPipelineTab();
-	TSharedRef<class SDockTab> SpawnPipelineTab(const class FSpawnTabArgs& Args);
 
 	TArray<IConsoleObject*> ConsoleCommands;
 };
