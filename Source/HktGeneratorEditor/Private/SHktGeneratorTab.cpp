@@ -6,6 +6,7 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
 #include "Widgets/Text/STextBlock.h"
@@ -481,7 +482,7 @@ void SHktGeneratorTab::OnLoadFromStep()
 			{
 				TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
 					TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&PrettyJson);
-				FJsonSerializer::Serialize((*SubObj)->ToSharedRef(), Writer);
+				FJsonSerializer::Serialize(SubObj->ToSharedRef(), Writer);
 			}
 			else if (Root->TryGetArrayField(GeneratorInfo.InputKey, SubArr))
 			{
@@ -765,7 +766,7 @@ FHktClaudeEvent SHktGeneratorTab::ParseClaudeEvent(const FString& JsonLine) cons
 		{
 			FString InputStr;
 			TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&InputStr);
-			FJsonSerializer::Serialize((*InputObj)->ToSharedRef(), Writer);
+			FJsonSerializer::Serialize(InputObj->ToSharedRef(), Writer);
 			Event.ToolInput = InputStr;
 		}
 	}
@@ -845,10 +846,10 @@ void SHktGeneratorTab::ExtractGeneratedAssets(const FString& ResultJson)
 			const TSharedPtr<FJsonObject>* AssetObj;
 			if (Val->TryGetObject(AssetObj))
 			{
-				FString Tag, Path;
-				(*AssetObj)->TryGetStringField(TEXT("tag"), Tag);
+				FString AssetTag, Path;
+				(*AssetObj)->TryGetStringField(TEXT("tag"), AssetTag);
 				(*AssetObj)->TryGetStringField(TEXT("asset_path"), Path);
-				ResultListItems.Add(MakeShared<FString>(FString::Printf(TEXT("%s → %s"), *Tag, *Path)));
+				ResultListItems.Add(MakeShared<FString>(FString::Printf(TEXT("%s → %s"), *AssetTag, *Path)));
 			}
 		}
 	}
