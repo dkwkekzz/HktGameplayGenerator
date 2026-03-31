@@ -38,6 +38,9 @@ private:
 	TArray<TSharedPtr<SHktGeneratorTab>> GeneratorTabs;
 	TSharedPtr<SHorizontalBox> ProjectSelectorBox;
 
+	// ── Status ──
+	FString DetectedClaudeCLI;
+
 	// ── Methods ──
 	FString FindStepsDataPath() const;
 	void DiscoverProjects();
@@ -46,7 +49,9 @@ private:
 	void OnRefreshClicked();
 
 	TSharedRef<SWidget> BuildHeader();
+	TSharedRef<SWidget> BuildStatusBar();
 	TSharedRef<SWidget> BuildProjectSelector();
 	TSharedRef<SWidget> BuildTabBar();
 	void RebuildProjectSelector();
+	void RefreshStatus();
 };

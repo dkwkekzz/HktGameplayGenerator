@@ -2,9 +2,13 @@
 
 #include "SHktGeneratorPromptPanel.h"
 #include "SHktGeneratorTab.h"
+#include "SHktAgentConnectionPanel.h"
+#include "HktClaudeProcess.h"
 #include "HktGeneratorEditorModule.h"
+#include "HktGeneratorEditorSettings.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/SBoxPanel.h"
@@ -43,6 +47,9 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 		GeneratorTabs.Add(Tab);
 	}
 
+	// 상태 초기화
+	RefreshStatus();
+
 	ChildSlot
 	[
 		SNew(SVerticalBox)
@@ -55,10 +62,25 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 			BuildHeader()
 		]
 
-		// Project selector
+		// Status bar
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(8.0f, 0.0f, 8.0f, 4.0f)
+		[
+			BuildStatusBar()
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 0.0f)
+		[
+			SNew(SSeparator)
+		]
+
+		// Project selector
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 4.0f, 8.0f, 4.0f)
 		[
 			BuildProjectSelector()
 		]
@@ -99,20 +121,57 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 
 	// 초기 탭 선택
 	OnTabSelected(0);
+
+	// Agent Connection Manager에서 설정 변경 시 Refresh
+	SHktAgentConnectionPanel::OnSettingsChanged.BindSP(this, &SHktGeneratorPromptPanel::OnRefreshClicked);
 }
 
 // ==================== Steps Data Path ====================
 
 FString SHktGeneratorPromptPanel::FindStepsDataPath() const
 {
+	// 0) Project Settings 확인
+	const UHktGeneratorEditorSettings* Settings = UHktGeneratorEditorSettings::Get();
+	if (Settings && !Settings->StepsDataDirectory.IsEmpty())
+	{
+		FString SettingsPath = FPaths::ConvertRelativePathToFull(Settings->StepsDataDirectory);
+		FPaths::NormalizeDirectoryName(SettingsPath);
+		if (FPaths::DirectoryExists(SettingsPath))
+		{
+			UE_LOG(LogHktGenEditor, Log, TEXT("Steps data found via settings: %s"), *SettingsPath);
+			return SettingsPath;
+		}
+		UE_LOG(LogHktGenEditor, Warning, TEXT("Settings steps path not found: %s"), *SettingsPath);
+	}
+
+	// 1) HKT_STEPS_DIR 환경변수 확인
+	FString EnvSteps = FPlatformMisc::GetEnvironmentVariable(TEXT("HKT_STEPS_DIR"));
+	if (!EnvSteps.IsEmpty())
+	{
+		FString Normalized = FPaths::ConvertRelativePathToFull(EnvSteps);
+		FPaths::NormalizeDirectoryName(Normalized);
+		if (FPaths::DirectoryExists(Normalized))
+		{
+			UE_LOG(LogHktGenEditor, Log, TEXT("Steps data found via HKT_STEPS_DIR: %s"), *Normalized);
+			return Normalized;
+		}
+		UE_LOG(LogHktGenEditor, Warning, TEXT("HKT_STEPS_DIR set but path not found: %s"), *Normalized);
+	}
+
+	// 2) 알려진 경로들 검색
 	TArray<FString> SearchPaths;
 	FString ProjectRoot = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".."), TEXT("McpServer"), TEXT(".hkt_steps")));
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("McpServer"), TEXT(".hkt_steps")));
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".hkt_steps")));
+	// 플러그인 McpServer 하위
 	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("Plugins"), TEXT("HktGameplayGenerator"),
 		TEXT("McpServer"), TEXT(".hkt_steps")));
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("Plugins"), TEXT("HktGameplayGenerator"),
+		TEXT(".hkt_steps")));
+	// 프로젝트 루트
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".hkt_steps")));
+	// 프로젝트 상위 (모노레포 구조)
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".."), TEXT("McpServer"), TEXT(".hkt_steps")));
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("McpServer"), TEXT(".hkt_steps")));
 
 	for (const FString& Path : SearchPaths)
 	{
@@ -125,8 +184,10 @@ FString SHktGeneratorPromptPanel::FindStepsDataPath() const
 		}
 	}
 
+	// 3) 기본 경로 사용 (디렉토리 자동 생성)
 	FString DefaultPath = FPaths::Combine(ProjectRoot, TEXT(".hkt_steps"));
-	UE_LOG(LogHktGenEditor, Warning, TEXT("Steps data not found, using default: %s"), *DefaultPath);
+	IFileManager::Get().MakeDirectory(*DefaultPath, true);
+	UE_LOG(LogHktGenEditor, Log, TEXT("Steps data directory created at: %s"), *DefaultPath);
 	return DefaultPath;
 }
 
@@ -154,7 +215,154 @@ void SHktGeneratorPromptPanel::DiscoverProjects()
 	ProjectIds.Sort();
 }
 
+// ==================== Status ====================
+
+void SHktGeneratorPromptPanel::RefreshStatus()
+{
+	DetectedClaudeCLI = FHktClaudeProcess::FindClaudeCLI();
+}
+
 // ==================== UI Builders ====================
+
+TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
+{
+	return SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+		.Padding(6)
+		[
+			SNew(SHorizontalBox)
+
+			// 상태 정보 (왼쪽)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			[
+				SNew(SVerticalBox)
+
+				// Claude CLI
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 1)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("StatusCLI", "Claude CLI:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([this]()
+						{
+							bool bFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
+							return FText::FromString(bFound ? DetectedClaudeCLI : TEXT("Not found"));
+						})
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						{
+							bool bFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
+							return FSlateColor(bFound
+								? FLinearColor(0.2f, 0.8f, 0.2f)
+								: FLinearColor(1.0f, 0.4f, 0.2f));
+						})
+						.AutoWrapText(true)
+					]
+				]
+
+				// Steps Data
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 1)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("StatusSteps", "Steps Data:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([this]()
+						{
+							return FText::FromString(StepsDataPath);
+						})
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						{
+							bool bFound = FPaths::DirectoryExists(StepsDataPath);
+							return FSlateColor(bFound
+								? FLinearColor(0.2f, 0.8f, 0.2f)
+								: FLinearColor(1.0f, 0.8f, 0.2f));
+						})
+						.AutoWrapText(true)
+					]
+				]
+
+				// Projects
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 1)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("StatusProjects", "Projects:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([this]()
+						{
+							return FText::FromString(FString::Printf(TEXT("%d project(s)"), ProjectIds.Num()));
+						})
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						{
+							return FSlateColor(ProjectIds.Num() > 0
+								? FLinearColor(0.2f, 0.8f, 0.2f)
+								: FLinearColor(0.5f, 0.5f, 0.5f));
+						})
+					]
+				]
+			]
+
+			// 편집 버튼 (오른쪽)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(8, 0, 0, 0)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("EditConnection", "Edit"))
+				.ToolTipText(LOCTEXT("EditConnectionTip", "Open AI Agent Connection Manager"))
+				.OnClicked_Lambda([this]()
+				{
+					SHktAgentConnectionPanel::Open();
+					return FReply::Handled();
+				})
+			]
+		];
+}
 
 TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildHeader()
 {

@@ -12,10 +12,19 @@ DEFINE_LOG_CATEGORY(LogHktGenEditor);
 
 const FName FHktGeneratorEditorModule::GeneratorPromptTabName(TEXT("HktGeneratorPrompt"));
 
+/** 커스텀 워크스페이스 그룹 (한 번만 생성) */
+static TSharedPtr<FWorkspaceItem> GHktWorkspaceGroup;
+
 #define LOCTEXT_NAMESPACE "FHktGeneratorEditorModule"
 
 void FHktGeneratorEditorModule::StartupModule()
 {
+	// Developer Tools 하위에 HktGameplay 그룹 생성
+	GHktWorkspaceGroup = WorkspaceMenu::GetMenuStructure().GetDeveloperToolsCategory()->AddGroup(
+		LOCTEXT("HktGameplayGroup", "HktGameplay"),
+		LOCTEXT("HktGameplayGroupTooltip", "HktGameplay Generator tools"),
+		FSlateIcon(), /* InsertPosition */ 1.0f);
+
 	RegisterGeneratorPromptTab();
 	RegisterConsoleCommands();
 	UE_LOG(LogHktGenEditor, Log, TEXT("HktGeneratorEditor Module Started"));
@@ -37,7 +46,7 @@ void FHktGeneratorEditorModule::RegisterGeneratorPromptTab()
 		FOnSpawnTab::CreateRaw(this, &FHktGeneratorEditorModule::SpawnGeneratorPromptTab))
 		.SetDisplayName(LOCTEXT("GenPromptTitle", "Generator Prompt"))
 		.SetTooltipText(LOCTEXT("GenPromptTooltip", "AI-powered asset generation with feedback loop"))
-		.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsMiscCategory())
+		.SetGroup(GHktWorkspaceGroup.ToSharedRef())
 		.SetIcon(FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.Details"));
 }
 

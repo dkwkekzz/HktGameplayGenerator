@@ -34,9 +34,15 @@ public:
 
 	/**
 	 * claude CLI 경로를 탐색.
-	 * 순서: PATH의 claude → ~/.claude/local/claude
+	 * 순서: Settings → 환경변수 → 알려진 경로 → PATH
 	 */
 	static FString FindClaudeCLI();
+
+	/**
+	 * Settings를 무시하고 자동 탐색만 수행.
+	 * Connection Manager에서 auto-detect 결과 표시용.
+	 */
+	static FString AutoDetectClaudeCLI();
 
 	/**
 	 * CLI 프로세스를 시작.

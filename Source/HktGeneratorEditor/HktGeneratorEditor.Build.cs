@@ -27,6 +27,8 @@ public class HktGeneratorEditor : ModuleRules
 				"EditorSubsystem",
 				"LevelEditor",
 				"WorkspaceMenuStructure",
+				"DesktopPlatform",
+				"DeveloperSettings",
 				"HktMcpBridge",
 				"HktMcpBridgeEditor"
 			}
