@@ -226,7 +226,7 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 			[
 				SAssignNew(IntentEditor, SMultiLineEditableTextBox)
 				.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-				.HintText(FText::FromString(ExampleJson))
+				.HintText(LOCTEXT("IntentEditorHint", "Enter JSON here or click 'Load from Step' / 'Load Example'"))
 				.Text(FText::GetEmpty())
 			]
 		]
@@ -602,6 +602,12 @@ void SHktGeneratorTab::OnGenerate()
 	SetSectionVisibility(true, false, false);
 
 	FString IntentJson = IntentEditor->GetText().ToString();
+	if (IntentJson.TrimStartAndEnd().IsEmpty())
+	{
+		AddLogLine(TEXT("[Error] Intent is empty. Enter JSON directly, use 'Load from Step', or use 'Load Example' in the Intent Guide."));
+		return;
+	}
+
 	FString SystemPrompt = LoadSkillMd();
 	FString Prompt = BuildPrompt(IntentJson);
 
