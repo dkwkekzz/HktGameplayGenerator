@@ -18,6 +18,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Styling/AppStyle.h"
+#include "Widgets/Layout/SExpandableArea.h"
 
 #define LOCTEXT_NAMESPACE "HktGeneratorTab"
 
@@ -124,6 +125,9 @@ void SHktGeneratorTab::SetProject(const FString& InStepsDataPath, const FString&
 
 TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 {
+	FString HelpText = GetIntentHelpText(GeneratorInfo.Type);
+	FString ExampleJson = GetIntentExample(GeneratorInfo.Type);
+
 	return SNew(SVerticalBox)
 
 		+ SVerticalBox::Slot()
@@ -145,6 +149,72 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 			.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
 		]
 
+		// 필드 가이드 (접기/펼치기)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 4)
+		[
+			SNew(SExpandableArea)
+			.AreaTitle(LOCTEXT("IntentGuideTitle", "Intent Guide"))
+			.InitiallyCollapsed(true)
+			.BodyContent()
+			[
+				SNew(SVerticalBox)
+
+				// 필드 설명
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(4, 4, 4, 8)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(HelpText))
+					.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+					.AutoWrapText(true)
+				]
+
+				// 예제 JSON
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(4, 0, 4, 4)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("ExampleLabel", "-- Example --"))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.4f, 0.7f, 1.0f)))
+				]
+
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.MaxHeight(250.0f)
+				.Padding(4, 0, 4, 4)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+					.Padding(6)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(ExampleJson))
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+					]
+				]
+
+				// "Load Example" 버튼
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(4, 0, 4, 4)
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("LoadExample", "Load Example"))
+					.ToolTipText(LOCTEXT("LoadExampleTip", "Load this example JSON into the editor"))
+					.OnClicked_Lambda([this, ExampleJson]()
+					{
+						IntentEditor->SetText(FText::FromString(ExampleJson));
+						return FReply::Handled();
+					})
+				]
+			]
+		]
+
 		// JSON 에디터
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
@@ -156,7 +226,8 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 			[
 				SAssignNew(IntentEditor, SMultiLineEditableTextBox)
 				.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-				.Text(LOCTEXT("IntentPlaceholder", "{\n  \n}"))
+				.HintText(FText::FromString(ExampleJson))
+				.Text(FText::GetEmpty())
 			]
 		]
 
