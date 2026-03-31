@@ -9,6 +9,7 @@
 
 class SHktGeneratorTab;
 class SWidgetSwitcher;
+class SHorizontalBox;
 
 /**
  * SHktGeneratorPromptPanel

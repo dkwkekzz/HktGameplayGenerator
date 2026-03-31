@@ -82,9 +82,7 @@ FHktClaudeProcess::~FHktClaudeProcess()
 
 FString FHktClaudeProcess::FindClaudeCLI()
 {
-	// 1. PATH에서 claude 탐색
-	FString ClaudePath = FPlatformProcess::ExecutablePath();
-	// 'which claude' 대신 알려진 경로들을 직접 확인
+	// 알려진 경로들을 직접 확인
 	TArray<FString> SearchPaths;
 
 #if PLATFORM_WINDOWS
@@ -191,8 +189,7 @@ bool FHktClaudeProcess::Start(const FString& Prompt, const FString& SystemPrompt
 		nullptr,  // OutProcessID
 		0,        // PriorityModifier
 		*ActualWorkingDir,
-		WritePipe,// PipeWriteChild (child의 stdout이 여기로)
-		ReadPipe  // PipeReadChild
+		WritePipe // PipeWriteChild — child stdout이 여기로 쓰임, ReadPipe로 읽음
 	);
 
 	if (!ProcessHandle.IsValid())

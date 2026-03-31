@@ -6,9 +6,13 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
+#include "Containers/Ticker.h"
 #include "HktGeneratorPromptTypes.h"
 
 class FHktClaudeProcess;
+class SMultiLineEditableTextBox;
+class SScrollBox;
+class SVerticalBox;
 
 /**
  * SHktGeneratorTab

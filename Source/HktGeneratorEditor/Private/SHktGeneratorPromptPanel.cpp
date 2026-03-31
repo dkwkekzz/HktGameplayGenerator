@@ -178,6 +178,7 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildHeader()
 
 TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildProjectSelector()
 {
+	// "Project:" 라벨만 배치. 프로젝트 버튼은 RebuildProjectSelector()에서 동적 추가
 	return SAssignNew(ProjectSelectorBox, SHorizontalBox)
 
 		+ SHorizontalBox::Slot()
@@ -189,9 +190,6 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildProjectSelector()
 			.Text(LOCTEXT("Project", "Project:"))
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
 		];
-
-	// 프로젝트 버튼들은 RebuildProjectSelector에서 동적 추가
-	// Construct 후에 호출됨
 }
 
 TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildTabBar()
