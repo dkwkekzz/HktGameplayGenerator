@@ -77,14 +77,26 @@ Generator의 `HandleTagMiss`는 에셋 생성 후 해당 TagDataAsset도 함께 
 
 ## 코드 구조
 
-- `McpServer/src/hkt_mcp/` — Python MCP 서버 (tools/, steps/, bridge/, server.py)
+- `McpServer/src/hkt_mcp/` — Python MCP 서버 (tools/, steps/, bridge/, prompt/, server.py)
 - `Source/` — C++ UE5 플러그인 모듈
-  - `HktMcpBridgeEditor/` — 에디터 서브시스템 + Step Viewer
+  - `HktGeneratorEditor/` — **Generator Prompt 패널** (Claude CLI subprocess, 탭 UI, 피드백 루프)
+  - `HktMcpBridgeEditor/` — 에디터 서브시스템 + Function Library (MCP 통신)
   - `HktMapGenerator/` — HktMap JSON 파싱, Landscape/Spawner 빌드
   - `HktStoryGenerator/` — Story 바이트코드 VM
   - `HktVFXGenerator/` — Niagara VFX 생성
   - `HktMeshGenerator/`, `HktAnimGenerator/`, `HktItemGenerator/`, `HktTextureGenerator/`
   - `HktGeneratorCore/` — Tag 해석, ConventionPath, GeneratorRouter
+
+## Generator Prompt 패널
+
+에디터 내 Generator Prompt 패널 (`HktGen.Prompt` 콘솔 커맨드로 열기).
+Claude Code CLI의 OAuth 토큰을 활용하여 subprocess로 생성을 실행한다.
+
+- Generator별 탭: VFX, Character, Item, Map, Story, Texture
+- Intent 편집 → Generate → 스트리밍 진행 로그 → 결과 확인 → Accept/Refine/Reject
+- `FHktClaudeProcess`: `claude --print --output-format stream-json` subprocess 래퍼
+- SKILL.md를 system prompt로, Intent JSON을 user prompt로 전달
+- Refine 시 이전 결과 + 피드백을 포함하여 재실행
 
 ## 환경설정
 
