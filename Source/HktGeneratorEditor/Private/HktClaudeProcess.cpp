@@ -82,26 +82,41 @@ FHktClaudeProcess::~FHktClaudeProcess()
 
 FString FHktClaudeProcess::FindClaudeCLI()
 {
-	// 알려진 경로들을 직접 확인
+	// 1) 환경변수 우선 확인
+	FString EnvCLI = FPlatformMisc::GetEnvironmentVariable(TEXT("HKT_CLAUDE_CLI"));
+	if (!EnvCLI.IsEmpty() && FPaths::FileExists(EnvCLI))
+	{
+		UE_LOG(LogHktGenEditor, Log, TEXT("Found claude CLI via HKT_CLAUDE_CLI: %s"), *EnvCLI);
+		return EnvCLI;
+	}
+
+	// 2) 알려진 경로들을 직접 확인
 	TArray<FString> SearchPaths;
 
 #if PLATFORM_WINDOWS
-	// Windows: npm global, AppData
-	FString AppData = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA"));
-	SearchPaths.Add(FPaths::Combine(AppData, TEXT("npm"), TEXT("claude.cmd")));
-	SearchPaths.Add(FPaths::Combine(AppData, TEXT(".."), TEXT("Local"), TEXT(".claude"), TEXT("local"), TEXT("claude.exe")));
-	// fnm / nvm 등
 	FString UserProfile = FPlatformMisc::GetEnvironmentVariable(TEXT("USERPROFILE"));
+	FString AppData = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA"));
+	FString LocalAppData = FPlatformMisc::GetEnvironmentVariable(TEXT("LOCALAPPDATA"));
+
+	// 공식 Claude 설치 경로
 	SearchPaths.Add(FPaths::Combine(UserProfile, TEXT(".claude"), TEXT("local"), TEXT("claude.exe")));
+	SearchPaths.Add(FPaths::Combine(LocalAppData, TEXT(".claude"), TEXT("local"), TEXT("claude.exe")));
+	SearchPaths.Add(FPaths::Combine(LocalAppData, TEXT("Programs"), TEXT("claude"), TEXT("claude.exe")));
+	// npm global
+	SearchPaths.Add(FPaths::Combine(AppData, TEXT("npm"), TEXT("claude.cmd")));
+	// scoop
+	SearchPaths.Add(FPaths::Combine(UserProfile, TEXT("scoop"), TEXT("shims"), TEXT("claude.cmd")));
+	SearchPaths.Add(FPaths::Combine(UserProfile, TEXT("scoop"), TEXT("shims"), TEXT("claude.exe")));
+	// Program Files
+	SearchPaths.Add(TEXT("C:\\Program Files\\Claude\\claude.exe"));
 #else
 	// Linux/Mac
-	SearchPaths.Add(TEXT("/usr/local/bin/claude"));
-	SearchPaths.Add(TEXT("/usr/bin/claude"));
 	FString Home = FPlatformMisc::GetEnvironmentVariable(TEXT("HOME"));
 	SearchPaths.Add(FPaths::Combine(Home, TEXT(".claude"), TEXT("local"), TEXT("claude")));
+	SearchPaths.Add(TEXT("/usr/local/bin/claude"));
+	SearchPaths.Add(TEXT("/usr/bin/claude"));
 	SearchPaths.Add(FPaths::Combine(Home, TEXT(".npm-global"), TEXT("bin"), TEXT("claude")));
-	// nvm node path
-	SearchPaths.Add(FPaths::Combine(Home, TEXT(".nvm"), TEXT("versions"), TEXT("node")));
+	SearchPaths.Add(FPaths::Combine(Home, TEXT(".local"), TEXT("bin"), TEXT("claude")));
 #endif
 
 	for (const FString& Path : SearchPaths)
@@ -113,8 +128,40 @@ FString FHktClaudeProcess::FindClaudeCLI()
 		}
 	}
 
-	// Fallback: 단순히 "claude" — PATH에 있기를 기대
-	UE_LOG(LogHktGenEditor, Warning, TEXT("Claude CLI not found in known paths, falling back to 'claude'"));
+	// 3) PATH에서 검색 (where/which)
+#if PLATFORM_WINDOWS
+	FString WhichExe = TEXT("C:\\Windows\\System32\\where.exe");
+	FString WhichArgs = TEXT("claude");
+#else
+	FString WhichExe = TEXT("/usr/bin/which");
+	FString WhichArgs = TEXT("claude");
+#endif
+
+	FString WhichOutput;
+	int32 WhichReturnCode = -1;
+	if (FPaths::FileExists(WhichExe))
+	{
+		FPlatformProcess::ExecProcess(*WhichExe, *WhichArgs, &WhichReturnCode, &WhichOutput, nullptr);
+		if (WhichReturnCode == 0)
+		{
+			// 첫 번째 줄만 사용 (where는 여러 줄 반환 가능)
+			FString FoundPath = WhichOutput.TrimStartAndEnd();
+			int32 NewlineIdx;
+			if (FoundPath.FindChar(TEXT('\n'), NewlineIdx))
+			{
+				FoundPath.LeftInline(NewlineIdx);
+				FoundPath.TrimEndInline();
+			}
+			if (!FoundPath.IsEmpty() && FPaths::FileExists(FoundPath))
+			{
+				UE_LOG(LogHktGenEditor, Log, TEXT("Found claude CLI via PATH: %s"), *FoundPath);
+				return FoundPath;
+			}
+		}
+	}
+
+	// 4) Fallback
+	UE_LOG(LogHktGenEditor, Warning, TEXT("Claude CLI not found. Set HKT_CLAUDE_CLI environment variable or install Claude Code CLI."));
 	return TEXT("claude");
 }
 

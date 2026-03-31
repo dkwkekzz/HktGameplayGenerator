@@ -2,9 +2,11 @@
 
 #include "SHktGeneratorPromptPanel.h"
 #include "SHktGeneratorTab.h"
+#include "HktClaudeProcess.h"
 #include "HktGeneratorEditorModule.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
+#include "Widgets/Layout/SBorder.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/SBoxPanel.h"
@@ -43,6 +45,9 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 		GeneratorTabs.Add(Tab);
 	}
 
+	// 상태 초기화
+	RefreshStatus();
+
 	ChildSlot
 	[
 		SNew(SVerticalBox)
@@ -55,10 +60,25 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 			BuildHeader()
 		]
 
-		// Project selector
+		// Status bar
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(8.0f, 0.0f, 8.0f, 4.0f)
+		[
+			BuildStatusBar()
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 0.0f)
+		[
+			SNew(SSeparator)
+		]
+
+		// Project selector
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(8.0f, 4.0f, 8.0f, 4.0f)
 		[
 			BuildProjectSelector()
 		]
@@ -105,14 +125,34 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 
 FString SHktGeneratorPromptPanel::FindStepsDataPath() const
 {
+	// 1) HKT_STEPS_DIR 환경변수 우선 확인
+	FString EnvSteps = FPlatformMisc::GetEnvironmentVariable(TEXT("HKT_STEPS_DIR"));
+	if (!EnvSteps.IsEmpty())
+	{
+		FString Normalized = FPaths::ConvertRelativePathToFull(EnvSteps);
+		FPaths::NormalizeDirectoryName(Normalized);
+		if (FPaths::DirectoryExists(Normalized))
+		{
+			UE_LOG(LogHktGenEditor, Log, TEXT("Steps data found via HKT_STEPS_DIR: %s"), *Normalized);
+			return Normalized;
+		}
+		UE_LOG(LogHktGenEditor, Warning, TEXT("HKT_STEPS_DIR set but path not found: %s"), *Normalized);
+	}
+
+	// 2) 알려진 경로들 검색
 	TArray<FString> SearchPaths;
 	FString ProjectRoot = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".."), TEXT("McpServer"), TEXT(".hkt_steps")));
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("McpServer"), TEXT(".hkt_steps")));
-	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".hkt_steps")));
+	// 플러그인 McpServer 하위
 	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("Plugins"), TEXT("HktGameplayGenerator"),
 		TEXT("McpServer"), TEXT(".hkt_steps")));
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("Plugins"), TEXT("HktGameplayGenerator"),
+		TEXT(".hkt_steps")));
+	// 프로젝트 루트
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".hkt_steps")));
+	// 프로젝트 상위 (모노레포 구조)
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT(".."), TEXT("McpServer"), TEXT(".hkt_steps")));
+	SearchPaths.Add(FPaths::Combine(ProjectRoot, TEXT("McpServer"), TEXT(".hkt_steps")));
 
 	for (const FString& Path : SearchPaths)
 	{
@@ -125,8 +165,10 @@ FString SHktGeneratorPromptPanel::FindStepsDataPath() const
 		}
 	}
 
+	// 3) 기본 경로 사용 (디렉토리 자동 생성)
 	FString DefaultPath = FPaths::Combine(ProjectRoot, TEXT(".hkt_steps"));
-	UE_LOG(LogHktGenEditor, Warning, TEXT("Steps data not found, using default: %s"), *DefaultPath);
+	IFileManager::Get().MakeDirectory(*DefaultPath, true);
+	UE_LOG(LogHktGenEditor, Log, TEXT("Steps data directory created at: %s"), *DefaultPath);
 	return DefaultPath;
 }
 
@@ -154,7 +196,125 @@ void SHktGeneratorPromptPanel::DiscoverProjects()
 	ProjectIds.Sort();
 }
 
+// ==================== Status ====================
+
+void SHktGeneratorPromptPanel::RefreshStatus()
+{
+	DetectedClaudeCLI = FHktClaudeProcess::FindClaudeCLI();
+}
+
 // ==================== UI Builders ====================
+
+TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
+{
+	// CLI 상태 판별
+	bool bCLIFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
+	FLinearColor CLIColor = bCLIFound
+		? FLinearColor(0.2f, 0.8f, 0.2f)   // green
+		: FLinearColor(1.0f, 0.4f, 0.2f);   // red
+
+	FString CLIDisplay = bCLIFound
+		? DetectedClaudeCLI
+		: TEXT("Not found (set HKT_CLAUDE_CLI or install Claude Code CLI)");
+
+	// Steps 상태
+	bool bStepsFound = FPaths::DirectoryExists(StepsDataPath);
+	FLinearColor StepsColor = bStepsFound
+		? FLinearColor(0.2f, 0.8f, 0.2f)
+		: FLinearColor(1.0f, 0.8f, 0.2f);   // yellow (created default)
+
+	// Projects 상태
+	FString ProjectsDisplay = FString::Printf(TEXT("%d project(s)"), ProjectIds.Num());
+
+	return SNew(SBorder)
+		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+		.Padding(6)
+		[
+			SNew(SVerticalBox)
+
+			// Claude CLI
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0, 1)
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(0, 0, 6, 0)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("StatusCLI", "Claude CLI:"))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+				]
+
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(CLIDisplay))
+					.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+					.ColorAndOpacity(FSlateColor(CLIColor))
+					.AutoWrapText(true)
+				]
+			]
+
+			// Steps Data
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0, 1)
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(0, 0, 6, 0)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("StatusSteps", "Steps Data:"))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+				]
+
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(StepsDataPath))
+					.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+					.ColorAndOpacity(FSlateColor(StepsColor))
+					.AutoWrapText(true)
+				]
+			]
+
+			// Projects
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0, 1)
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(0, 0, 6, 0)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("StatusProjects", "Projects:"))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+				]
+
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(ProjectsDisplay))
+					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+					.ColorAndOpacity(FSlateColor(ProjectIds.Num() > 0
+						? FLinearColor(0.2f, 0.8f, 0.2f)
+						: FLinearColor(0.5f, 0.5f, 0.5f)))
+				]
+			]
+		];
+}
 
 TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildHeader()
 {
