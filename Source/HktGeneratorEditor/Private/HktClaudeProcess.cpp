@@ -95,6 +95,11 @@ FString FHktClaudeProcess::FindClaudeCLI()
 		UE_LOG(LogHktGenEditor, Warning, TEXT("Settings CLI path not found: %s"), *Settings->ClaudeCLIPath);
 	}
 
+	return AutoDetectClaudeCLI();
+}
+
+FString FHktClaudeProcess::AutoDetectClaudeCLI()
+{
 	// 1) 환경변수 확인
 	FString EnvCLI = FPlatformMisc::GetEnvironmentVariable(TEXT("HKT_CLAUDE_CLI"));
 	if (!EnvCLI.IsEmpty() && FPaths::FileExists(EnvCLI))

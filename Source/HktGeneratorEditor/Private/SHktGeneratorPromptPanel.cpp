@@ -226,25 +226,6 @@ void SHktGeneratorPromptPanel::RefreshStatus()
 
 TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 {
-	// CLI 상태 판별
-	bool bCLIFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
-	FLinearColor CLIColor = bCLIFound
-		? FLinearColor(0.2f, 0.8f, 0.2f)
-		: FLinearColor(1.0f, 0.4f, 0.2f);
-
-	FString CLIDisplay = bCLIFound
-		? DetectedClaudeCLI
-		: TEXT("Not found");
-
-	// Steps 상태
-	bool bStepsFound = FPaths::DirectoryExists(StepsDataPath);
-	FLinearColor StepsColor = bStepsFound
-		? FLinearColor(0.2f, 0.8f, 0.2f)
-		: FLinearColor(1.0f, 0.8f, 0.2f);
-
-	// Projects 상태
-	FString ProjectsDisplay = FString::Printf(TEXT("%d project(s)"), ProjectIds.Num());
-
 	return SNew(SBorder)
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
 		.Padding(6)
@@ -277,9 +258,19 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 					.FillWidth(1.0f)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(CLIDisplay))
+						.Text_Lambda([this]()
+						{
+							bool bFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
+							return FText::FromString(bFound ? DetectedClaudeCLI : TEXT("Not found"));
+						})
 						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-						.ColorAndOpacity(FSlateColor(CLIColor))
+						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						{
+							bool bFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
+							return FSlateColor(bFound
+								? FLinearColor(0.2f, 0.8f, 0.2f)
+								: FLinearColor(1.0f, 0.4f, 0.2f));
+						})
 						.AutoWrapText(true)
 					]
 				]
@@ -304,9 +295,18 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 					.FillWidth(1.0f)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(StepsDataPath))
+						.Text_Lambda([this]()
+						{
+							return FText::FromString(StepsDataPath);
+						})
 						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-						.ColorAndOpacity(FSlateColor(StepsColor))
+						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						{
+							bool bFound = FPaths::DirectoryExists(StepsDataPath);
+							return FSlateColor(bFound
+								? FLinearColor(0.2f, 0.8f, 0.2f)
+								: FLinearColor(1.0f, 0.8f, 0.2f));
+						})
 						.AutoWrapText(true)
 					]
 				]
@@ -331,11 +331,17 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 					.FillWidth(1.0f)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(ProjectsDisplay))
+						.Text_Lambda([this]()
+						{
+							return FText::FromString(FString::Printf(TEXT("%d project(s)"), ProjectIds.Num()));
+						})
 						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-						.ColorAndOpacity(FSlateColor(ProjectIds.Num() > 0
-							? FLinearColor(0.2f, 0.8f, 0.2f)
-							: FLinearColor(0.5f, 0.5f, 0.5f)))
+						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						{
+							return FSlateColor(ProjectIds.Num() > 0
+								? FLinearColor(0.2f, 0.8f, 0.2f)
+								: FLinearColor(0.5f, 0.5f, 0.5f));
+						})
 					]
 				]
 			]

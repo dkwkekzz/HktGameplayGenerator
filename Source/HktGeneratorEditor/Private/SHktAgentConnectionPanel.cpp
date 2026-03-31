@@ -53,7 +53,7 @@ void SHktAgentConnectionPanel::Construct(const FArguments& InArgs)
 	// 자동 탐색 결과도 표시용으로 확인
 	if (DetectedCLIPath.IsEmpty())
 	{
-		DetectedCLIPath = FHktClaudeProcess::FindClaudeCLI();
+		DetectedCLIPath = FHktClaudeProcess::AutoDetectClaudeCLI();
 	}
 
 	RefreshMcpStatus();
@@ -156,7 +156,7 @@ void SHktAgentConnectionPanel::Construct(const FArguments& InArgs)
 TSharedRef<SWidget> SHktAgentConnectionPanel::BuildCLISection()
 {
 	const UHktGeneratorEditorSettings* Settings = UHktGeneratorEditorSettings::Get();
-	FString AutoDetected = FHktClaudeProcess::FindClaudeCLI();
+	FString AutoDetected = FHktClaudeProcess::AutoDetectClaudeCLI();
 	bool bAutoFound = !AutoDetected.IsEmpty() && AutoDetected != TEXT("claude");
 
 	return SNew(SVerticalBox)
@@ -413,7 +413,7 @@ void SHktAgentConnectionPanel::OnBrowseSteps()
 
 void SHktAgentConnectionPanel::OnAutoDetectCLI()
 {
-	FString Found = FHktClaudeProcess::FindClaudeCLI();
+	FString Found = FHktClaudeProcess::AutoDetectClaudeCLI();
 	if (Found != TEXT("claude"))
 	{
 		CLIPathEditor->SetText(FText::FromString(Found));
