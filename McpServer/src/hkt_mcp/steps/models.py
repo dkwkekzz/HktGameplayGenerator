@@ -226,12 +226,69 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["tag", "description"],
+                        "required": ["tag", "description", "event_type", "element", "usage_context", "visual_design"],
                         "properties": {
-                            "tag": {"type": "string"},
+                            "tag": {"type": "string", "description": "VFX.{Event}.{Element} format tag"},
                             "description": {"type": "string"},
-                            "event_type": {"type": "string"},
-                            "element": {"type": "string"},
+                            "event_type": {"type": "string", "description": "Explosion, Hit, Buff, Projectile, etc."},
+                            "element": {"type": "string", "description": "Fire, Ice, Lightning, Physical, etc."},
+                            "source_skill": {
+                                "type": "string",
+                                "description": "Skill story tag that triggers this VFX (e.g. Ability.Skill.Fireball)",
+                            },
+                            "source_items": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Item tags whose skills use this VFX",
+                            },
+                            "usage_context": {
+                                "type": "string",
+                                "enum": ["on_hit", "on_cast", "projectile_impact", "projectile_trail", "buff_aura", "death", "ambient"],
+                                "description": "When/how this VFX plays in gameplay",
+                            },
+                            "visual_design": {
+                                "type": "object",
+                                "required": ["emitter_layers", "looping", "duration_hint"],
+                                "description": "Design spec derived from skill/item/element context",
+                                "properties": {
+                                    "emitter_layers": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "required": ["name", "role", "renderer"],
+                                            "properties": {
+                                                "name": {"type": "string", "description": "Emitter name (e.g. CoreFlash)"},
+                                                "role": {"type": "string", "description": "Layer role (core, spark, smoke, debris, light, aura, trail)"},
+                                                "renderer": {"type": "string", "enum": ["sprite", "ribbon", "mesh", "light"]},
+                                                "needs_custom_texture": {"type": "boolean"},
+                                                "needs_custom_material": {"type": "boolean"},
+                                            },
+                                        },
+                                        "description": "Planned emitter layers with roles",
+                                    },
+                                    "color_palette": {
+                                        "type": "object",
+                                        "properties": {
+                                            "primary": {"type": "object", "description": "Primary HDR color {r,g,b}"},
+                                            "secondary": {"type": "object", "description": "Secondary HDR color {r,g,b}"},
+                                            "accent": {"type": "object", "description": "Accent/highlight color {r,g,b}"},
+                                        },
+                                        "description": "Color scheme derived from element and item attributes",
+                                    },
+                                    "looping": {"type": "boolean", "description": "Whether the effect loops"},
+                                    "duration_hint": {"type": "number", "description": "Suggested duration in seconds"},
+                                    "scale_hint": {
+                                        "type": "string",
+                                        "enum": ["small", "medium", "large", "massive"],
+                                        "description": "Relative visual scale",
+                                    },
+                                    "intensity": {
+                                        "type": "string",
+                                        "enum": ["subtle", "normal", "intense", "extreme"],
+                                        "description": "Visual intensity level",
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -304,7 +361,7 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
         "input": {
             "type": "object",
             "required": ["vfx"],
-            "description": "VFX specs from asset_discovery output",
+            "description": "VFX design specs from asset_discovery output, including skill/item context and visual design hints",
         },
         "output": {
             "type": "object",
