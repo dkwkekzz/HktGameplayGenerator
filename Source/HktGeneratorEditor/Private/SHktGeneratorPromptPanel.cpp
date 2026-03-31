@@ -2,8 +2,10 @@
 
 #include "SHktGeneratorPromptPanel.h"
 #include "SHktGeneratorTab.h"
+#include "SHktAgentConnectionPanel.h"
 #include "HktClaudeProcess.h"
 #include "HktGeneratorEditorModule.h"
+#include "HktGeneratorEditorSettings.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "Widgets/Layout/SBorder.h"
@@ -119,13 +121,30 @@ void SHktGeneratorPromptPanel::Construct(const FArguments& InArgs)
 
 	// 초기 탭 선택
 	OnTabSelected(0);
+
+	// Agent Connection Manager에서 설정 변경 시 Refresh
+	SHktAgentConnectionPanel::OnSettingsChanged.BindSP(this, &SHktGeneratorPromptPanel::OnRefreshClicked);
 }
 
 // ==================== Steps Data Path ====================
 
 FString SHktGeneratorPromptPanel::FindStepsDataPath() const
 {
-	// 1) HKT_STEPS_DIR 환경변수 우선 확인
+	// 0) Project Settings 확인
+	const UHktGeneratorEditorSettings* Settings = UHktGeneratorEditorSettings::Get();
+	if (Settings && !Settings->StepsDataDirectory.IsEmpty())
+	{
+		FString SettingsPath = FPaths::ConvertRelativePathToFull(Settings->StepsDataDirectory);
+		FPaths::NormalizeDirectoryName(SettingsPath);
+		if (FPaths::DirectoryExists(SettingsPath))
+		{
+			UE_LOG(LogHktGenEditor, Log, TEXT("Steps data found via settings: %s"), *SettingsPath);
+			return SettingsPath;
+		}
+		UE_LOG(LogHktGenEditor, Warning, TEXT("Settings steps path not found: %s"), *SettingsPath);
+	}
+
+	// 1) HKT_STEPS_DIR 환경변수 확인
 	FString EnvSteps = FPlatformMisc::GetEnvironmentVariable(TEXT("HKT_STEPS_DIR"));
 	if (!EnvSteps.IsEmpty())
 	{
@@ -210,18 +229,18 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 	// CLI 상태 판별
 	bool bCLIFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
 	FLinearColor CLIColor = bCLIFound
-		? FLinearColor(0.2f, 0.8f, 0.2f)   // green
-		: FLinearColor(1.0f, 0.4f, 0.2f);   // red
+		? FLinearColor(0.2f, 0.8f, 0.2f)
+		: FLinearColor(1.0f, 0.4f, 0.2f);
 
 	FString CLIDisplay = bCLIFound
 		? DetectedClaudeCLI
-		: TEXT("Not found (set HKT_CLAUDE_CLI or install Claude Code CLI)");
+		: TEXT("Not found");
 
 	// Steps 상태
 	bool bStepsFound = FPaths::DirectoryExists(StepsDataPath);
 	FLinearColor StepsColor = bStepsFound
 		? FLinearColor(0.2f, 0.8f, 0.2f)
-		: FLinearColor(1.0f, 0.8f, 0.2f);   // yellow (created default)
+		: FLinearColor(1.0f, 0.8f, 0.2f);
 
 	// Projects 상태
 	FString ProjectsDisplay = FString::Printf(TEXT("%d project(s)"), ProjectIds.Num());
@@ -230,88 +249,111 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 		.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
 		.Padding(6)
 		[
-			SNew(SVerticalBox)
+			SNew(SHorizontalBox)
 
-			// Claude CLI
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(0, 1)
+			// 상태 정보 (왼쪽)
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
 			[
-				SNew(SHorizontalBox)
+				SNew(SVerticalBox)
 
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(0, 0, 6, 0)
+				// Claude CLI
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 1)
 				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("StatusCLI", "Claude CLI:"))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("StatusCLI", "Claude CLI:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(CLIDisplay))
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						.ColorAndOpacity(FSlateColor(CLIColor))
+						.AutoWrapText(true)
+					]
 				]
 
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
+				// Steps Data
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 1)
 				[
-					SNew(STextBlock)
-					.Text(FText::FromString(CLIDisplay))
-					.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-					.ColorAndOpacity(FSlateColor(CLIColor))
-					.AutoWrapText(true)
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("StatusSteps", "Steps Data:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(StepsDataPath))
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						.ColorAndOpacity(FSlateColor(StepsColor))
+						.AutoWrapText(true)
+					]
+				]
+
+				// Projects
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 1)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("StatusProjects", "Projects:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(ProjectsDisplay))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.ColorAndOpacity(FSlateColor(ProjectIds.Num() > 0
+							? FLinearColor(0.2f, 0.8f, 0.2f)
+							: FLinearColor(0.5f, 0.5f, 0.5f)))
+					]
 				]
 			]
 
-			// Steps Data
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(0, 1)
+			// 편집 버튼 (오른쪽)
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(8, 0, 0, 0)
 			[
-				SNew(SHorizontalBox)
-
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(0, 0, 6, 0)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("StatusSteps", "Steps Data:"))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-				]
-
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(StepsDataPath))
-					.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-					.ColorAndOpacity(FSlateColor(StepsColor))
-					.AutoWrapText(true)
-				]
-			]
-
-			// Projects
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(0, 1)
-			[
-				SNew(SHorizontalBox)
-
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(0, 0, 6, 0)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("StatusProjects", "Projects:"))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-				]
-
-				+ SHorizontalBox::Slot()
-				.FillWidth(1.0f)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(ProjectsDisplay))
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-					.ColorAndOpacity(FSlateColor(ProjectIds.Num() > 0
-						? FLinearColor(0.2f, 0.8f, 0.2f)
-						: FLinearColor(0.5f, 0.5f, 0.5f)))
-				]
+				SNew(SButton)
+				.Text(LOCTEXT("EditConnection", "Edit"))
+				.ToolTipText(LOCTEXT("EditConnectionTip", "Open AI Agent Connection Manager"))
+				.OnClicked_Lambda([this]()
+				{
+					SHktAgentConnectionPanel::Open();
+					return FReply::Handled();
+				})
 			]
 		];
 }

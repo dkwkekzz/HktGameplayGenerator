@@ -2,6 +2,7 @@
 
 #include "HktClaudeProcess.h"
 #include "HktGeneratorEditorModule.h"
+#include "HktGeneratorEditorSettings.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
 #include "HAL/PlatformFileManager.h"
@@ -82,7 +83,19 @@ FHktClaudeProcess::~FHktClaudeProcess()
 
 FString FHktClaudeProcess::FindClaudeCLI()
 {
-	// 1) 환경변수 우선 확인
+	// 0) Project Settings 확인
+	const UHktGeneratorEditorSettings* Settings = UHktGeneratorEditorSettings::Get();
+	if (Settings && !Settings->ClaudeCLIPath.IsEmpty())
+	{
+		if (FPaths::FileExists(Settings->ClaudeCLIPath))
+		{
+			UE_LOG(LogHktGenEditor, Log, TEXT("Found claude CLI via settings: %s"), *Settings->ClaudeCLIPath);
+			return Settings->ClaudeCLIPath;
+		}
+		UE_LOG(LogHktGenEditor, Warning, TEXT("Settings CLI path not found: %s"), *Settings->ClaudeCLIPath);
+	}
+
+	// 1) 환경변수 확인
 	FString EnvCLI = FPlatformMisc::GetEnvironmentVariable(TEXT("HKT_CLAUDE_CLI"));
 	if (!EnvCLI.IsEmpty() && FPaths::FileExists(EnvCLI))
 	{
