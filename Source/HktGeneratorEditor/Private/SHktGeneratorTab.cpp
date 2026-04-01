@@ -265,77 +265,70 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 				.AutoHeight()
 				.Padding(0, 0, 0, 4)
 				[
-					SNew(SHorizontalBox)
+					SNew(STextBlock)
+					.Text(LOCTEXT("ModeBHeader", "Intent JSON"))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+				]
 
-					+ SHorizontalBox::Slot()
-					.FillWidth(1.0f)
-					.VAlign(VAlign_Center)
+				// 필드 가이드 (접기/펼치기) — 독립 슬롯
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 0, 0, 4)
+				[
+					SNew(SExpandableArea)
+					.AreaTitle(LOCTEXT("IntentGuideTitle", "Intent Guide"))
+					.InitiallyCollapsed(true)
+					.BodyContent()
 					[
-						SNew(STextBlock)
-						.Text(LOCTEXT("ModeBHeader", "Intent JSON"))
-						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-					]
+						SNew(SVerticalBox)
 
-					// 필드 가이드 (접기/펼치기)
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					[
-						SNew(SExpandableArea)
-						.AreaTitle(LOCTEXT("IntentGuideTitle", "Intent Guide"))
-						.InitiallyCollapsed(true)
-						.MaxHeight(300.0f)
-						.BodyContent()
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(4, 4, 4, 8)
 						[
-							SNew(SVerticalBox)
+							SNew(STextBlock)
+							.Text(FText::FromString(HelpText))
+							.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+							.AutoWrapText(true)
+						]
 
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							.Padding(4, 4, 4, 8)
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(4, 0, 4, 4)
+						[
+							SNew(STextBlock)
+							.Text(LOCTEXT("ExampleLabel", "-- Example --"))
+							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+							.ColorAndOpacity(FSlateColor(FLinearColor(0.4f, 0.7f, 1.0f)))
+						]
+
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.MaxHeight(250.0f)
+						.Padding(4, 0, 4, 4)
+						[
+							SNew(SBorder)
+							.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+							.Padding(6)
 							[
 								SNew(STextBlock)
-								.Text(FText::FromString(HelpText))
+								.Text(FText::FromString(ExampleJson))
 								.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-								.AutoWrapText(true)
 							]
+						]
 
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							.Padding(4, 0, 4, 4)
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("ExampleLabel", "-- Example --"))
-								.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-								.ColorAndOpacity(FSlateColor(FLinearColor(0.4f, 0.7f, 1.0f)))
-							]
-
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							.MaxHeight(250.0f)
-							.Padding(4, 0, 4, 4)
-							[
-								SNew(SBorder)
-								.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
-								.Padding(6)
-								[
-									SNew(STextBlock)
-									.Text(FText::FromString(ExampleJson))
-									.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-								]
-							]
-
-							+ SVerticalBox::Slot()
-							.AutoHeight()
-							.Padding(4, 0, 4, 4)
-							[
-								SNew(SButton)
-								.Text(LOCTEXT("LoadExample", "Load Example"))
-								.ToolTipText(LOCTEXT("LoadExampleTip", "Load this example JSON into the editor"))
-								.OnClicked_Lambda([this, ExampleJson]()
-								{
-									IntentEditor->SetText(FText::FromString(ExampleJson));
-									return FReply::Handled();
-								})
-							]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(4, 0, 4, 4)
+						[
+							SNew(SButton)
+							.Text(LOCTEXT("LoadExample", "Load Example"))
+							.ToolTipText(LOCTEXT("LoadExampleTip", "Load this example JSON into the editor"))
+							.OnClicked_Lambda([this, ExampleJson]()
+							{
+								IntentEditor->SetText(FText::FromString(ExampleJson));
+								return FReply::Handled();
+							})
 						]
 					]
 				]
@@ -1232,6 +1225,9 @@ void SHktGeneratorTab::OnConvertNL()
 		return;
 	}
 
+	// Progress 섹션 표시하여 로그를 사용자에게 보여줌
+	SetSectionVisibility(true, false, false);
+
 	AddLogLine(FString::Printf(TEXT("[NL] Converting: \"%s\"%s"),
 		*NaturalLanguage.Left(100),
 		bAutoGenerateAfterConvert ? TEXT(" (will auto-generate)") : TEXT("")));
@@ -1254,6 +1250,7 @@ void SHktGeneratorTab::OnConvertNL()
 	{
 		AddLogLine(TEXT("[NL Error] Failed to start Claude CLI for conversion."));
 		NLProcess.Reset();
+		bAutoGenerateAfterConvert = false;
 		return;
 	}
 
