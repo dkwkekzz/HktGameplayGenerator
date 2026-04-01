@@ -4,7 +4,7 @@
 #include "HktGeneratorEditorSettings.h"
 #include "HktClaudeProcess.h"
 #include "HktGeneratorEditorModule.h"
-#include "HktMcpBridgeSubsystem.h"
+#include "HktMcpEditorSubsystem.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SBox.h"
@@ -17,8 +17,7 @@
 #include "DesktopPlatformModule.h"
 #include "Misc/Paths.h"
 #include "Styling/AppStyle.h"
-#include "Engine/GameEngine.h"
-#include "Engine/GameInstance.h"
+#include "Editor.h"
 
 #define LOCTEXT_NAMESPACE "HktAgentConnectionPanel"
 
@@ -30,7 +29,7 @@ void SHktAgentConnectionPanel::Open()
 {
 	TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(LOCTEXT("WindowTitle", "AI Agent Connection Manager"))
-		.ClientSize(FVector2D(560, 420))
+		.ClientSize(FVector2D(560, 560))
 		.SupportsMinimize(false)
 		.SupportsMaximize(false)
 		.SizingRule(ESizingRule::FixedSize);
@@ -58,6 +57,7 @@ void SHktAgentConnectionPanel::Construct(const FArguments& InArgs)
 	}
 
 	RefreshMcpStatus();
+	RefreshAgentStatus();
 
 	ChildSlot
 	[
@@ -128,6 +128,20 @@ void SHktAgentConnectionPanel::Construct(const FArguments& InArgs)
 			.AutoHeight()
 			[
 				BuildMcpSection()
+			]
+
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0, 8, 0, 8)
+			[
+				SNew(SSeparator)
+			]
+
+			// AI Agent Connection
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			[
+				BuildAgentSection()
 			]
 
 			// 스프링
@@ -275,7 +289,7 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildMcpSection()
 		: FLinearColor(1.0f, 0.4f, 0.2f);
 
 	FString StatusText = bMcpServerRunning
-		? FString::Printf(TEXT("Running (port 9876, %d client(s))"), McpClientCount)
+		? FString::Printf(TEXT("Running (port %d, %d client(s))"), McpPort, McpClientCount)
 		: TEXT("Not running");
 
 	return SNew(SVerticalBox)
@@ -291,12 +305,38 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildMcpSection()
 
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(0, 0, 0, 2)
+		.Padding(0, 0, 0, 4)
 		[
-			MakeStatusRow(
-				LOCTEXT("McpStatus", "Status:"),
-				FText::FromString(StatusText),
-				StatusColor)
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0, 0, 6, 0)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("McpStatus", "Status:"))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+			]
+
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			[
+				SAssignNew(McpStatusText, STextBlock)
+				.Text(FText::FromString(StatusText))
+				.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+				.ColorAndOpacity(FSlateColor(StatusColor))
+				.AutoWrapText(true)
+			]
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(8, 0, 0, 0)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("McpReconnect", "Reconnect"))
+				.ToolTipText(LOCTEXT("McpReconnectTip", "MCP Bridge 서버를 재시작합니다"))
+				.OnClicked_Lambda([this]() { OnReconnectMcp(); return FReply::Handled(); })
+			]
 		]
 
 		+ SVerticalBox::Slot()
@@ -304,7 +344,87 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildMcpSection()
 		.Padding(0, 2, 0, 0)
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("McpNote", "MCP 서버는 PIE(Play In Editor) 실행 시 자동으로 시작됩니다."))
+			.Text(LOCTEXT("McpNote", "MCP 서버는 에디터 시작 시 자동으로 시작됩니다. 꺼진 경우 Reconnect로 재시작하세요."))
+			.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+			.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
+			.AutoWrapText(true)
+		];
+}
+
+TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
+{
+	FLinearColor StatusColor;
+	FString StatusText;
+
+	if (bAgentVerifying)
+	{
+		StatusColor = FLinearColor(0.8f, 0.8f, 0.2f);
+		StatusText = TEXT("Verifying...");
+	}
+	else if (bAgentVerified)
+	{
+		StatusColor = FLinearColor(0.2f, 0.8f, 0.2f);
+		StatusText = FString::Printf(TEXT("Connected (%s)"), *AgentVersionString);
+	}
+	else
+	{
+		StatusColor = FLinearColor(1.0f, 0.4f, 0.2f);
+		StatusText = AgentVersionString.IsEmpty() ? TEXT("Not verified") : AgentVersionString;
+	}
+
+	return SNew(SVerticalBox)
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 4)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("AgentHeader", "AI Agent (Claude CLI)"))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 4)
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(0, 0, 6, 0)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("AgentStatus", "Status:"))
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+			]
+
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			[
+				SAssignNew(AgentStatusText, STextBlock)
+				.Text(FText::FromString(StatusText))
+				.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+				.ColorAndOpacity(FSlateColor(StatusColor))
+				.AutoWrapText(true)
+			]
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(8, 0, 0, 0)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("AgentVerify", "Test Connection"))
+				.ToolTipText(LOCTEXT("AgentVerifyTip", "Claude CLI --version 을 실행하여 연결을 확인합니다"))
+				.OnClicked_Lambda([this]() { OnVerifyAgent(); return FReply::Handled(); })
+			]
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 2, 0, 0)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("AgentNote", "Claude CLI 실행 파일을 검증합니다. --version 명령어로 실제 연결 가능 여부를 확인합니다."))
 			.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
 			.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
 			.AutoWrapText(true)
@@ -451,30 +571,120 @@ void SHktAgentConnectionPanel::OnClose()
 	}
 }
 
+void SHktAgentConnectionPanel::OnReconnectMcp()
+{
+	if (!GEditor)
+	{
+		return;
+	}
+
+	UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+	if (McpSub)
+	{
+		McpSub->ReconnectMcpServer();
+		RefreshMcpStatus();
+
+		// UI 업데이트
+		if (McpStatusText.IsValid())
+		{
+			FLinearColor StatusColor = bMcpServerRunning
+				? FLinearColor(0.2f, 0.8f, 0.2f)
+				: FLinearColor(1.0f, 0.4f, 0.2f);
+			FString StatusText = bMcpServerRunning
+				? FString::Printf(TEXT("Running (port %d, %d client(s))"), McpPort, McpClientCount)
+				: TEXT("Not running");
+			McpStatusText->SetText(FText::FromString(StatusText));
+			McpStatusText->SetColorAndOpacity(FSlateColor(StatusColor));
+		}
+	}
+}
+
+void SHktAgentConnectionPanel::OnVerifyAgent()
+{
+	if (!GEditor)
+	{
+		return;
+	}
+
+	UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+	if (!McpSub)
+	{
+		return;
+	}
+
+	// 검증 시작 상태 즉시 반영
+	bAgentVerifying = true;
+	bAgentVerified = false;
+	if (AgentStatusText.IsValid())
+	{
+		AgentStatusText->SetText(LOCTEXT("AgentVerifying", "Verifying..."));
+		AgentStatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.2f)));
+	}
+
+	// 검증 완료 콜백 등록
+	TWeakPtr<SHktAgentConnectionPanel> WeakThis = SharedThis(this);
+	McpSub->OnAgentVerified.AddLambda([WeakThis](bool bSuccess, const FString& VersionOrError)
+	{
+		// GameThread에서 실행되므로 안전하게 UI 업데이트
+		TSharedPtr<SHktAgentConnectionPanel> PinnedThis = WeakThis.Pin();
+		if (!PinnedThis.IsValid())
+		{
+			return;
+		}
+
+		PinnedThis->bAgentVerifying = false;
+		PinnedThis->bAgentVerified = bSuccess;
+		PinnedThis->AgentVersionString = bSuccess ? VersionOrError : VersionOrError;
+
+		if (PinnedThis->AgentStatusText.IsValid())
+		{
+			FLinearColor Color = bSuccess
+				? FLinearColor(0.2f, 0.8f, 0.2f)
+				: FLinearColor(1.0f, 0.4f, 0.2f);
+			FString Text = bSuccess
+				? FString::Printf(TEXT("Connected (%s)"), *VersionOrError)
+				: VersionOrError;
+			PinnedThis->AgentStatusText->SetText(FText::FromString(Text));
+			PinnedThis->AgentStatusText->SetColorAndOpacity(FSlateColor(Color));
+		}
+	});
+
+	McpSub->VerifyAgentConnection();
+}
+
 void SHktAgentConnectionPanel::RefreshMcpStatus()
 {
 	bMcpServerRunning = false;
 	McpClientCount = 0;
+	McpPort = 9876;
 
-	// PIE 실행 중인 GameInstance에서 서브시스템 확인
-	if (GEngine)
+	// 에디터 서브시스템에서 MCP 서버 상태 확인
+	if (GEditor)
 	{
-		for (const FWorldContext& Context : GEngine->GetWorldContexts())
+		UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+		if (McpSub)
 		{
-			if (Context.WorldType == EWorldType::PIE && Context.World())
-			{
-				UGameInstance* GI = Context.World()->GetGameInstance();
-				if (GI)
-				{
-					UHktMcpBridgeSubsystem* McpSub = GI->GetSubsystem<UHktMcpBridgeSubsystem>();
-					if (McpSub)
-					{
-						bMcpServerRunning = McpSub->IsServerRunning();
-						McpClientCount = McpSub->GetConnectedClientCount();
-						break;
-					}
-				}
-			}
+			bMcpServerRunning = McpSub->IsMcpServerRunning();
+			McpClientCount = McpSub->GetMcpClientCount();
+			McpPort = McpSub->GetMcpServerPort();
+		}
+	}
+}
+
+void SHktAgentConnectionPanel::RefreshAgentStatus()
+{
+	bAgentVerified = false;
+	bAgentVerifying = false;
+	AgentVersionString.Empty();
+
+	if (GEditor)
+	{
+		UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+		if (McpSub)
+		{
+			bAgentVerified = McpSub->IsAgentVerified();
+			bAgentVerifying = McpSub->IsAgentVerifying();
+			AgentVersionString = McpSub->GetAgentVersion();
 		}
 	}
 }

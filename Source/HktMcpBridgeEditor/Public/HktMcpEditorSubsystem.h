@@ -217,9 +217,77 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MCP|Python")
 	FString ExecutePythonScript(const FString& ScriptCode, float TimeoutSeconds = 30.0f);
 
+	// ==================== MCP Bridge Server (Editor-level) ====================
+
+	/** MCP Bridge 서버 시작. 에디터 시작 시 자동 호출됨. */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Server")
+	bool StartMcpServer(int32 Port = 0);
+
+	/** MCP Bridge 서버 중지 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Server")
+	void StopMcpServer();
+
+	/** MCP Bridge 서버 재연결 (Stop → Start) */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Server")
+	bool ReconnectMcpServer();
+
+	/** MCP Bridge 서버 실행 중인지 확인 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Server")
+	bool IsMcpServerRunning() const { return bMcpServerRunning; }
+
+	/** 연결된 MCP 클라이언트 수 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Server")
+	int32 GetMcpClientCount() const { return McpConnectedClients.Num(); }
+
+	/** MCP 서버 포트 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Server")
+	int32 GetMcpServerPort() const { return McpServerPort; }
+
+	// ==================== Agent Connection Verification ====================
+
+	/** Claude CLI가 유효한지 비동기 검증. 완료 시 OnAgentVerified 브로드캐스트.
+	 *  @param CLIPathOverride  비어있으면 자동 탐색, 지정하면 해당 경로 사용 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Agent")
+	void VerifyAgentConnection(const FString& CLIPathOverride = TEXT(""));
+
+	/** 마지막 검증 결과 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Agent")
+	bool IsAgentVerified() const { return bAgentVerified; }
+
+	/** 마지막 검증된 CLI 버전 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Agent")
+	FString GetAgentVersion() const { return AgentVersionString; }
+
+	/** 마지막 검증된 CLI 경로 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Agent")
+	FString GetAgentCLIPath() const { return AgentCLIPath; }
+
+	/** Agent 검증 진행 중인지 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Agent")
+	bool IsAgentVerifying() const { return bAgentVerifying; }
+
+	/** 에이전트 검증 완료 델리게이트 (bSuccess, VersionOrError) */
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAgentVerified, bool, const FString&);
+	FOnAgentVerified OnAgentVerified;
+
+	/** MCP 서버 상태 변경 델리게이트 */
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnMcpServerStateChanged, bool);
+	FOnMcpServerStateChanged OnMcpServerStateChanged;
+
 private:
 	// 헬퍼 함수들
 	AActor* FindActorByName(const FString& ActorName);
 	UWorld* GetEditorWorld();
+
+	// ── MCP Server State ──
+	bool bMcpServerRunning = false;
+	int32 McpServerPort = 9876;
+	TMap<FString, TSharedPtr<class INetworkingWebSocket>> McpConnectedClients;
+
+	// ── Agent Verification State ──
+	bool bAgentVerified = false;
+	bool bAgentVerifying = false;
+	FString AgentVersionString;
+	FString AgentCLIPath;
 };
 
