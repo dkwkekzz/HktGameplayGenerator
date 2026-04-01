@@ -86,7 +86,9 @@ private:
 	TSharedPtr<FHktClaudeProcess> NLProcess;  // 자연어 변환용 별도 프로세스
 	FString NLResultBuffer;                    // 변환 결과 누적
 	FTSTicker::FDelegateHandle NLTickHandle;
+	bool bAutoGenerateAfterConvert = false;    // Convert 후 자동 Generate 여부
 	void OnConvertNL();
+	void OnConvertAndGenerate();
 	void OnNLOutput(const FString& JsonLine);
 	void OnNLComplete(int32 ExitCode);
 	bool OnNLTick(float DeltaTime);
