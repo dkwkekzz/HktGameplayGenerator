@@ -6,14 +6,17 @@ by different agents. Steps communicate via JSON files.
 """
 
 from .models import (
-    StepType,
-    StepStatus,
-    StepResult,
+    FeatureStatus,
+    FeatureStatusValue,
     StepManifest,
+    StepResult,
+    StepStatus,
+    StepType,
 )
 from .store import StepStore
 
 __all__ = [
+    "FeatureStatus", "FeatureStatusValue",
     "StepType", "StepStatus", "StepResult", "StepManifest",
     "StepStore",
 ]

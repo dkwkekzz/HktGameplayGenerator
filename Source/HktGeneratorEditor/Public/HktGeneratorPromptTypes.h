@@ -14,6 +14,7 @@ enum class EHktGeneratorType : uint8
 	Map,
 	Story,
 	Texture,
+	Feature,
 	COUNT
 };
 
@@ -37,6 +38,7 @@ inline const TArray<FHktGeneratorTypeInfo>& GetGeneratorTypeInfos()
 		{ EHktGeneratorType::Map,       TEXT("map_generation"),       TEXT("map-gen"),       TEXT("Map"),       TEXT("terrain_spec") },
 		{ EHktGeneratorType::Story,     TEXT("story_generation"),     TEXT("story-gen"),     TEXT("Story"),     TEXT("stories") },
 		{ EHktGeneratorType::Texture,   TEXT("texture_generation"),   TEXT("texture-gen"),   TEXT("Texture"),   TEXT("textures") },
+		{ EHktGeneratorType::Feature,   TEXT("feature_design"),       TEXT("feature-design"), TEXT("Feature"),  TEXT("feature_outlines") },
 	};
 	return Infos;
 }
@@ -172,6 +174,20 @@ inline FString GetIntentHelpText(EHktGeneratorType Type)
 			"  alphaChannel     알파 채널 여부\n"
 			"  tileable         타일링 가능 여부\n"
 			"  styleKeywords    스타일 키워드 배열"
+		);
+
+	case EHktGeneratorType::Feature:
+		return TEXT(
+			"Feature Intent — concept_design의 feature_outlines에서 로드하거나 직접 작성.\n"
+			"\n"
+			"[필수 필드]\n"
+			"  feature_id     고유 식별자 (예: fire-magic)\n"
+			"  name           사람이 읽을 수 있는 이름\n"
+			"  description    고수준 설명\n"
+			"\n"
+			"[선택 필드]\n"
+			"  category       분류 (combat, encounter, exploration, system)\n"
+			"  priority       우선순위 (high, medium, low)"
 		);
 
 	default:
@@ -333,6 +349,21 @@ inline FString GetIntentExample(EHktGeneratorType Type)
 			"}"
 		);
 
+	case EHktGeneratorType::Feature:
+		return TEXT(
+			"{\n"
+			"  \"feature_outlines\": [\n"
+			"    {\n"
+			"      \"feature_id\": \"fire-magic\",\n"
+			"      \"name\": \"화염 마법 시스템\",\n"
+			"      \"category\": \"combat\",\n"
+			"      \"description\": \"화염 속성 스킬 3종과 관련 이펙트\",\n"
+			"      \"priority\": \"high\"\n"
+			"    }\n"
+			"  ]\n"
+			"}"
+		);
+
 	default:
 		return TEXT("{\n  \n}");
 	}
@@ -355,6 +386,8 @@ inline FString GetNLPlaceholder(EHktGeneratorType Type)
 		return TEXT("마을을 위협하는 고블린을 처치하는 퀘스트");
 	case EHktGeneratorType::Texture:
 		return TEXT("불꽃 파티클 스프라이트, 검정 배경, 스타일라이즈");
+	case EHktGeneratorType::Feature:
+		return TEXT("화염 마법, 고블린 캠프 조우, 보물 탐색 시스템");
 	default:
 		return TEXT("");
 	}

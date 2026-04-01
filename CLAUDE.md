@@ -10,13 +10,14 @@ LLM 기반 UE5 게임플레이 어셋 자동 생성 시스템. MCP(Model Context
 
 ## 모듈식 스텝 시스템
 
-생성 파이프라인은 **독립적인 7개 스텝**으로 구성된다. 각 스텝은 서로 다른 에이전트가 독립적으로 실행할 수 있으며, JSON 파일을 통해 입출력을 주고받는다.
+생성 파이프라인은 **독립적인 8개 스텝**으로 구성된다. 각 스텝은 서로 다른 에이전트가 독립적으로 실행할 수 있으며, JSON 파일을 통해 입출력을 주고받는다.
 
 ### 스텝과 Skill 커맨드
 
 | 스텝 | Skill | 설명 |
 |---|---|---|
-| `concept_design` | `/concept-design` | 맵/스토리 전체 설계 |
+| `concept_design` | `/concept-design` | 세계관 + feature outlines 설계 |
+| `feature_design` | `/feature-design` | feature별 스토리/에셋/맵 상세 설계 |
 | `map_generation` | `/map-gen` | Landscape, Spawner, Region 정의 |
 | `story_generation` | `/story-gen` | HktCore 주입용 스토리 |
 | `asset_discovery` | `/asset-discovery` | 의존 어셋 분석 |
@@ -31,19 +32,37 @@ LLM 기반 UE5 게임플레이 어셋 자동 생성 시스템. MCP(Model Context
 
 ```
 concept_design
-  ├─→ map_generation      (병렬 가능)
-  └─→ story_generation    (병렬 가능)
-        └─→ asset_discovery
-              ├─→ character_generation  (병렬 가능)
-              ├─→ item_generation       (병렬 가능)
-              └─→ vfx_generation        (병렬 가능)
+  ├─→ map_generation              (병렬)
+  └─→ feature_design
+        └─→ [feature별 Worker Agent 병렬 스폰]
+              ├─→ story_generation
+              ├─→ asset_discovery
+              └─→ char/item/vfx_generation (병렬)
 ```
+
+### 멀티 에이전트 오케스트레이션
+
+`/full-pipeline`은 Orchestrator 패턴을 사용한다:
+1. concept_design → feature_outlines[] 생성 (직접 실행)
+2. feature_design → features[] 상세 설계 (직접 실행)
+3. feature별 `/feature-worker` Agent를 **병렬 스폰**
+4. 각 Worker는 자기 feature의 story→asset_discovery→asset_gen을 독립 실행
+5. 모든 Worker 완료 후 `feature_aggregate`로 결과 집계
+
+### Feature 시스템
+
+프로젝트의 모든 작업은 **feature** 단위로 추적된다:
+- **Pipeline feature**: concept_design에서 feature_outlines로 도출, feature_design에서 상세화
+- **Manual feature**: 개별 탭에서 직접 생성 시 ad-hoc feature 자동 등록 (`manual-{type}-{timestamp}`)
+- **Per-feature work.json**: `.hkt_steps/{project_id}/features/{feature_id}/work.json` — Worker 간 충돌 방지
+- **Manifest 추적**: `FeatureStatus`로 feature별 진행 상황 (stories/assets 완료 수) 추적
 
 ### 규칙
 
 - 각 스텝은 독립적 — 다른 에이전트가 이어서 실행 가능
 - 상세 실행 절차는 `.claude/skills/`의 Skill 파일에 정의
 - 스텝 간 데이터는 `.hkt_steps/{project_id}/{step_type}/output.json`으로 전달
+- Feature별 데이터는 `.hkt_steps/{project_id}/features/{feature_id}/work.json`으로 격리
 - 스텝 실패 시 `step_fail`로 에러 기록
 
 ## HktMap
@@ -92,11 +111,12 @@ Generator의 `HandleTagMiss`는 에셋 생성 후 해당 TagDataAsset도 함께 
 에디터 내 Generator Prompt 패널 (`HktGen.Prompt` 콘솔 커맨드로 열기).
 Claude Code CLI의 OAuth 토큰을 활용하여 subprocess로 생성을 실행한다.
 
-- Generator별 탭: VFX, Character, Item, Map, Story, Texture
+- Generator별 탭: VFX, Character, Item, Map, Story, Texture, Feature
 - Intent 편집 → Generate → 스트리밍 진행 로그 → 결과 확인 → Accept/Refine/Reject
 - `FHktClaudeProcess`: `claude --print --output-format stream-json` subprocess 래퍼
 - SKILL.md를 system prompt로, Intent JSON을 user prompt로 전달
 - Refine 시 이전 결과 + 피드백을 포함하여 재실행
+- 개별 탭에서 직접 생성 시 ad-hoc feature 자동 등록
 
 ## 환경설정
 

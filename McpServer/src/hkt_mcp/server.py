@@ -1193,6 +1193,83 @@ async def list_tools() -> list[Tool]:
             description="List all available step types with descriptions and dependency relationships.",
             inputSchema={"type": "object", "properties": {}}
         ),
+        Tool(
+            name="step_add_feature",
+            description="Register a feature in the project manifest. Used by pipeline for tracked features or by individual tabs for ad-hoc features.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "feature_id": {"type": "string", "description": "Unique feature identifier (e.g. fire-magic, manual-vfx-143025)"},
+                    "name": {"type": "string", "description": "Human-readable feature name"},
+                    "source": {"type": "string", "description": "Feature source: 'pipeline' or 'manual'", "default": "pipeline"},
+                },
+                "required": ["project_id", "feature_id"]
+            }
+        ),
+        Tool(
+            name="step_list_features",
+            description="List all features for a project with their statuses and progress.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project ID"},
+                },
+                "required": ["project_id"]
+            }
+        ),
+        Tool(
+            name="step_update_feature",
+            description="Update a feature's status and progress counters in the manifest.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "feature_id": {"type": "string", "description": "Feature ID to update"},
+                    "status": {"type": "string", "description": "New status: not_started, designing, generating, completed, failed"},
+                    "stories_completed": {"type": "integer", "description": "Number of stories completed"},
+                    "assets_completed": {"type": "integer", "description": "Number of assets completed"},
+                    "agent_id": {"type": "string", "description": "Agent currently working on this feature"},
+                },
+                "required": ["project_id", "feature_id"]
+            }
+        ),
+        Tool(
+            name="feature_save_work",
+            description="Save per-feature work.json. Worker Agents use this to store results without conflicting with other workers. Each feature has its own isolated file.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "feature_id": {"type": "string", "description": "Feature ID"},
+                    "work_json": {"type": "string", "description": "JSON string with story_files, asset_discovery, generated_assets, errors"},
+                },
+                "required": ["project_id", "feature_id", "work_json"]
+            }
+        ),
+        Tool(
+            name="feature_load_work",
+            description="Load per-feature work.json to inspect a worker's results.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project ID"},
+                    "feature_id": {"type": "string", "description": "Feature ID"},
+                },
+                "required": ["project_id", "feature_id"]
+            }
+        ),
+        Tool(
+            name="feature_aggregate",
+            description="Aggregate all feature work.json files into unified step outputs. Called by Orchestrator after all Worker Agents complete. Produces story_generation, asset_discovery, and per-type generation output files.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string", "description": "Project ID"},
+                },
+                "required": ["project_id"]
+            }
+        ),
     ])
 
     # ==================== Map Generation Tools ====================
@@ -1628,6 +1705,33 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await step_tools.step_get_schema(arguments["step_type"])
     elif name == "step_list_types":
         return await step_tools.step_list_types()
+    elif name == "step_add_feature":
+        return await step_tools.step_add_feature(
+            arguments["project_id"], arguments["feature_id"],
+            name=arguments.get("name", ""),
+            source=arguments.get("source", "pipeline"),
+        )
+    elif name == "step_list_features":
+        return await step_tools.step_list_features(arguments["project_id"])
+    elif name == "step_update_feature":
+        return await step_tools.step_update_feature(
+            arguments["project_id"], arguments["feature_id"],
+            status=arguments.get("status", ""),
+            stories_completed=arguments.get("stories_completed", -1),
+            assets_completed=arguments.get("assets_completed", -1),
+            agent_id=arguments.get("agent_id", ""),
+        )
+    elif name == "feature_save_work":
+        return await step_tools.feature_save_work(
+            arguments["project_id"], arguments["feature_id"],
+            arguments["work_json"],
+        )
+    elif name == "feature_load_work":
+        return await step_tools.feature_load_work(
+            arguments["project_id"], arguments["feature_id"],
+        )
+    elif name == "feature_aggregate":
+        return await step_tools.feature_aggregate(arguments["project_id"])
 
     # Map Generation Tools (no bridge needed for save/load/validate)
     elif name == "get_map_schema":
