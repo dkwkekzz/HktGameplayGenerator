@@ -1,0 +1,80 @@
+{
+  "project_id": "dark-forest-20260330",
+  "project_name": "dark_forest",
+  "concept": "어둠의 숲에서 몬스터와 전투하는 판타지 RPG. 고대의 저주받은 숲을 탐험하며 다양한 몬스터와 전투하고 보스를 처치하는 모험.",
+  "created_at": "2026-03-30T16:18:52.489137+00:00",
+  "updated_at": "2026-03-30T16:18:52.489154+00:00",
+  "steps": {
+    "concept_design": {
+      "step_type": "concept_design",
+      "status": "not_started",
+      "input_data": {},
+      "output_data": {},
+      "error": "",
+      "started_at": "",
+      "completed_at": "",
+      "agent_id": ""
+    },
+    "map_generation": {
+      "step_type": "map_generation",
+      "status": "not_started",
+      "input_data": {},
+      "output_data": {},
+      "error": "",
+      "started_at": "",
+      "completed_at": "",
+      "agent_id": ""
+    },
+    "story_generation": {
+      "step_type": "story_generation",
+      "status": "not_started",
+      "input_data": {},
+      "output_data": {},
+      "error": "",
+      "started_at": "",
+      "completed_at": "",
+      "agent_id": ""
+    },
+    "asset_discovery": {
+      "step_type": "asset_discovery",
+      "status": "not_started",
+      "input_data": {},
+      "output_data": {},
+      "error": "",
+      "started_at": "",
+      "completed_at": "",
+      "agent_id": ""
+    },
+    "character_generation": {
+      "step_type": "character_generation",
+      "status": "not_started",
+      "input_data": {},
+      "output_data": {},
+      "error": "",
+      "started_at": "",
+      "completed_at": "",
+      "agent_id": ""
+    },
+    "item_generation": {
+      "step_type": "item_generation",
+      "status": "not_started",
+      "input_data": {},
+      "output_data": {},
+      "error": "",
+      "started_at": "",
+      "completed_at": "",
+      "agent_id": ""
+    },
+    "vfx_generation": {
+      "step_type": "vfx_generation",
+      "status": "not_started",
+      "input_data": {},
+      "output_data": {},
+      "error": "",
+      "started_at": "",
+      "completed_at": "",
+      "agent_id": ""
+    }
+  },
+  "config": {}
+}
