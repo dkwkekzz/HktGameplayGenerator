@@ -215,7 +215,79 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 			]
 		]
 
+		// 자연어 입력
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 2)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("NLHeader", "Describe in Natural Language"))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.MaxHeight(80.0f)
+		.Padding(0, 0, 0, 4)
+		[
+			SNew(SBox)
+			.MinDesiredHeight(40.0f)
+			[
+				SAssignNew(NaturalLanguageEditor, SMultiLineEditableTextBox)
+				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+				.HintText(FText::Format(
+					LOCTEXT("NLHint", "Describe the {0} you want in plain language (e.g., \"{1}\")"),
+					FText::FromString(GeneratorInfo.DisplayName),
+					FText::FromString(GetNLPlaceholder(GeneratorInfo.Type))))
+			]
+		]
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 8)
+		[
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("ConvertNL", "Convert to Intent"))
+				.ToolTipText(LOCTEXT("ConvertNLTip", "Use AI to convert natural language to intent JSON"))
+				.OnClicked_Lambda([this]() { OnConvertNL(); return FReply::Handled(); })
+				.IsEnabled_Lambda([this]() { return !NLProcess.IsValid() || !NLProcess->IsRunning(); })
+				.ButtonColorAndOpacity(FLinearColor(0.3f, 0.5f, 0.9f, 1.0f))
+			]
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(8, 0, 0, 0)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([this]()
+				{
+					if (NLProcess.IsValid() && NLProcess->IsRunning())
+					{
+						return LOCTEXT("NLConverting", "Converting...");
+					}
+					return FText::GetEmpty();
+				})
+				.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+				.ColorAndOpacity(FSlateColor(FLinearColor(0.3f, 0.6f, 1.0f)))
+			]
+		]
+
 		// JSON 에디터
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 2)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("IntentJsonHeader", "Intent JSON"))
+			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+		]
+
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		.MaxHeight(300.0f)
@@ -1046,6 +1118,165 @@ bool SHktGeneratorTab::OnTick(float DeltaTime)
 		}
 	}
 	return true; // 계속 Tick
+}
+
+// ==================== NL → Intent Conversion ====================
+
+FString SHktGeneratorTab::BuildNLConversionPrompt(const FString& NaturalLanguage) const
+{
+	FString HelpText = GetIntentHelpText(GeneratorInfo.Type);
+	FString ExampleJson = GetIntentExample(GeneratorInfo.Type);
+
+	FString Prompt;
+	Prompt += TEXT("You are a JSON generator. Convert the user's natural language description into a valid intent JSON.\n\n");
+	Prompt += TEXT("## Generator Type\n\n");
+	Prompt += GeneratorInfo.DisplayName;
+	Prompt += TEXT("\n\n## Intent Schema\n\n");
+	Prompt += HelpText;
+	Prompt += TEXT("\n\n## Example Output\n\n");
+	Prompt += ExampleJson;
+	Prompt += TEXT("\n\n## Rules\n\n");
+	Prompt += TEXT("- Output ONLY the JSON. No explanations, no markdown fences, no comments.\n");
+	Prompt += TEXT("- Follow the schema exactly. Fill all required fields.\n");
+	Prompt += TEXT("- Infer reasonable values for fields the user didn't mention.\n");
+	Prompt += TEXT("- Use the example as a structural reference.\n");
+	Prompt += TEXT("- Tag naming convention: VFX → VFX.{Event}.{Element}, Character → Entity.Character.{Name}, ");
+	Prompt += TEXT("Item → Entity.Item.{Category}.{SubType}, Story → Story.Quest.{Name}\n");
+	Prompt += TEXT("- For VFX: choose appropriate emitter roles (core, spark, trail, smoke, debris, ring, shockwave) ");
+	Prompt += TEXT("based on the description. Set color_palette RGB values > 1.0 for HDR emissive effects.\n");
+	Prompt += TEXT("\n## User Description\n\n");
+	Prompt += NaturalLanguage;
+
+	return Prompt;
+}
+
+void SHktGeneratorTab::OnConvertNL()
+{
+	if (NLProcess.IsValid() && NLProcess->IsRunning())
+	{
+		return;
+	}
+
+	FString NaturalLanguage = NaturalLanguageEditor->GetText().ToString().TrimStartAndEnd();
+	if (NaturalLanguage.IsEmpty())
+	{
+		AddLogLine(TEXT("[Error] Please enter a description in natural language."));
+		return;
+	}
+
+	AddLogLine(FString::Printf(TEXT("[NL] Converting: \"%s\""), *NaturalLanguage.Left(100)));
+
+	NLResultBuffer.Empty();
+
+	NLProcess = MakeShared<FHktClaudeProcess>();
+	NLProcess->OnOutput.BindSP(this, &SHktGeneratorTab::OnNLOutput);
+	NLProcess->OnComplete.BindSP(this, &SHktGeneratorTab::OnNLComplete);
+	NLProcess->OnError.BindLambda([this](const FString& Err)
+	{
+		AddLogLine(FString::Printf(TEXT("[NL Error] %s"), *Err));
+	});
+
+	FString Prompt = BuildNLConversionPrompt(NaturalLanguage);
+	FString SystemPrompt = TEXT("You output only valid JSON. No markdown, no explanation.");
+	FString WorkingDir = FindPluginDir();
+
+	if (!NLProcess->Start(Prompt, SystemPrompt, WorkingDir))
+	{
+		AddLogLine(TEXT("[NL Error] Failed to start Claude CLI for conversion."));
+		NLProcess.Reset();
+		return;
+	}
+
+	// NL Tick 등록
+	if (NLTickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(NLTickHandle);
+		NLTickHandle.Reset();
+	}
+	NLTickHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateSP(this, &SHktGeneratorTab::OnNLTick), 0.05f);
+}
+
+void SHktGeneratorTab::OnNLOutput(const FString& JsonLine)
+{
+	FHktClaudeEvent Event = ParseClaudeEvent(JsonLine);
+
+	if (Event.Type == TEXT("result"))
+	{
+		NLResultBuffer = Event.Content;
+	}
+	else if (Event.Type == TEXT("assistant"))
+	{
+		// 스트리밍 텍스트가 JSON일 수 있으므로 누적
+		if (!Event.Content.IsEmpty())
+		{
+			NLResultBuffer += Event.Content;
+		}
+	}
+}
+
+void SHktGeneratorTab::OnNLComplete(int32 ExitCode)
+{
+	// NL Tick 해제
+	if (NLTickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(NLTickHandle);
+		NLTickHandle.Reset();
+	}
+
+	if (ExitCode != 0 || NLResultBuffer.IsEmpty())
+	{
+		AddLogLine(FString::Printf(TEXT("[NL Error] Conversion failed (exit code: %d)"), ExitCode));
+		NLProcess.Reset();
+		return;
+	}
+
+	// JSON 추출 — markdown 코드 블록 제거
+	FString Result = NLResultBuffer.TrimStartAndEnd();
+	if (Result.StartsWith(TEXT("```")))
+	{
+		// 첫 줄(```json 등)과 마지막 줄(```) 제거
+		int32 FirstNewline;
+		if (Result.FindChar(TEXT('\n'), FirstNewline))
+		{
+			Result.RightChopInline(FirstNewline + 1);
+		}
+		if (Result.EndsWith(TEXT("```")))
+		{
+			Result.LeftChopInline(3);
+			Result.TrimEndInline();
+		}
+	}
+
+	// JSON 검증
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Result);
+	TSharedPtr<FJsonValue> Parsed;
+	if (FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid())
+	{
+		IntentEditor->SetText(FText::FromString(Result));
+		AddLogLine(TEXT("[NL] Conversion successful. Intent JSON has been populated."));
+	}
+	else
+	{
+		// JSON이 아닌 경우에도 일단 표시 (사용자가 수정 가능)
+		IntentEditor->SetText(FText::FromString(Result));
+		AddLogLine(TEXT("[NL Warning] Output may not be valid JSON. Please review and fix if needed."));
+	}
+
+	NLProcess.Reset();
+}
+
+bool SHktGeneratorTab::OnNLTick(float DeltaTime)
+{
+	if (NLProcess.IsValid())
+	{
+		NLProcess->Tick();
+		if (!NLProcess->IsRunning())
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 #undef LOCTEXT_NAMESPACE

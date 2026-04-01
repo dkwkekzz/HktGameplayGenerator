@@ -338,6 +338,28 @@ inline FString GetIntentExample(EHktGeneratorType Type)
 	}
 }
 
+/** Generator별 자연어 입력 힌트 예시 */
+inline FString GetNLPlaceholder(EHktGeneratorType Type)
+{
+	switch (Type)
+	{
+	case EHktGeneratorType::VFX:
+		return TEXT("빨간 불꽃이 튀는 검기 베기 이펙트");
+	case EHktGeneratorType::Character:
+		return TEXT("녹색 피부의 작은 고블린, 단검을 들고 있다");
+	case EHktGeneratorType::Item:
+		return TEXT("불꽃이 감싸는 전설의 장검");
+	case EHktGeneratorType::Map:
+		return TEXT("어두운 숲 지역, 고블린 3~5마리 스폰, 난이도 hard");
+	case EHktGeneratorType::Story:
+		return TEXT("마을을 위협하는 고블린을 처치하는 퀘스트");
+	case EHktGeneratorType::Texture:
+		return TEXT("불꽃 파티클 스프라이트, 검정 배경, 스타일라이즈");
+	default:
+		return TEXT("");
+	}
+}
+
 /** 생성 Phase 진행 상태 */
 enum class EHktPhaseStatus : uint8
 {

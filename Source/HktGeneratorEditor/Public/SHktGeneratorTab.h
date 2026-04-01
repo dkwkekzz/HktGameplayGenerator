@@ -56,6 +56,7 @@ private:
 	int32 IterationCount = 0; // Refine 반복 횟수
 
 	// ── Widgets ──
+	TSharedPtr<SMultiLineEditableTextBox> NaturalLanguageEditor;
 	TSharedPtr<SMultiLineEditableTextBox> IntentEditor;
 	TSharedPtr<SListView<TSharedPtr<FHktGenerationPhase>>> PhaseListView;
 	TSharedPtr<SScrollBox> LogScrollBox;
@@ -80,6 +81,16 @@ private:
 	TSharedRef<ITableRow> OnGenerateResultRow(
 		TSharedPtr<FString> Item,
 		const TSharedRef<STableViewBase>& OwnerTable);
+
+	// ── NL → Intent ──
+	TSharedPtr<FHktClaudeProcess> NLProcess;  // 자연어 변환용 별도 프로세스
+	FString NLResultBuffer;                    // 변환 결과 누적
+	FTSTicker::FDelegateHandle NLTickHandle;
+	void OnConvertNL();
+	void OnNLOutput(const FString& JsonLine);
+	void OnNLComplete(int32 ExitCode);
+	bool OnNLTick(float DeltaTime);
+	FString BuildNLConversionPrompt(const FString& NaturalLanguage) const;
 
 	// ── Actions ──
 	void OnLoadFromStep();
