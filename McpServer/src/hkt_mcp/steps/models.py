@@ -18,13 +18,16 @@ class StepType(str, Enum):
     """Independent generation steps with clear input/output boundaries."""
 
     CONCEPT_DESIGN = "concept_design"
-    """Input: user concept text → Output: terrain spec + story list"""
+    """Input: user concept text → Output: terrain spec + feature outlines"""
+
+    FEATURE_DESIGN = "feature_design"
+    """Input: feature outlines from concept_design → Output: detailed features with stories/expected assets"""
 
     MAP_GENERATION = "map_generation"
     """Input: concept_design output → Output: HktMap JSON"""
 
     STORY_GENERATION = "story_generation"
-    """Input: concept_design output → Output: Story JSONs for HktCore"""
+    """Input: features from feature_design → Output: Story JSONs for HktCore"""
 
     ASSET_DISCOVERY = "asset_discovery"
     """Input: story JSONs → Output: asset specifications (character/item/vfx)"""
@@ -71,7 +74,7 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
         },
         "output": {
             "type": "object",
-            "required": ["terrain_spec", "stories"],
+            "required": ["terrain_spec", "feature_outlines"],
             "properties": {
                 "terrain_spec": {
                     "type": "object",
@@ -97,21 +100,112 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
                         },
                     },
                 },
-                "stories": {
+                "feature_outlines": {
+                    "type": "array",
+                    "description": "High-level feature outlines to be detailed in feature_design step",
+                    "items": {
+                        "type": "object",
+                        "required": ["feature_id", "name", "description"],
+                        "properties": {
+                            "feature_id": {
+                                "type": "string",
+                                "description": "Unique feature identifier (e.g. fire-magic, goblin-camp)",
+                            },
+                            "name": {"type": "string", "description": "Human-readable feature name"},
+                            "category": {
+                                "type": "string",
+                                "description": "Feature category (combat, encounter, exploration, system)",
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "High-level description of the feature",
+                            },
+                            "priority": {
+                                "type": "string",
+                                "enum": ["high", "medium", "low"],
+                                "description": "Implementation priority",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+    StepType.FEATURE_DESIGN: {
+        "input": {
+            "type": "object",
+            "required": ["feature_outlines"],
+            "description": "Feature outlines from concept_design step",
+            "properties": {
+                "feature_outlines": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "High-level feature outlines to be detailed",
+                },
+            },
+        },
+        "output": {
+            "type": "object",
+            "required": ["features"],
+            "properties": {
+                "features": {
                     "type": "array",
                     "items": {
                         "type": "object",
-                        "required": ["title", "description", "story_tag"],
+                        "required": ["feature_id", "name", "stories", "expected_assets"],
                         "properties": {
-                            "title": {"type": "string"},
-                            "description": {"type": "string"},
-                            "story_tag": {
-                                "type": "string",
-                                "description": "GameplayTag for the story (e.g. Story.Quest.DragonSlayer)",
+                            "feature_id": {"type": "string"},
+                            "name": {"type": "string"},
+                            "category": {"type": "string"},
+                            "priority": {"type": "string", "enum": ["high", "medium", "low"]},
+                            "stories": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["title", "description", "story_tag"],
+                                    "properties": {
+                                        "title": {"type": "string"},
+                                        "description": {"type": "string"},
+                                        "story_tag": {"type": "string"},
+                                        "region": {"type": "string"},
+                                    },
+                                },
                             },
-                            "region": {
-                                "type": "string",
-                                "description": "Region name where this story takes place",
+                            "expected_assets": {
+                                "type": "object",
+                                "description": "Anticipated asset tags grouped by type",
+                                "properties": {
+                                    "characters": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "items": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "vfx": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "animations": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                },
+                            },
+                            "map_requirements": {
+                                "type": "object",
+                                "description": "Additional map requirements for this feature",
+                                "properties": {
+                                    "regions": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "spawners": {
+                                        "type": "array",
+                                        "items": {"type": "object"},
+                                    },
+                                },
                             },
                         },
                     },
@@ -147,11 +241,15 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
     StepType.STORY_GENERATION: {
         "input": {
             "type": "object",
-            "required": ["stories"],
+            "required": ["features"],
             "properties": {
-                "stories": {
+                "features": {
                     "type": "array",
-                    "description": "Story list from concept_design step",
+                    "description": "Feature list from feature_design step (each has stories[])",
+                },
+                "feature_id": {
+                    "type": "string",
+                    "description": "Optional: process only this feature (for per-feature worker)",
                 },
                 "map_id": {
                     "type": "string",
@@ -170,6 +268,10 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
                         "required": ["story_tag", "json_path"],
                         "properties": {
                             "story_tag": {"type": "string"},
+                            "feature_id": {
+                                "type": "string",
+                                "description": "Feature this story belongs to",
+                            },
                             "json_path": {"type": "string"},
                             "built": {"type": "boolean"},
                             "build_errors": {
@@ -199,6 +301,7 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
                         "required": ["tag", "description"],
                         "properties": {
                             "tag": {"type": "string"},
+                            "feature_id": {"type": "string", "description": "Feature this character belongs to"},
                             "description": {"type": "string"},
                             "skeleton_type": {"type": "string"},
                             "required_animations": {
@@ -215,6 +318,7 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
                         "required": ["tag", "description"],
                         "properties": {
                             "tag": {"type": "string"},
+                            "feature_id": {"type": "string", "description": "Feature this item belongs to"},
                             "description": {"type": "string"},
                             "category": {"type": "string"},
                             "sub_type": {"type": "string"},
@@ -229,6 +333,7 @@ STEP_SCHEMAS: dict[str, dict[str, Any]] = {
                         "required": ["tag", "description", "event_type", "element", "usage_context", "visual_design"],
                         "properties": {
                             "tag": {"type": "string", "description": "VFX.{Event}.{Element} format tag"},
+                            "feature_id": {"type": "string", "description": "Feature this VFX belongs to"},
                             "description": {"type": "string"},
                             "event_type": {"type": "string", "description": "Explosion, Hit, Buff, Projectile, etc."},
                             "element": {"type": "string", "description": "Fire, Ice, Lightning, Physical, etc."},
@@ -424,6 +529,56 @@ class StepResult:
         )
 
 
+class FeatureStatusValue(str, Enum):
+    NOT_STARTED = "not_started"
+    DESIGNING = "designing"
+    GENERATING = "generating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class FeatureStatus:
+    """Tracks completion state of a single feature within a project."""
+
+    feature_id: str
+    name: str = ""
+    status: str = FeatureStatusValue.NOT_STARTED
+    source: str = "pipeline"  # "pipeline" | "manual"
+    stories_total: int = 0
+    stories_completed: int = 0
+    assets_total: int = 0
+    assets_completed: int = 0
+    agent_id: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "feature_id": self.feature_id,
+            "name": self.name,
+            "status": self.status,
+            "source": self.source,
+            "stories_total": self.stories_total,
+            "stories_completed": self.stories_completed,
+            "assets_total": self.assets_total,
+            "assets_completed": self.assets_completed,
+            "agent_id": self.agent_id,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> FeatureStatus:
+        return cls(
+            feature_id=d["feature_id"],
+            name=d.get("name", ""),
+            status=d.get("status", FeatureStatusValue.NOT_STARTED),
+            source=d.get("source", "pipeline"),
+            stories_total=d.get("stories_total", 0),
+            stories_completed=d.get("stories_completed", 0),
+            assets_total=d.get("assets_total", 0),
+            assets_completed=d.get("assets_completed", 0),
+            agent_id=d.get("agent_id", ""),
+        )
+
+
 @dataclass
 class StepManifest:
     """
@@ -437,6 +592,7 @@ class StepManifest:
     created_at: str = field(default_factory=_now_iso)
     updated_at: str = field(default_factory=_now_iso)
     steps: dict[str, StepResult] = field(default_factory=dict)
+    features: dict[str, FeatureStatus] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -453,6 +609,7 @@ class StepManifest:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "steps": {k: v.to_dict() for k, v in self.steps.items()},
+            "features": {k: v.to_dict() for k, v in self.features.items()},
             "config": self.config,
         }
 
@@ -469,4 +626,7 @@ class StepManifest:
         steps_raw = d.get("steps", {})
         for k, v in steps_raw.items():
             manifest.steps[k] = StepResult.from_dict(v)
+        features_raw = d.get("features", {})
+        for k, v in features_raw.items():
+            manifest.features[k] = FeatureStatus.from_dict(v)
         return manifest

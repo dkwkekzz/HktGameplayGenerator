@@ -1,13 +1,13 @@
 ---
 name: concept-design
-description: 사용자 컨셉 텍스트에서 지형 명세(terrain_spec)와 스토리 리스트를 설계하는 첫 번째 파이프라인 스텝. 맵과 스토리의 전체 구조를 결정한다.
+description: 사용자 컨셉 텍스트에서 지형 명세(terrain_spec)와 feature outlines를 설계하는 첫 번째 파이프라인 스텝. 맵과 feature의 전체 구조를 결정한다.
 allowed-tools: Bash, Read, Write, Grep, Glob
 argument-hint: <project_id> <concept_text>
 ---
 
 # concept_design 스텝 실행
 
-사용자가 제공한 컨셉을 분석하여 **지형 명세(terrain_spec)**와 **스토리 리스트(stories)**를 생성한다.
+사용자가 제공한 컨셉을 분석하여 **지형 명세(terrain_spec)**와 **feature 아웃라인(feature_outlines)**을 생성한다.
 
 ## 인자
 
@@ -31,12 +31,13 @@ MCP 도구 `step_begin`을 호출한다:
 - `regions`: 이름 있는 영역과 경계 (bounds, 속성)
 - `reuse_map_id`: 기존 맵 재사용 시 ID (없으면 null)
 
-**stories** (스토리 리스트):
-각 스토리는 다음을 포함:
-- `title`: 스토리 제목
-- `description`: 상세 설명
-- `story_tag`: GameplayTag (예: `Story.Quest.DragonSlayer`)
-- `region`: 해당 스토리가 진행되는 region 이름
+**feature_outlines** (feature 아웃라인):
+각 feature는 "무엇을 구현할 것인가"를 정의:
+- `feature_id`: 고유 식별자 (예: `fire-magic`, `goblin-camp`)
+- `name`: 사람이 읽을 수 있는 이름
+- `category`: 분류 (combat, encounter, exploration, system)
+- `description`: 고수준 설명
+- `priority`: 우선순위 (high, medium, low)
 
 ### 3. 출력 저장
 MCP 도구 `step_save_output`을 호출한다:
@@ -72,12 +73,20 @@ MCP 도구 `step_save_output`을 호출한다:
       }
     ]
   },
-  "stories": [
+  "feature_outlines": [
     {
-      "title": "고블린 소탕",
-      "description": "마을을 위협하는 고블린 무리를 처치하라",
-      "story_tag": "Story.Quest.GoblinRaid",
-      "region": "DarkForest"
+      "feature_id": "goblin-raid",
+      "name": "고블린 소탕 퀘스트",
+      "category": "encounter",
+      "description": "마을을 위협하는 고블린 무리를 처치하는 전투 퀘스트",
+      "priority": "high"
+    },
+    {
+      "feature_id": "fire-magic",
+      "name": "화염 마법 시스템",
+      "category": "combat",
+      "description": "화염 속성 스킬 3종 (파이어볼, 화염벽, 메테오)",
+      "priority": "medium"
     }
   ]
 }
@@ -85,13 +94,15 @@ MCP 도구 `step_save_output`을 호출한다:
 
 ## 설계 지침
 
+- 컨셉에서 독립적인 게임플레이 feature를 추출 (하나의 feature = 독립 구현 가능한 단위)
+- feature_id는 영문 소문자 + 하이픈 (예: `fire-magic`, `goblin-camp`)
+- 각 feature는 구체적이되, 너무 세분화하지 않음 (스킬 3종 → 1 feature, 개별 스킬별 feature X)
 - 컨셉에서 지형 특성을 추출하여 적절한 biome, 크기, 레이어를 결정
-- 스토리와 region을 연결하여 공간적 서사가 자연스럽게 흐르도록 설계
-- Spawner의 entity_tag는 Tag 규칙을 따름: `Entity.Character.{Name}`, `Entity.Item.{Cat}.{Sub}`
+- Spawner의 entity_tag는 Tag 규칙을 따름: `Entity.Character.{Name}`
 - 실패 시 `step_fail` 호출로 에러를 기록
 
 ## 후속 스텝
 
 concept_design 완료 후 다음 스텝이 병렬 실행 가능:
 - `/map-gen $1` — terrain_spec으로 HktMap 생성
-- `/story-gen $1` — stories 리스트로 Story JSON 생성
+- `/feature-design $1` — feature_outlines를 상세 설계

@@ -239,8 +239,9 @@ async def step_list_types() -> str:
 # Upstream step mapping: which step's output feeds into which step's input
 _UPSTREAM_MAP: dict[str, str | None] = {
     StepType.CONCEPT_DESIGN: None,
+    StepType.FEATURE_DESIGN: StepType.CONCEPT_DESIGN,
     StepType.MAP_GENERATION: StepType.CONCEPT_DESIGN,
-    StepType.STORY_GENERATION: StepType.CONCEPT_DESIGN,
+    StepType.STORY_GENERATION: StepType.FEATURE_DESIGN,
     StepType.ASSET_DISCOVERY: StepType.STORY_GENERATION,
     StepType.CHARACTER_GENERATION: StepType.ASSET_DISCOVERY,
     StepType.ITEM_GENERATION: StepType.ASSET_DISCOVERY,
@@ -250,3 +251,100 @@ _UPSTREAM_MAP: dict[str, str | None] = {
 
 def _get_upstream_step(step_type: str) -> str | None:
     return _UPSTREAM_MAP.get(step_type)
+
+
+# ── Feature Management ──────────────────────────────────────────────
+
+
+async def step_add_feature(
+    project_id: str,
+    feature_id: str,
+    name: str = "",
+    source: str = "pipeline",
+) -> str:
+    """Register a feature in the project manifest."""
+    store = _get_store()
+    fs = store.add_feature(project_id, feature_id, name, source)
+    return json.dumps({
+        "success": True,
+        "feature_id": fs.feature_id,
+        "source": fs.source,
+    }, ensure_ascii=False)
+
+
+async def step_list_features(project_id: str) -> str:
+    """List all features for a project with their statuses."""
+    store = _get_store()
+    features = store.list_features(project_id)
+    return json.dumps(features, ensure_ascii=False, indent=2)
+
+
+async def step_update_feature(
+    project_id: str,
+    feature_id: str,
+    status: str = "",
+    stories_completed: int = -1,
+    assets_completed: int = -1,
+    agent_id: str = "",
+) -> str:
+    """Update a feature's status and progress counters."""
+    store = _get_store()
+    kwargs: dict[str, Any] = {}
+    if status:
+        kwargs["status"] = status
+    if stories_completed >= 0:
+        kwargs["stories_completed"] = stories_completed
+    if assets_completed >= 0:
+        kwargs["assets_completed"] = assets_completed
+    if agent_id:
+        kwargs["agent_id"] = agent_id
+    fs = store.update_feature(project_id, feature_id, **kwargs)
+    return json.dumps(fs.to_dict(), ensure_ascii=False, indent=2)
+
+
+async def feature_save_work(
+    project_id: str,
+    feature_id: str,
+    work_json: str,
+) -> str:
+    """
+    Save per-feature work.json. Used by Worker Agents to store their
+    results without conflicting with other workers.
+    Writes to .hkt_steps/{project_id}/features/{feature_id}/work.json
+    """
+    store = _get_store()
+    work_data = json.loads(work_json)
+    work_path = store.save_feature_work(project_id, feature_id, work_data)
+    return json.dumps({
+        "success": True,
+        "feature_id": feature_id,
+        "work_file": str(work_path),
+    }, ensure_ascii=False)
+
+
+async def feature_load_work(
+    project_id: str,
+    feature_id: str,
+) -> str:
+    """Load per-feature work.json."""
+    store = _get_store()
+    work = store.load_feature_work(project_id, feature_id)
+    return json.dumps({
+        "feature_id": feature_id,
+        "work_data": work,
+    }, ensure_ascii=False, indent=2)
+
+
+async def feature_aggregate(project_id: str) -> str:
+    """
+    Aggregate all feature work.json files into unified step outputs.
+    Called by the Orchestrator after all Worker Agents complete.
+    Produces story_generation/output.json, asset_discovery/output.json,
+    and per-type generation outputs.
+    """
+    store = _get_store()
+    result = store.aggregate_features(project_id)
+    return json.dumps({
+        "success": True,
+        **result,
+    }, ensure_ascii=False, indent=2)
