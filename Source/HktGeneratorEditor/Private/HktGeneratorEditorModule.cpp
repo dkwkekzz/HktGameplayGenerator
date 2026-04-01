@@ -20,7 +20,7 @@ static TSharedPtr<FWorkspaceItem> GHktWorkspaceGroup;
 void FHktGeneratorEditorModule::StartupModule()
 {
 	// Developer Tools 하위에 HktGameplay 그룹 생성
-	GHktWorkspaceGroup = WorkspaceMenu::GetMenuStructure().GetDeveloperToolsCategory()->AddGroup(
+	GHktWorkspaceGroup = WorkspaceMenu::GetMenuStructure().GetDeveloperToolsMiscCategory()->AddGroup(
 		LOCTEXT("HktGameplayGroup", "HktGameplay"),
 		LOCTEXT("HktGameplayGroupTooltip", "HktGameplay Generator tools"),
 		FSlateIcon(), /* InsertPosition */ 1.0f);
