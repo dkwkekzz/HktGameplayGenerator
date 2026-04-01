@@ -18,6 +18,7 @@
 #include "Misc/Paths.h"
 #include "Styling/AppStyle.h"
 #include "Engine/GameEngine.h"
+#include "Engine/GameInstance.h"
 
 #define LOCTEXT_NAMESPACE "HktAgentConnectionPanel"
 

@@ -141,131 +141,257 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(0, 0, 0, 4)
+		.Padding(0, 0, 0, 8)
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("IntentHelp", "Enter the intent JSON, or load from a previous step output."))
+			.Text(LOCTEXT("IntentHelpDual",
+				"Mode A: Describe in natural language and generate directly.\n"
+				"Mode B: Load intent JSON from a pipeline step, edit, and generate."))
 			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 			.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
+			.AutoWrapText(true)
 		]
 
-		// 필드 가이드 (접기/펼치기)
+		// ══════════════════════════════════════════════════════
+		// Mode A: 자연어 입력
+		// ══════════════════════════════════════════════════════
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0, 0, 0, 4)
 		[
-			SNew(SExpandableArea)
-			.AreaTitle(LOCTEXT("IntentGuideTitle", "Intent Guide"))
-			.InitiallyCollapsed(true)
-			.BodyContent()
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+			.Padding(8)
 			[
 				SNew(SVerticalBox)
 
-				// 필드 설명
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				.Padding(4, 4, 4, 8)
+				.Padding(0, 0, 0, 4)
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(HelpText))
-					.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-					.AutoWrapText(true)
-				]
-
-				// 예제 JSON
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(4, 0, 4, 4)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("ExampleLabel", "-- Example --"))
-					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.4f, 0.7f, 1.0f)))
+					.Text(LOCTEXT("ModeAHeader", "Natural Language"))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
 				]
 
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				.MaxHeight(250.0f)
-				.Padding(4, 0, 4, 4)
+				.MaxHeight(80.0f)
+				.Padding(0, 0, 0, 4)
 				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
-					.Padding(6)
+					SNew(SBox)
+					.MinDesiredHeight(40.0f)
 					[
-						SNew(STextBlock)
-						.Text(FText::FromString(ExampleJson))
-						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						SAssignNew(NaturalLanguageEditor, SMultiLineEditableTextBox)
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
+						.HintText(FText::Format(
+							LOCTEXT("NLHint", "{0} (e.g., \"{1}\")"),
+							FText::FromString(GeneratorInfo.DisplayName),
+							FText::FromString(GetNLPlaceholder(GeneratorInfo.Type))))
 					]
 				]
 
-				// "Load Example" 버튼
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				.Padding(4, 0, 4, 4)
 				[
-					SNew(SButton)
-					.Text(LOCTEXT("LoadExample", "Load Example"))
-					.ToolTipText(LOCTEXT("LoadExampleTip", "Load this example JSON into the editor"))
-					.OnClicked_Lambda([this, ExampleJson]()
-					{
-						IntentEditor->SetText(FText::FromString(ExampleJson));
-						return FReply::Handled();
-					})
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 4, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("ConvertNL", "Convert to Intent"))
+						.ToolTipText(LOCTEXT("ConvertNLTip", "Convert to intent JSON, then review before generating"))
+						.OnClicked_Lambda([this]() { OnConvertNL(); return FReply::Handled(); })
+						.IsEnabled_Lambda([this]()
+						{
+							return (!NLProcess.IsValid() || !NLProcess->IsRunning())
+								&& (!ClaudeProcess.IsValid() || !ClaudeProcess->IsRunning());
+						})
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(4, 0, 0, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("NLGenerate", "Generate Directly"))
+						.ToolTipText(LOCTEXT("NLGenerateTip", "Convert to intent JSON and immediately start generation"))
+						.OnClicked_Lambda([this]() { OnConvertAndGenerate(); return FReply::Handled(); })
+						.IsEnabled_Lambda([this]()
+						{
+							return (!NLProcess.IsValid() || !NLProcess->IsRunning())
+								&& (!ClaudeProcess.IsValid() || !ClaudeProcess->IsRunning());
+						})
+						.ButtonColorAndOpacity(FLinearColor(0.3f, 0.5f, 0.9f, 1.0f))
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(8, 0, 0, 0)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([this]()
+						{
+							if (NLProcess.IsValid() && NLProcess->IsRunning())
+							{
+								return LOCTEXT("NLConverting", "Converting...");
+							}
+							return FText::GetEmpty();
+						})
+						.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
+						.ColorAndOpacity(FSlateColor(FLinearColor(0.3f, 0.6f, 1.0f)))
+					]
 				]
 			]
 		]
 
-		// JSON 에디터
-		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
-		.MaxHeight(300.0f)
-		.Padding(0, 0, 0, 8)
-		[
-			SNew(SBox)
-			.MinDesiredHeight(150.0f)
-			[
-				SAssignNew(IntentEditor, SMultiLineEditableTextBox)
-				.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-				.HintText(LOCTEXT("IntentEditorHint", "Enter JSON here or click 'Load from Step' / 'Load Example'"))
-				.Text(FText::GetEmpty())
-			]
-		]
-
-		// 버튼 행
+		// ══════════════════════════════════════════════════════
+		// Mode B: Pipeline / JSON 직접 편집
+		// ══════════════════════════════════════════════════════
 		+ SVerticalBox::Slot()
 		.AutoHeight()
+		.Padding(0, 4, 0, 4)
 		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 4, 0)
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+			.Padding(8)
 			[
-				SNew(SButton)
-				.Text(LOCTEXT("LoadFromStep", "Load from Step"))
-				.ToolTipText(LOCTEXT("LoadFromStepTip", "Load input data from the previous step's output"))
-				.OnClicked_Lambda([this]() { OnLoadFromStep(); return FReply::Handled(); })
-			]
+				SNew(SVerticalBox)
 
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(4, 0, 4, 0)
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("Generate", "Generate"))
-				.OnClicked_Lambda([this]() { OnGenerate(); return FReply::Handled(); })
-				.IsEnabled_Lambda([this]() { return !ClaudeProcess.IsValid() || !ClaudeProcess->IsRunning(); })
-			]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 0, 0, 4)
+				[
+					SNew(STextBlock)
+					.Text(LOCTEXT("ModeBHeader", "Intent JSON"))
+					.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
+				]
 
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(4, 0, 0, 0)
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("Cancel", "Cancel"))
-				.OnClicked_Lambda([this]() { OnCancel(); return FReply::Handled(); })
-				.IsEnabled_Lambda([this]() { return ClaudeProcess.IsValid() && ClaudeProcess->IsRunning(); })
-				.ButtonColorAndOpacity(FLinearColor(0.8f, 0.2f, 0.2f, 1.0f))
+				// 필드 가이드 (접기/펼치기) — 독립 슬롯
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 0, 0, 4)
+				[
+					SNew(SExpandableArea)
+					.AreaTitle(LOCTEXT("IntentGuideTitle", "Intent Guide"))
+					.InitiallyCollapsed(true)
+					.BodyContent()
+					[
+						SNew(SVerticalBox)
+
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(4, 4, 4, 8)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(HelpText))
+							.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+							.AutoWrapText(true)
+						]
+
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(4, 0, 4, 4)
+						[
+							SNew(STextBlock)
+							.Text(LOCTEXT("ExampleLabel", "-- Example --"))
+							.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+							.ColorAndOpacity(FSlateColor(FLinearColor(0.4f, 0.7f, 1.0f)))
+						]
+
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.MaxHeight(250.0f)
+						.Padding(4, 0, 4, 4)
+						[
+							SNew(SBorder)
+							.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+							.Padding(6)
+							[
+								SNew(STextBlock)
+								.Text(FText::FromString(ExampleJson))
+								.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+							]
+						]
+
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(4, 0, 4, 4)
+						[
+							SNew(SButton)
+							.Text(LOCTEXT("LoadExample", "Load Example"))
+							.ToolTipText(LOCTEXT("LoadExampleTip", "Load this example JSON into the editor"))
+							.OnClicked_Lambda([this, ExampleJson]()
+							{
+								IntentEditor->SetText(FText::FromString(ExampleJson));
+								return FReply::Handled();
+							})
+						]
+					]
+				]
+
+				// JSON 에디터
+				+ SVerticalBox::Slot()
+				.FillHeight(1.0f)
+				.MaxHeight(300.0f)
+				.Padding(0, 0, 0, 8)
+				[
+					SNew(SBox)
+					.MinDesiredHeight(150.0f)
+					[
+						SAssignNew(IntentEditor, SMultiLineEditableTextBox)
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+						.HintText(LOCTEXT("IntentEditorHint", "Enter JSON here, use 'Load from Step', or convert from natural language above"))
+						.Text(FText::GetEmpty())
+					]
+				]
+
+				// 하단 버튼
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 4, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("LoadFromStep", "Load from Step"))
+						.ToolTipText(LOCTEXT("LoadFromStepTip", "Load input data from the previous pipeline step's output"))
+						.OnClicked_Lambda([this]() { OnLoadFromStep(); return FReply::Handled(); })
+						.IsEnabled_Lambda([this]()
+						{
+							return !ProjectId.IsEmpty();
+						})
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(4, 0, 4, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("Generate", "Generate"))
+						.ToolTipText(LOCTEXT("GenerateTip", "Generate from intent JSON"))
+						.OnClicked_Lambda([this]() { OnGenerate(); return FReply::Handled(); })
+						.IsEnabled_Lambda([this]() { return !ClaudeProcess.IsValid() || !ClaudeProcess->IsRunning(); })
+						.ButtonColorAndOpacity(FLinearColor(0.2f, 0.6f, 0.2f, 1.0f))
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(4, 0, 0, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("Cancel", "Cancel"))
+						.OnClicked_Lambda([this]() { OnCancel(); return FReply::Handled(); })
+						.IsEnabled_Lambda([this]() { return ClaudeProcess.IsValid() && ClaudeProcess->IsRunning(); })
+						.ButtonColorAndOpacity(FLinearColor(0.8f, 0.2f, 0.2f, 1.0f))
+					]
+				]
 			]
 		];
 }
@@ -1046,6 +1172,189 @@ bool SHktGeneratorTab::OnTick(float DeltaTime)
 		}
 	}
 	return true; // 계속 Tick
+}
+
+// ==================== NL → Intent Conversion ====================
+
+FString SHktGeneratorTab::BuildNLConversionPrompt(const FString& NaturalLanguage) const
+{
+	FString HelpText = GetIntentHelpText(GeneratorInfo.Type);
+	FString ExampleJson = GetIntentExample(GeneratorInfo.Type);
+
+	FString Prompt;
+	Prompt += TEXT("You are a JSON generator. Convert the user's natural language description into a valid intent JSON.\n\n");
+	Prompt += TEXT("## Generator Type\n\n");
+	Prompt += GeneratorInfo.DisplayName;
+	Prompt += TEXT("\n\n## Intent Schema\n\n");
+	Prompt += HelpText;
+	Prompt += TEXT("\n\n## Example Output\n\n");
+	Prompt += ExampleJson;
+	Prompt += TEXT("\n\n## Rules\n\n");
+	Prompt += TEXT("- Output ONLY the JSON. No explanations, no markdown fences, no comments.\n");
+	Prompt += TEXT("- Follow the schema exactly. Fill all required fields.\n");
+	Prompt += TEXT("- Infer reasonable values for fields the user didn't mention.\n");
+	Prompt += TEXT("- Use the example as a structural reference.\n");
+	Prompt += TEXT("- Tag naming convention: VFX → VFX.{Event}.{Element}, Character → Entity.Character.{Name}, ");
+	Prompt += TEXT("Item → Entity.Item.{Category}.{SubType}, Story → Story.Quest.{Name}\n");
+	Prompt += TEXT("- For VFX: choose appropriate emitter roles (core, spark, trail, smoke, debris, ring, shockwave) ");
+	Prompt += TEXT("based on the description. Set color_palette RGB values > 1.0 for HDR emissive effects.\n");
+	Prompt += TEXT("\n## User Description\n\n");
+	Prompt += NaturalLanguage;
+
+	return Prompt;
+}
+
+void SHktGeneratorTab::OnConvertAndGenerate()
+{
+	bAutoGenerateAfterConvert = true;
+	OnConvertNL();
+}
+
+void SHktGeneratorTab::OnConvertNL()
+{
+	if (NLProcess.IsValid() && NLProcess->IsRunning())
+	{
+		return;
+	}
+
+	FString NaturalLanguage = NaturalLanguageEditor->GetText().ToString().TrimStartAndEnd();
+	if (NaturalLanguage.IsEmpty())
+	{
+		AddLogLine(TEXT("[Error] Please enter a description in natural language."));
+		bAutoGenerateAfterConvert = false;
+		return;
+	}
+
+	// Progress 섹션 표시하여 로그를 사용자에게 보여줌
+	SetSectionVisibility(true, false, false);
+
+	AddLogLine(FString::Printf(TEXT("[NL] Converting: \"%s\"%s"),
+		*NaturalLanguage.Left(100),
+		bAutoGenerateAfterConvert ? TEXT(" (will auto-generate)") : TEXT("")));
+
+	NLResultBuffer.Empty();
+
+	NLProcess = MakeShared<FHktClaudeProcess>();
+	NLProcess->OnOutput.BindSP(this, &SHktGeneratorTab::OnNLOutput);
+	NLProcess->OnComplete.BindSP(this, &SHktGeneratorTab::OnNLComplete);
+	NLProcess->OnError.BindSP(this, &SHktGeneratorTab::OnNLError);
+
+	FString Prompt = BuildNLConversionPrompt(NaturalLanguage);
+	FString SystemPrompt = TEXT("You output only valid JSON. No markdown, no explanation.");
+	FString WorkingDir = FindPluginDir();
+
+	if (!NLProcess->Start(Prompt, SystemPrompt, WorkingDir))
+	{
+		AddLogLine(TEXT("[NL Error] Failed to start Claude CLI for conversion."));
+		NLProcess.Reset();
+		bAutoGenerateAfterConvert = false;
+		return;
+	}
+
+	// NL Tick 등록
+	if (NLTickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(NLTickHandle);
+		NLTickHandle.Reset();
+	}
+	NLTickHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateSP(this, &SHktGeneratorTab::OnNLTick), 0.05f);
+}
+
+void SHktGeneratorTab::OnNLError(const FString& ErrorMsg)
+{
+	AddLogLine(FString::Printf(TEXT("[NL Error] %s"), *ErrorMsg));
+}
+
+void SHktGeneratorTab::OnNLOutput(const FString& JsonLine)
+{
+	FHktClaudeEvent Event = ParseClaudeEvent(JsonLine);
+
+	if (Event.Type == TEXT("result"))
+	{
+		NLResultBuffer = Event.Content;
+	}
+	else if (Event.Type == TEXT("assistant"))
+	{
+		// 스트리밍 텍스트가 JSON일 수 있으므로 누적
+		if (!Event.Content.IsEmpty())
+		{
+			NLResultBuffer += Event.Content;
+		}
+	}
+}
+
+void SHktGeneratorTab::OnNLComplete(int32 ExitCode)
+{
+	// NL Tick 해제
+	if (NLTickHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(NLTickHandle);
+		NLTickHandle.Reset();
+	}
+
+	if (ExitCode != 0 || NLResultBuffer.IsEmpty())
+	{
+		AddLogLine(FString::Printf(TEXT("[NL Error] Conversion failed (exit code: %d)"), ExitCode));
+		NLProcess.Reset();
+		bAutoGenerateAfterConvert = false;
+		return;
+	}
+
+	// JSON 추출 — markdown 코드 블록 제거
+	FString Result = NLResultBuffer.TrimStartAndEnd();
+	if (Result.StartsWith(TEXT("```")))
+	{
+		// 첫 줄(```json 등)과 마지막 줄(```) 제거
+		int32 FirstNewline;
+		if (Result.FindChar(TEXT('\n'), FirstNewline))
+		{
+			Result.RightChopInline(FirstNewline + 1);
+		}
+		if (Result.EndsWith(TEXT("```")))
+		{
+			Result.LeftChopInline(3);
+			Result.TrimEndInline();
+		}
+	}
+
+	// JSON 검증
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Result);
+	TSharedPtr<FJsonValue> Parsed;
+	if (FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid())
+	{
+		IntentEditor->SetText(FText::FromString(Result));
+		AddLogLine(TEXT("[NL] Conversion successful. Intent JSON has been populated."));
+	}
+	else
+	{
+		// JSON이 아닌 경우에도 일단 표시 (사용자가 수정 가능)
+		IntentEditor->SetText(FText::FromString(Result));
+		AddLogLine(TEXT("[NL Warning] Output may not be valid JSON. Please review and fix if needed."));
+	}
+
+	NLProcess.Reset();
+
+	// Convert → Generate 연결
+	if (bAutoGenerateAfterConvert)
+	{
+		bAutoGenerateAfterConvert = false;
+		AddLogLine(TEXT("[NL] Auto-generating from converted intent..."));
+		OnGenerate();
+	}
+}
+
+bool SHktGeneratorTab::OnNLTick(float DeltaTime)
+{
+	if (NLProcess.IsValid())
+	{
+		NLProcess->Tick();
+		if (!NLProcess->IsRunning())
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 #undef LOCTEXT_NAMESPACE

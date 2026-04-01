@@ -503,6 +503,7 @@ void SHktGeneratorPromptPanel::OnTabSelected(int32 Index)
 
 void SHktGeneratorPromptPanel::OnRefreshClicked()
 {
+	RefreshStatus();
 	StepsDataPath = FindStepsDataPath();
 	DiscoverProjects();
 
