@@ -1237,10 +1237,7 @@ void SHktGeneratorTab::OnConvertNL()
 	NLProcess = MakeShared<FHktClaudeProcess>();
 	NLProcess->OnOutput.BindSP(this, &SHktGeneratorTab::OnNLOutput);
 	NLProcess->OnComplete.BindSP(this, &SHktGeneratorTab::OnNLComplete);
-	NLProcess->OnError.BindLambda([this](const FString& Err)
-	{
-		AddLogLine(FString::Printf(TEXT("[NL Error] %s"), *Err));
-	});
+	NLProcess->OnError.BindSP(this, &SHktGeneratorTab::OnNLError);
 
 	FString Prompt = BuildNLConversionPrompt(NaturalLanguage);
 	FString SystemPrompt = TEXT("You output only valid JSON. No markdown, no explanation.");
@@ -1262,6 +1259,11 @@ void SHktGeneratorTab::OnConvertNL()
 	}
 	NLTickHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateSP(this, &SHktGeneratorTab::OnNLTick), 0.05f);
+}
+
+void SHktGeneratorTab::OnNLError(const FString& ErrorMsg)
+{
+	AddLogLine(FString::Printf(TEXT("[NL Error] %s"), *ErrorMsg));
 }
 
 void SHktGeneratorTab::OnNLOutput(const FString& JsonLine)

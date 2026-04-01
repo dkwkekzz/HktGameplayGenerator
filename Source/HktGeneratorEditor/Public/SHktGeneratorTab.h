@@ -90,6 +90,7 @@ private:
 	void OnConvertNL();
 	void OnConvertAndGenerate();
 	void OnNLOutput(const FString& JsonLine);
+	void OnNLError(const FString& ErrorMsg);
 	void OnNLComplete(int32 ExitCode);
 	bool OnNLTick(float DeltaTime);
 	FString BuildNLConversionPrompt(const FString& NaturalLanguage) const;
