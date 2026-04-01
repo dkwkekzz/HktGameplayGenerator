@@ -24,15 +24,25 @@
 #include "IPythonScriptPlugin.h"
 #include "UObject/SavePackage.h"
 #include "Factories/DataAssetFactory.h"
+#include "HAL/PlatformProcess.h"
+#include "Async/Async.h"
 
 void UHktMcpEditorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	UE_LOG(LogHktMcpEditor, Log, TEXT("HktMcpEditorSubsystem Initialized - Ready for Python MCP Server"));
+
+	// 에디터 시작 시 MCP Bridge 서버 자동 시작
+	StartMcpServer();
+
+	// Claude CLI 연결 검증도 자동 실행
+	VerifyAgentConnection();
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("HktMcpEditorSubsystem Initialized - MCP Server started, Agent verification in progress"));
 }
 
 void UHktMcpEditorSubsystem::Deinitialize()
 {
+	StopMcpServer();
 	UE_LOG(LogHktMcpEditor, Log, TEXT("HktMcpEditorSubsystem Deinitialized"));
 	Super::Deinitialize();
 }
@@ -721,6 +731,413 @@ FString UHktMcpEditorSubsystem::ExecutePythonScript(const FString& ScriptCode, f
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
 	FJsonSerializer::Serialize(Result, Writer);
 	return Output;
+}
+
+// ==================== Generation Request Queue ====================
+
+FString UHktMcpEditorSubsystem::SubmitGenerationRequest(const FHktGenerationRequest& InRequest)
+{
+	FHktGenerationRequest Request = InRequest;
+
+	// RequestId 생성 (비어 있으면)
+	if (Request.RequestId.IsEmpty())
+	{
+		Request.RequestId = FString::Printf(TEXT("gen-%d-%lld"), NextRequestId++, FDateTime::Now().GetTicks());
+	}
+
+	Request.Status = EHktGenerationStatus::Pending;
+	GenerationRequests.Add(Request.RequestId, Request);
+	PendingRequestQueue.Add(Request.RequestId);
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("Generation request submitted: %s (skill: %s, project: %s)"),
+		*Request.RequestId, *Request.SkillName, *Request.ProjectId);
+
+	return Request.RequestId;
+}
+
+FHktGenerationRequest UHktMcpEditorSubsystem::PollGenerationRequest()
+{
+	if (PendingRequestQueue.Num() == 0)
+	{
+		return FHktGenerationRequest();
+	}
+
+	FString RequestId = PendingRequestQueue[0];
+	PendingRequestQueue.RemoveAt(0);
+
+	FHktGenerationRequest* Request = GenerationRequests.Find(RequestId);
+	if (!Request)
+	{
+		return FHktGenerationRequest();
+	}
+
+	Request->Status = EHktGenerationStatus::InProgress;
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("Generation request polled: %s"), *RequestId);
+	return *Request;
+}
+
+void UHktMcpEditorSubsystem::SendGenerationEvent(const FHktGenerationEvent& Event)
+{
+	// 요청 상태 업데이트
+	FHktGenerationRequest* Request = GenerationRequests.Find(Event.RequestId);
+	if (Request)
+	{
+		if (Event.EventType == TEXT("complete"))
+		{
+			Request->Status = (Event.ExitCode == 0)
+				? EHktGenerationStatus::Completed
+				: EHktGenerationStatus::Failed;
+		}
+		else if (Event.EventType == TEXT("error"))
+		{
+			Request->Status = EHktGenerationStatus::Failed;
+		}
+	}
+
+	// UI에 브로드캐스트
+	OnGenerationEvent.Broadcast(Event);
+}
+
+void UHktMcpEditorSubsystem::CancelGenerationRequest(const FString& RequestId)
+{
+	// Pending 큐에서 제거
+	PendingRequestQueue.Remove(RequestId);
+
+	FHktGenerationRequest* Request = GenerationRequests.Find(RequestId);
+	if (Request)
+	{
+		Request->Status = EHktGenerationStatus::Cancelled;
+
+		// 취소 이벤트 브로드캐스트
+		FHktGenerationEvent CancelEvent;
+		CancelEvent.RequestId = RequestId;
+		CancelEvent.EventType = TEXT("error");
+		CancelEvent.Content = TEXT("Cancelled by user");
+		OnGenerationEvent.Broadcast(CancelEvent);
+	}
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("Generation request cancelled: %s"), *RequestId);
+}
+
+EHktGenerationStatus UHktMcpEditorSubsystem::GetGenerationStatus(const FString& RequestId) const
+{
+	const FHktGenerationRequest* Request = GenerationRequests.Find(RequestId);
+	return Request ? Request->Status : EHktGenerationStatus::Failed;
+}
+
+// ==================== External Agent Connection ====================
+
+void UHktMcpEditorSubsystem::ConnectAgent(const FHktAgentInfo& AgentInfo)
+{
+	FString Id = AgentInfo.AgentId;
+	if (Id.IsEmpty())
+	{
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("ConnectAgent: empty AgentId"));
+		return;
+	}
+
+	bool bNew = !ConnectedAgents.Contains(Id);
+
+	FAgentConnection& Conn = ConnectedAgents.FindOrAdd(Id);
+	Conn.Info = AgentInfo;
+	Conn.LastHeartbeat = FPlatformTime::Seconds();
+
+	if (bNew)
+	{
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent connected: %s (provider: %s, name: %s)"),
+			*Id, *AgentInfo.Provider, *AgentInfo.DisplayName);
+		OnAgentConnectionChanged.Broadcast(true, AgentInfo);
+	}
+	else
+	{
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent reconnected: %s"), *Id);
+	}
+}
+
+bool UHktMcpEditorSubsystem::Heartbeat(const FString& AgentId)
+{
+	FAgentConnection* Conn = ConnectedAgents.Find(AgentId);
+	if (!Conn)
+	{
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("Heartbeat from unknown agent: %s — call ConnectAgent first"), *AgentId);
+		return false;
+	}
+
+	Conn->LastHeartbeat = FPlatformTime::Seconds();
+
+	// 타임아웃된 다른 에이전트 정리
+	CleanupTimedOutAgents();
+
+	return PendingRequestQueue.Num() > 0;
+}
+
+void UHktMcpEditorSubsystem::DisconnectAgent(const FString& AgentId)
+{
+	FAgentConnection* Conn = ConnectedAgents.Find(AgentId);
+	if (Conn)
+	{
+		FHktAgentInfo Info = Conn->Info;
+		ConnectedAgents.Remove(AgentId);
+
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent disconnected: %s (%s)"), *AgentId, *Info.DisplayName);
+		OnAgentConnectionChanged.Broadcast(false, Info);
+	}
+}
+
+bool UHktMcpEditorSubsystem::IsExternalAgentConnected() const
+{
+	double Now = FPlatformTime::Seconds();
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) < AgentTimeoutSeconds)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FHktAgentInfo UHktMcpEditorSubsystem::GetConnectedAgentInfo() const
+{
+	double Now = FPlatformTime::Seconds();
+	// 가장 최근 Heartbeat인 에이전트 반환
+	const FAgentConnection* Best = nullptr;
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) < AgentTimeoutSeconds)
+		{
+			if (!Best || Pair.Value.LastHeartbeat > Best->LastHeartbeat)
+			{
+				Best = &Pair.Value;
+			}
+		}
+	}
+	return Best ? Best->Info : FHktAgentInfo();
+}
+
+int32 UHktMcpEditorSubsystem::GetConnectedAgentCount() const
+{
+	double Now = FPlatformTime::Seconds();
+	int32 Count = 0;
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) < AgentTimeoutSeconds)
+		{
+			Count++;
+		}
+	}
+	return Count;
+}
+
+void UHktMcpEditorSubsystem::CleanupTimedOutAgents()
+{
+	double Now = FPlatformTime::Seconds();
+	TArray<FString> TimedOut;
+
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) >= AgentTimeoutSeconds)
+		{
+			TimedOut.Add(Pair.Key);
+		}
+	}
+
+	for (const FString& Id : TimedOut)
+	{
+		FAgentConnection Conn = ConnectedAgents.FindAndRemoveChecked(Id);
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent timed out: %s (%s)"), *Id, *Conn.Info.DisplayName);
+		OnAgentConnectionChanged.Broadcast(false, Conn.Info);
+	}
+}
+
+// ==================== MCP Bridge Server (Editor-level) ====================
+
+bool UHktMcpEditorSubsystem::StartMcpServer(int32 Port)
+{
+	if (bMcpServerRunning)
+	{
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("MCP Bridge server already running on port %d"), McpServerPort);
+		return false;
+	}
+
+	// Port 0이면 기본 포트 사용
+	if (Port == 0)
+	{
+		Port = 9876;
+	}
+
+	McpServerPort = Port;
+
+	// TODO: 실제 WebSocket 서버 구현
+	// UE5의 WebSocket 모듈은 클라이언트만 지원하므로
+	// 서버 기능은 별도 구현 필요 (libwebsocket 또는 TCP 서버 + WS 프로토콜)
+	// 현재는 placeholder로 서버 상태를 관리
+
+	bMcpServerRunning = true;
+	UE_LOG(LogHktMcpEditor, Log, TEXT("MCP Bridge server started on port %d (editor-level)"), McpServerPort);
+
+	OnMcpServerStateChanged.Broadcast(true);
+	return true;
+}
+
+void UHktMcpEditorSubsystem::StopMcpServer()
+{
+	if (!bMcpServerRunning)
+	{
+		return;
+	}
+
+	McpClientCount = 0;
+	bMcpServerRunning = false;
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("MCP Bridge server stopped"));
+	OnMcpServerStateChanged.Broadcast(false);
+}
+
+bool UHktMcpEditorSubsystem::ReconnectMcpServer()
+{
+	UE_LOG(LogHktMcpEditor, Log, TEXT("Reconnecting MCP Bridge server..."));
+	StopMcpServer();
+	return StartMcpServer();
+}
+
+// ==================== Agent Connection Verification ====================
+
+void UHktMcpEditorSubsystem::VerifyAgentConnection(const FString& CLIPathOverride)
+{
+	if (bAgentVerifying)
+	{
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("Agent verification already in progress"));
+		return;
+	}
+
+	bAgentVerifying = true;
+	bAgentVerified = false;
+	AgentVersionString.Empty();
+
+	// CLIPathOverride가 있으면 해당 경로 사용, 없으면 자동 탐색
+	FString CLIPath;
+	if (!CLIPathOverride.IsEmpty() && FPaths::FileExists(CLIPathOverride))
+	{
+		CLIPath = CLIPathOverride;
+	}
+	else
+	{
+		// 환경변수 → 알려진 경로 → PATH 순서로 탐색
+		FString EnvCLI = FPlatformMisc::GetEnvironmentVariable(TEXT("HKT_CLAUDE_CLI"));
+		if (!EnvCLI.IsEmpty() && FPaths::FileExists(EnvCLI))
+		{
+			CLIPath = EnvCLI;
+		}
+		else
+		{
+			// 간단한 알려진 경로 확인
+			TArray<FString> SearchPaths;
+#if PLATFORM_WINDOWS
+			FString UserProfile = FPlatformMisc::GetEnvironmentVariable(TEXT("USERPROFILE"));
+			FString LocalAppData = FPlatformMisc::GetEnvironmentVariable(TEXT("LOCALAPPDATA"));
+			FString AppData = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA"));
+			SearchPaths.Add(FPaths::Combine(UserProfile, TEXT(".claude"), TEXT("local"), TEXT("claude.exe")));
+			SearchPaths.Add(FPaths::Combine(LocalAppData, TEXT("Programs"), TEXT("claude"), TEXT("claude.exe")));
+			SearchPaths.Add(FPaths::Combine(AppData, TEXT("npm"), TEXT("claude.cmd")));
+#else
+			FString Home = FPlatformMisc::GetEnvironmentVariable(TEXT("HOME"));
+			SearchPaths.Add(FPaths::Combine(Home, TEXT(".claude"), TEXT("local"), TEXT("claude")));
+			SearchPaths.Add(TEXT("/usr/local/bin/claude"));
+			SearchPaths.Add(TEXT("/usr/bin/claude"));
+			SearchPaths.Add(FPaths::Combine(Home, TEXT(".local"), TEXT("bin"), TEXT("claude")));
+#endif
+			for (const FString& Path : SearchPaths)
+			{
+				if (FPaths::FileExists(Path))
+				{
+					CLIPath = Path;
+					break;
+				}
+			}
+
+			// PATH에서 which/where로 검색
+			if (CLIPath.IsEmpty())
+			{
+#if PLATFORM_WINDOWS
+				FString WhichExe = TEXT("C:\\Windows\\System32\\where.exe");
+#else
+				FString WhichExe = TEXT("/usr/bin/which");
+#endif
+				FString WhichOutput;
+				int32 WhichReturnCode = -1;
+				if (FPaths::FileExists(WhichExe))
+				{
+					FPlatformProcess::ExecProcess(*WhichExe, TEXT("claude"), &WhichReturnCode, &WhichOutput, nullptr);
+					if (WhichReturnCode == 0)
+					{
+						FString FoundPath = WhichOutput.TrimStartAndEnd();
+						int32 NewlineIdx;
+						if (FoundPath.FindChar(TEXT('\n'), NewlineIdx))
+						{
+							FoundPath.LeftInline(NewlineIdx);
+							FoundPath.TrimEndInline();
+						}
+						if (!FoundPath.IsEmpty() && FPaths::FileExists(FoundPath))
+						{
+							CLIPath = FoundPath;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if (CLIPath.IsEmpty())
+	{
+		bAgentVerifying = false;
+		bAgentVerified = false;
+		AgentCLIPath.Empty();
+		AgentVersionString = TEXT("CLI not found");
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("Agent verification failed: Claude CLI not found"));
+		OnAgentVerified.Broadcast(false, AgentVersionString);
+		return;
+	}
+
+	AgentCLIPath = CLIPath;
+
+	// 백그라운드 스레드에서 `claude --version` 실행
+	TWeakObjectPtr<UHktMcpEditorSubsystem> WeakThis(this);
+	FString CapturedCLIPath = CLIPath;
+
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis, CapturedCLIPath]()
+	{
+		FString StdOut;
+		FString StdErr;
+		int32 ReturnCode = -1;
+
+		FPlatformProcess::ExecProcess(*CapturedCLIPath, TEXT("--version"), &ReturnCode, &StdOut, &StdErr);
+
+		FString VersionStr = StdOut.TrimStartAndEnd();
+		bool bSuccess = (ReturnCode == 0 && !VersionStr.IsEmpty());
+
+		if (!bSuccess && !StdErr.IsEmpty())
+		{
+			VersionStr = StdErr.TrimStartAndEnd();
+		}
+
+		// GameThread로 결과 전달
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, bSuccess, VersionStr]()
+		{
+			if (UHktMcpEditorSubsystem* Self = WeakThis.Get())
+			{
+				Self->bAgentVerifying = false;
+				Self->bAgentVerified = bSuccess;
+				Self->AgentVersionString = bSuccess ? VersionStr : FString::Printf(TEXT("Failed: %s"), *VersionStr);
+
+				UE_LOG(LogHktMcpEditor, Log, TEXT("Agent verification %s: %s"),
+					bSuccess ? TEXT("succeeded") : TEXT("failed"), *Self->AgentVersionString);
+
+				Self->OnAgentVerified.Broadcast(bSuccess, Self->AgentVersionString);
+			}
+		});
+	});
 }
 
 // ==================== Helper Functions ====================

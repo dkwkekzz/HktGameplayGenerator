@@ -4,7 +4,9 @@
 #include "SHktGeneratorTab.h"
 #include "SHktAgentConnectionPanel.h"
 #include "HktClaudeProcess.h"
+#include "HktMcpEditorSubsystem.h"
 #include "HktGeneratorEditorModule.h"
+#include "Editor.h"
 #include "HktGeneratorEditorSettings.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
@@ -250,7 +252,7 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 					.Padding(0, 0, 6, 0)
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("StatusCLI", "Claude CLI:"))
+						.Text(LOCTEXT("StatusAgent", "AI Agent:"))
 						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
 					]
 
@@ -258,18 +260,35 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 					.FillWidth(1.0f)
 					[
 						SNew(STextBlock)
-						.Text_Lambda([this]()
+						.Text_Lambda([]()
 						{
-							bool bFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
-							return FText::FromString(bFound ? DetectedClaudeCLI : TEXT("Not found"));
+							if (GEditor)
+							{
+								UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+								if (McpSub && McpSub->IsExternalAgentConnected())
+								{
+									FHktAgentInfo Info = McpSub->GetConnectedAgentInfo();
+									if (!Info.DisplayName.IsEmpty())
+									{
+										return FText::FromString(FString::Printf(TEXT("%s [%s]"), *Info.DisplayName, *Info.Provider));
+									}
+									return FText::FromString(TEXT("Connected"));
+								}
+							}
+							return FText::FromString(TEXT("Not connected"));
 						})
 						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
-						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						.ColorAndOpacity_Lambda([]() -> FSlateColor
 						{
-							bool bFound = !DetectedClaudeCLI.IsEmpty() && DetectedClaudeCLI != TEXT("claude");
-							return FSlateColor(bFound
-								? FLinearColor(0.2f, 0.8f, 0.2f)
-								: FLinearColor(1.0f, 0.4f, 0.2f));
+							if (GEditor)
+							{
+								UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+								if (McpSub && McpSub->IsExternalAgentConnected())
+								{
+									return FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f));
+								}
+							}
+							return FSlateColor(FLinearColor(1.0f, 0.4f, 0.2f));
 						})
 						.AutoWrapText(true)
 					]
