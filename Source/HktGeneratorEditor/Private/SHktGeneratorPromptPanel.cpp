@@ -266,6 +266,11 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 								UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
 								if (McpSub && McpSub->IsExternalAgentConnected())
 								{
+									FHktAgentInfo Info = McpSub->GetConnectedAgentInfo();
+									if (!Info.DisplayName.IsEmpty())
+									{
+										return FText::FromString(FString::Printf(TEXT("%s [%s]"), *Info.DisplayName, *Info.Provider));
+									}
 									return FText::FromString(TEXT("Connected"));
 								}
 							}

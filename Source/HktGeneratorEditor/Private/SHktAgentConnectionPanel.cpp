@@ -373,12 +373,25 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
 	}
 
 	// 외부 에이전트 연결 상태
-	FLinearColor AgentColor = bExternalAgentConnected
-		? FLinearColor(0.2f, 0.8f, 0.2f)
-		: FLinearColor(1.0f, 0.4f, 0.2f);
-	FString AgentText = bExternalAgentConnected
-		? TEXT("Connected — 외부 Agent가 MCP를 통해 연결됨")
-		: TEXT("Not connected — 터미널에서 Claude CLI를 실행해주세요");
+	FLinearColor AgentColor;
+	FString AgentText;
+	if (bExternalAgentConnected)
+	{
+		AgentColor = FLinearColor(0.2f, 0.8f, 0.2f);
+		if (!ConnectedAgentDisplayName.IsEmpty())
+		{
+			AgentText = FString::Printf(TEXT("Connected: %s [%s]"), *ConnectedAgentDisplayName, *ConnectedAgentProvider);
+		}
+		else
+		{
+			AgentText = TEXT("Connected");
+		}
+	}
+	else
+	{
+		AgentColor = FLinearColor(1.0f, 0.4f, 0.2f);
+		AgentText = TEXT("Not connected — 터미널에서 AI Agent를 실행해주세요");
+	}
 
 	return SNew(SVerticalBox)
 
@@ -445,8 +458,8 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
 		[
 			SNew(STextBlock)
 			.Text(LOCTEXT("AgentNote",
-				"사용자가 직접 터미널에서 Claude CLI를 실행하면, MCP 서버를 통해 자동으로 연결됩니다.\n"
-				"Generator 패널에서 생성 요청 시 연결된 외부 Agent가 처리합니다."))
+				"AI Agent를 터미널에서 실행하면, MCP ConnectAgent → Heartbeat로 연결됩니다.\n"
+				"Claude CLI 외에 Anthropic Console API, OpenAI API 등 다른 프로바이더도 동일한 방식으로 연결 가능합니다."))
 			.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
 			.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
 			.AutoWrapText(true)
@@ -699,6 +712,8 @@ void SHktAgentConnectionPanel::RefreshAgentStatus()
 	bAgentVerifying = false;
 	AgentVersionString.Empty();
 	bExternalAgentConnected = false;
+	ConnectedAgentProvider.Empty();
+	ConnectedAgentDisplayName.Empty();
 
 	if (GEditor)
 	{
@@ -709,6 +724,13 @@ void SHktAgentConnectionPanel::RefreshAgentStatus()
 			bAgentVerifying = McpSub->IsAgentVerifying();
 			AgentVersionString = McpSub->GetAgentVersion();
 			bExternalAgentConnected = McpSub->IsExternalAgentConnected();
+
+			if (bExternalAgentConnected)
+			{
+				FHktAgentInfo AgentInfo = McpSub->GetConnectedAgentInfo();
+				ConnectedAgentProvider = AgentInfo.Provider;
+				ConnectedAgentDisplayName = AgentInfo.DisplayName;
+			}
 		}
 	}
 }

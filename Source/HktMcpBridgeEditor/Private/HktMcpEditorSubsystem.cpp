@@ -757,8 +757,6 @@ FString UHktMcpEditorSubsystem::SubmitGenerationRequest(const FHktGenerationRequ
 
 FHktGenerationRequest UHktMcpEditorSubsystem::PollGenerationRequest()
 {
-	LastPollTimestamp = FPlatformTime::Seconds();
-
 	if (PendingRequestQueue.Num() == 0)
 	{
 		return FHktGenerationRequest();
@@ -828,10 +826,129 @@ EHktGenerationStatus UHktMcpEditorSubsystem::GetGenerationStatus(const FString& 
 	return Request ? Request->Status : EHktGenerationStatus::Failed;
 }
 
+// ==================== External Agent Connection ====================
+
+void UHktMcpEditorSubsystem::ConnectAgent(const FHktAgentInfo& AgentInfo)
+{
+	FString Id = AgentInfo.AgentId;
+	if (Id.IsEmpty())
+	{
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("ConnectAgent: empty AgentId"));
+		return;
+	}
+
+	bool bNew = !ConnectedAgents.Contains(Id);
+
+	FAgentConnection& Conn = ConnectedAgents.FindOrAdd(Id);
+	Conn.Info = AgentInfo;
+	Conn.LastHeartbeat = FPlatformTime::Seconds();
+
+	if (bNew)
+	{
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent connected: %s (provider: %s, name: %s)"),
+			*Id, *AgentInfo.Provider, *AgentInfo.DisplayName);
+		OnAgentConnectionChanged.Broadcast(true, AgentInfo);
+	}
+	else
+	{
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent reconnected: %s"), *Id);
+	}
+}
+
+bool UHktMcpEditorSubsystem::Heartbeat(const FString& AgentId)
+{
+	FAgentConnection* Conn = ConnectedAgents.Find(AgentId);
+	if (!Conn)
+	{
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("Heartbeat from unknown agent: %s — call ConnectAgent first"), *AgentId);
+		return false;
+	}
+
+	Conn->LastHeartbeat = FPlatformTime::Seconds();
+
+	// 타임아웃된 다른 에이전트 정리
+	CleanupTimedOutAgents();
+
+	return PendingRequestQueue.Num() > 0;
+}
+
+void UHktMcpEditorSubsystem::DisconnectAgent(const FString& AgentId)
+{
+	FAgentConnection* Conn = ConnectedAgents.Find(AgentId);
+	if (Conn)
+	{
+		FHktAgentInfo Info = Conn->Info;
+		ConnectedAgents.Remove(AgentId);
+
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent disconnected: %s (%s)"), *AgentId, *Info.DisplayName);
+		OnAgentConnectionChanged.Broadcast(false, Info);
+	}
+}
+
 bool UHktMcpEditorSubsystem::IsExternalAgentConnected() const
 {
-	// 최근 10초 내 Poll이 있었으면 연결됨으로 판단
-	return (FPlatformTime::Seconds() - LastPollTimestamp) < 10.0;
+	double Now = FPlatformTime::Seconds();
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) < AgentTimeoutSeconds)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+FHktAgentInfo UHktMcpEditorSubsystem::GetConnectedAgentInfo() const
+{
+	double Now = FPlatformTime::Seconds();
+	// 가장 최근 Heartbeat인 에이전트 반환
+	const FAgentConnection* Best = nullptr;
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) < AgentTimeoutSeconds)
+		{
+			if (!Best || Pair.Value.LastHeartbeat > Best->LastHeartbeat)
+			{
+				Best = &Pair.Value;
+			}
+		}
+	}
+	return Best ? Best->Info : FHktAgentInfo();
+}
+
+int32 UHktMcpEditorSubsystem::GetConnectedAgentCount() const
+{
+	double Now = FPlatformTime::Seconds();
+	int32 Count = 0;
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) < AgentTimeoutSeconds)
+		{
+			Count++;
+		}
+	}
+	return Count;
+}
+
+void UHktMcpEditorSubsystem::CleanupTimedOutAgents()
+{
+	double Now = FPlatformTime::Seconds();
+	TArray<FString> TimedOut;
+
+	for (const auto& Pair : ConnectedAgents)
+	{
+		if ((Now - Pair.Value.LastHeartbeat) >= AgentTimeoutSeconds)
+		{
+			TimedOut.Add(Pair.Key);
+		}
+	}
+
+	for (const FString& Id : TimedOut)
+	{
+		FAgentConnection Conn = ConnectedAgents.FindAndRemoveChecked(Id);
+		UE_LOG(LogHktMcpEditor, Log, TEXT("Agent timed out: %s (%s)"), *Id, *Conn.Info.DisplayName);
+		OnAgentConnectionChanged.Broadcast(false, Conn.Info);
+	}
 }
 
 // ==================== MCP Bridge Server (Editor-level) ====================

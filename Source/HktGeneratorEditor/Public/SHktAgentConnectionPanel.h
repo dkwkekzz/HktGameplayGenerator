@@ -49,6 +49,8 @@ private:
 	bool bAgentVerifying = false;
 	FString AgentVersionString;
 	bool bExternalAgentConnected = false;
+	FString ConnectedAgentProvider;
+	FString ConnectedAgentDisplayName;
 
 	// ── UI Builders ──
 	TSharedRef<SWidget> BuildCLISection();

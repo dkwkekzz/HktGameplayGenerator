@@ -84,6 +84,37 @@ enum class EHktGenerationStatus : uint8
 	Cancelled     // 취소
 };
 
+/** 외부 에이전트 접속 정보 */
+USTRUCT(BlueprintType)
+struct FHktAgentInfo
+{
+	GENERATED_BODY()
+
+	/** 에이전트 고유 ID (클라이언트가 생성) */
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Agent")
+	FString AgentId;
+
+	/**
+	 * 에이전트 프로바이더 타입.
+	 * 예: "claude-cli", "anthropic-api", "openai-api", "custom"
+	 * UI와 요청 라우팅에서 참조.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Agent")
+	FString Provider;
+
+	/** 사람이 읽을 수 있는 에이전트 이름 (예: "Claude Code 1.0.3") */
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Agent")
+	FString DisplayName;
+
+	/** 에이전트 버전 문자열 */
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Agent")
+	FString Version;
+
+	/** 에이전트가 지원하는 기능 목록 (예: "generation", "nl-convert", "sub-agent") */
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Agent")
+	TArray<FString> Capabilities;
+};
+
 /** 생성 요청 — 외부 에이전트에 전달 */
 USTRUCT(BlueprintType)
 struct FHktGenerationRequest
@@ -192,9 +223,45 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnGenerationEvent, const FHktGenerationEvent&);
 	FOnGenerationEvent OnGenerationEvent;
 
-	/** 외부 에이전트 연결 여부 — 최근 N초 내 Poll이 있었는지 */
-	UFUNCTION(BlueprintPure, Category = "MCP|Generation")
+	// ==================== External Agent Connection ====================
+
+	/**
+	 * 외부 에이전트가 연결 시 호출.
+	 * 에이전트 정보를 등록하고, UI에 연결 상태를 표시.
+	 * 동일 AgentId로 재연결 시 정보만 갱신.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Agent")
+	void ConnectAgent(const FHktAgentInfo& AgentInfo);
+
+	/**
+	 * 외부 에이전트가 주기적으로 호출 (권장: 3~5초 간격).
+	 * 연결 유지 + 생성 요청 Pending 여부 반환.
+	 * @return Pending 요청이 있으면 true
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Agent")
+	bool Heartbeat(const FString& AgentId);
+
+	/**
+	 * 외부 에이전트가 정상 종료 시 호출.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Agent")
+	void DisconnectAgent(const FString& AgentId);
+
+	/** 외부 에이전트가 연결되어 있는지 (Heartbeat 기반) */
+	UFUNCTION(BlueprintPure, Category = "MCP|Agent")
 	bool IsExternalAgentConnected() const;
+
+	/** 현재 연결된 에이전트 정보 (없으면 빈 구조체) */
+	UFUNCTION(BlueprintPure, Category = "MCP|Agent")
+	FHktAgentInfo GetConnectedAgentInfo() const;
+
+	/** 연결된 에이전트 수 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Agent")
+	int32 GetConnectedAgentCount() const;
+
+	/** 에이전트 연결/해제 시 브로드캐스트 (bConnected, AgentInfo) */
+	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAgentConnectionChanged, bool, const FHktAgentInfo&);
+	FOnAgentConnectionChanged OnAgentConnectionChanged;
 
 	// ==================== Asset Tools ====================
 	
@@ -404,7 +471,18 @@ private:
 	// ── Generation Request Queue ──
 	TMap<FString, FHktGenerationRequest> GenerationRequests;  // RequestId → Request
 	TArray<FString> PendingRequestQueue;                       // Pending RequestId 순서
-	double LastPollTimestamp = 0.0;                             // 외부 에이전트 마지막 Poll 시각
 	int32 NextRequestId = 1;
+
+	// ── External Agent Connection ──
+	struct FAgentConnection
+	{
+		FHktAgentInfo Info;
+		double LastHeartbeat = 0.0;
+	};
+	TMap<FString, FAgentConnection> ConnectedAgents;           // AgentId → Connection
+	static constexpr double AgentTimeoutSeconds = 15.0;        // Heartbeat 타임아웃
+
+	/** 타임아웃된 에이전트 정리 (Heartbeat/Poll 호출 시 함께 실행) */
+	void CleanupTimedOutAgents();
 };
 
