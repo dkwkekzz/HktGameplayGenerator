@@ -48,6 +48,7 @@ private:
 	bool bAgentVerified = false;
 	bool bAgentVerifying = false;
 	FString AgentVersionString;
+	bool bExternalAgentConnected = false;
 
 	// ── UI Builders ──
 	TSharedRef<SWidget> BuildCLISection();

@@ -2,7 +2,8 @@
 
 #include "SHktGeneratorTab.h"
 #include "HktGeneratorEditorModule.h"
-#include "HktClaudeProcess.h"
+#include "HktMcpEditorSubsystem.h"
+#include "Editor.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SBox.h"
@@ -62,6 +63,8 @@ void SHktGeneratorTab::Construct(const FArguments& InArgs)
 	StepsDataPath = InArgs._StepsDataPath;
 	ProjectId = InArgs._ProjectId;
 
+	SubscribeToEvents();
+
 	ChildSlot
 	[
 		SNew(SScrollBox)
@@ -111,6 +114,11 @@ void SHktGeneratorTab::Construct(const FArguments& InArgs)
 
 	// 초기 상태: Progress/Result/Feedback 숨김
 	SetSectionVisibility(false, false, false);
+}
+
+SHktGeneratorTab::~SHktGeneratorTab()
+{
+	UnsubscribeFromEvents();
 }
 
 // ==================== SetProject ====================
@@ -206,8 +214,7 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 						.OnClicked_Lambda([this]() { OnConvertNL(); return FReply::Handled(); })
 						.IsEnabled_Lambda([this]()
 						{
-							return (!NLProcess.IsValid() || !NLProcess->IsRunning())
-								&& (!ClaudeProcess.IsValid() || !ClaudeProcess->IsRunning());
+							return !IsNLConverting() && !IsGenerating();
 						})
 					]
 
@@ -221,8 +228,7 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 						.OnClicked_Lambda([this]() { OnConvertAndGenerate(); return FReply::Handled(); })
 						.IsEnabled_Lambda([this]()
 						{
-							return (!NLProcess.IsValid() || !NLProcess->IsRunning())
-								&& (!ClaudeProcess.IsValid() || !ClaudeProcess->IsRunning());
+							return !IsNLConverting() && !IsGenerating();
 						})
 						.ButtonColorAndOpacity(FLinearColor(0.3f, 0.5f, 0.9f, 1.0f))
 					]
@@ -235,7 +241,7 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 						SNew(STextBlock)
 						.Text_Lambda([this]()
 						{
-							if (NLProcess.IsValid() && NLProcess->IsRunning())
+							if (IsNLConverting())
 							{
 								return LOCTEXT("NLConverting", "Converting...");
 							}
@@ -377,7 +383,7 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 						.Text(LOCTEXT("Generate", "Generate"))
 						.ToolTipText(LOCTEXT("GenerateTip", "Generate from intent JSON"))
 						.OnClicked_Lambda([this]() { OnGenerate(); return FReply::Handled(); })
-						.IsEnabled_Lambda([this]() { return !ClaudeProcess.IsValid() || !ClaudeProcess->IsRunning(); })
+						.IsEnabled_Lambda([this]() { return !IsGenerating(); })
 						.ButtonColorAndOpacity(FLinearColor(0.2f, 0.6f, 0.2f, 1.0f))
 					]
 
@@ -388,7 +394,7 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 						SNew(SButton)
 						.Text(LOCTEXT("Cancel", "Cancel"))
 						.OnClicked_Lambda([this]() { OnCancel(); return FReply::Handled(); })
-						.IsEnabled_Lambda([this]() { return ClaudeProcess.IsValid() && ClaudeProcess->IsRunning(); })
+						.IsEnabled_Lambda([this]() { return IsGenerating() || IsNLConverting(); })
 						.ButtonColorAndOpacity(FLinearColor(0.8f, 0.2f, 0.2f, 1.0f))
 					]
 				]
@@ -707,8 +713,23 @@ void SHktGeneratorTab::OnLoadFromStep()
 
 void SHktGeneratorTab::OnGenerate()
 {
-	if (ClaudeProcess.IsValid() && ClaudeProcess->IsRunning())
+	if (IsGenerating())
 	{
+		return;
+	}
+
+	// 외부 에이전트 연결 확인
+	UHktMcpEditorSubsystem* McpSub = GEditor ? GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>() : nullptr;
+	if (!McpSub)
+	{
+		AddLogLine(TEXT("[Error] MCP Editor Subsystem not available."));
+		return;
+	}
+
+	if (!McpSub->IsExternalAgentConnected())
+	{
+		AddLogLine(TEXT("[Error] 외부 AI Agent가 연결되어 있지 않습니다. Claude CLI를 먼저 실행해주세요."));
+		AddLogLine(TEXT("[Info] 터미널에서 claude 명령어를 실행하고, MCP 서버에 연결되면 다시 시도하세요."));
 		return;
 	}
 
@@ -735,48 +756,44 @@ void SHktGeneratorTab::OnGenerate()
 	}
 
 	FString SystemPrompt = LoadSkillMd();
-	FString Prompt = BuildPrompt(IntentJson);
-
 	if (SystemPrompt.IsEmpty())
 	{
 		AddLogLine(FString::Printf(TEXT("[Error] Could not load SKILL.md for %s"), *GeneratorInfo.SkillName));
 		return;
 	}
 
-	AddLogLine(FString::Printf(TEXT("[Start] %s generation (iteration %d)"), *GeneratorInfo.DisplayName, IterationCount));
+	AddLogLine(FString::Printf(TEXT("[Start] %s generation (iteration %d) — requesting via MCP"),
+		*GeneratorInfo.DisplayName, IterationCount));
 
-	// 기존 Tick 핸들이 있으면 해제
-	if (TickHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
-		TickHandle.Reset();
-	}
+	// MCP를 통해 생성 요청 큐잉
+	FHktGenerationRequest Request;
+	Request.SkillName = GeneratorInfo.SkillName;
+	Request.StepType = GeneratorInfo.StepType;
+	Request.ProjectId = ProjectId;
+	Request.IntentJson = IntentJson;
+	Request.SystemPrompt = SystemPrompt;
 
-	// CLI 프로세스 시작
-	ClaudeProcess = MakeShared<FHktClaudeProcess>();
-	ClaudeProcess->OnOutput.BindSP(this, &SHktGeneratorTab::OnClaudeOutput);
-	ClaudeProcess->OnComplete.BindSP(this, &SHktGeneratorTab::OnClaudeComplete);
-	ClaudeProcess->OnError.BindSP(this, &SHktGeneratorTab::OnClaudeError);
-
-	FString WorkingDir = FindPluginDir();
-	if (!ClaudeProcess->Start(Prompt, SystemPrompt, WorkingDir))
-	{
-		AddLogLine(TEXT("[Error] Failed to start claude CLI process"));
-		ClaudeProcess.Reset();
-		return;
-	}
-
-	// Tick 등록
-	TickHandle = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateSP(this, &SHktGeneratorTab::OnTick), 0.05f);
+	CurrentRequestId = McpSub->SubmitGenerationRequest(Request);
+	AddLogLine(FString::Printf(TEXT("[Queued] Request ID: %s — 외부 Agent가 처리를 시작할 때까지 대기 중..."), *CurrentRequestId));
 }
 
 void SHktGeneratorTab::OnCancel()
 {
-	if (ClaudeProcess.IsValid())
+	UHktMcpEditorSubsystem* McpSub = GEditor ? GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>() : nullptr;
+
+	if (!CurrentRequestId.IsEmpty() && McpSub)
 	{
-		ClaudeProcess->Cancel();
+		McpSub->CancelGenerationRequest(CurrentRequestId);
+		CurrentRequestId.Empty();
 		AddLogLine(TEXT("[Cancelled] Generation cancelled by user"));
+	}
+
+	if (!NLRequestId.IsEmpty() && McpSub)
+	{
+		McpSub->CancelGenerationRequest(NLRequestId);
+		NLRequestId.Empty();
+		bAutoGenerateAfterConvert = false;
+		AddLogLine(TEXT("[Cancelled] NL conversion cancelled by user"));
 	}
 }
 
@@ -807,10 +824,22 @@ void SHktGeneratorTab::OnReject()
 
 void SHktGeneratorTab::OnRefine()
 {
+	if (IsGenerating())
+	{
+		return;
+	}
+
 	FString Feedback = FeedbackEditor->GetText().ToString();
 	if (Feedback.IsEmpty())
 	{
 		AddLogLine(TEXT("[Warning] Please enter feedback before refining."));
+		return;
+	}
+
+	UHktMcpEditorSubsystem* McpSub = GEditor ? GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>() : nullptr;
+	if (!McpSub || !McpSub->IsExternalAgentConnected())
+	{
+		AddLogLine(TEXT("[Error] 외부 AI Agent가 연결되어 있지 않습니다."));
 		return;
 	}
 
@@ -829,165 +858,171 @@ void SHktGeneratorTab::OnRefine()
 
 	FString IntentJson = IntentEditor->GetText().ToString();
 	FString SystemPrompt = LoadSkillMd();
-	FString Prompt = BuildPrompt(IntentJson, Feedback);
 
 	IterationCount++;
-	AddLogLine(FString::Printf(TEXT("[Refine] %s generation (iteration %d) with feedback"), *GeneratorInfo.DisplayName, IterationCount));
+	AddLogLine(FString::Printf(TEXT("[Refine] %s generation (iteration %d) with feedback — requesting via MCP"),
+		*GeneratorInfo.DisplayName, IterationCount));
 
-	// 기존 Tick 핸들이 있으면 해제
-	if (TickHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
-		TickHandle.Reset();
-	}
+	FHktGenerationRequest Request;
+	Request.SkillName = GeneratorInfo.SkillName;
+	Request.StepType = GeneratorInfo.StepType;
+	Request.ProjectId = ProjectId;
+	Request.IntentJson = IntentJson;
+	Request.SystemPrompt = SystemPrompt;
+	Request.Feedback = Feedback;
+	Request.PreviousResult = PreviousResult;
 
-	ClaudeProcess = MakeShared<FHktClaudeProcess>();
-	ClaudeProcess->OnOutput.BindSP(this, &SHktGeneratorTab::OnClaudeOutput);
-	ClaudeProcess->OnComplete.BindSP(this, &SHktGeneratorTab::OnClaudeComplete);
-	ClaudeProcess->OnError.BindSP(this, &SHktGeneratorTab::OnClaudeError);
-
-	FString WorkingDir = FindPluginDir();
-	if (!ClaudeProcess->Start(Prompt, SystemPrompt, WorkingDir))
-	{
-		AddLogLine(TEXT("[Error] Failed to start claude CLI process for refinement"));
-		ClaudeProcess.Reset();
-		return;
-	}
-
-	TickHandle = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateSP(this, &SHktGeneratorTab::OnTick), 0.05f);
+	CurrentRequestId = McpSub->SubmitGenerationRequest(Request);
+	AddLogLine(FString::Printf(TEXT("[Queued] Refine request ID: %s"), *CurrentRequestId));
 
 	// 피드백 에디터 초기화
 	FeedbackEditor->SetText(FText::GetEmpty());
 }
 
-// ==================== CLI Event Handling ====================
+// ==================== MCP Event Handling ====================
 
-void SHktGeneratorTab::OnClaudeOutput(const FString& JsonLine)
+void SHktGeneratorTab::SubscribeToEvents()
 {
-	FHktClaudeEvent Event = ParseClaudeEvent(JsonLine);
+	if (GEditor)
+	{
+		UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+		if (McpSub)
+		{
+			GenerationEventHandle = McpSub->OnGenerationEvent.AddSP(
+				this, &SHktGeneratorTab::OnGenerationEventReceived);
+		}
+	}
+}
 
-	if (Event.Type == TEXT("assistant"))
+void SHktGeneratorTab::UnsubscribeFromEvents()
+{
+	if (GEditor)
+	{
+		UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+		if (McpSub && GenerationEventHandle.IsValid())
+		{
+			McpSub->OnGenerationEvent.Remove(GenerationEventHandle);
+			GenerationEventHandle.Reset();
+		}
+	}
+}
+
+void SHktGeneratorTab::OnGenerationEventReceived(const FHktGenerationEvent& Event)
+{
+	// NL 변환 이벤트 처리
+	if (!NLRequestId.IsEmpty() && Event.RequestId == NLRequestId)
+	{
+		if (Event.EventType == TEXT("assistant"))
+		{
+			if (!Event.Content.IsEmpty())
+			{
+				NLResultBuffer += Event.Content;
+			}
+		}
+		else if (Event.EventType == TEXT("result"))
+		{
+			NLResultBuffer = Event.Content;
+		}
+		else if (Event.EventType == TEXT("complete"))
+		{
+			FString RequestId = NLRequestId;
+			NLRequestId.Empty();
+
+			if (Event.ExitCode == 0 && !NLResultBuffer.IsEmpty())
+			{
+				// JSON 추출 — markdown 코드 블록 제거
+				FString Result = NLResultBuffer.TrimStartAndEnd();
+				if (Result.StartsWith(TEXT("```")))
+				{
+					int32 FirstNewline;
+					if (Result.FindChar(TEXT('\n'), FirstNewline))
+					{
+						Result.RightChopInline(FirstNewline + 1);
+					}
+					if (Result.EndsWith(TEXT("```")))
+					{
+						Result.LeftChopInline(3);
+						Result.TrimEndInline();
+					}
+				}
+
+				IntentEditor->SetText(FText::FromString(Result));
+				AddLogLine(TEXT("[NL] Conversion successful. Intent JSON has been populated."));
+
+				if (bAutoGenerateAfterConvert)
+				{
+					bAutoGenerateAfterConvert = false;
+					AddLogLine(TEXT("[NL] Auto-generating from converted intent..."));
+					OnGenerate();
+				}
+			}
+			else
+			{
+				AddLogLine(FString::Printf(TEXT("[NL Error] Conversion failed (exit code: %d)"), Event.ExitCode));
+				bAutoGenerateAfterConvert = false;
+			}
+			NLResultBuffer.Empty();
+		}
+		else if (Event.EventType == TEXT("error"))
+		{
+			AddLogLine(FString::Printf(TEXT("[NL Error] %s"), *Event.Content));
+			NLRequestId.Empty();
+			NLResultBuffer.Empty();
+			bAutoGenerateAfterConvert = false;
+		}
+		return;
+	}
+
+	// 생성 이벤트 처리 — CurrentRequestId와 매치되는 이벤트만
+	if (CurrentRequestId.IsEmpty() || Event.RequestId != CurrentRequestId)
+	{
+		return;
+	}
+
+	if (Event.EventType == TEXT("assistant"))
 	{
 		AddLogLine(FString::Printf(TEXT("[AI] %s"), *Event.Content));
 	}
-	else if (Event.Type == TEXT("tool_use"))
+	else if (Event.EventType == TEXT("tool_use"))
 	{
 		AddLogLine(FString::Printf(TEXT("[Tool] %s"), *Event.ToolName));
 		UpdatePhaseFromToolUse(Event.ToolName);
 	}
-	else if (Event.Type == TEXT("tool_result"))
+	else if (Event.EventType == TEXT("tool_result"))
 	{
-		// 도구 결과는 간략히 표시
 		FString TruncatedContent = Event.Content.Left(200);
 		if (Event.Content.Len() > 200) TruncatedContent += TEXT("...");
 		AddLogLine(FString::Printf(TEXT("[Result] %s"), *TruncatedContent));
 	}
-	else if (Event.Type == TEXT("result"))
+	else if (Event.EventType == TEXT("result"))
 	{
 		PreviousResult = Event.Content;
 		ExtractGeneratedAssets(Event.Content);
 	}
+	else if (Event.EventType == TEXT("complete"))
+	{
+		FString RequestId = CurrentRequestId;
+		CurrentRequestId.Empty();
+
+		if (Event.ExitCode == 0)
+		{
+			AddLogLine(TEXT("[Done] Generation completed successfully."));
+			SetSectionVisibility(true, true, true);
+		}
+		else
+		{
+			AddLogLine(FString::Printf(TEXT("[Error] Generation ended with exit code %d"), Event.ExitCode));
+			SetSectionVisibility(true, false, false);
+		}
+	}
+	else if (Event.EventType == TEXT("error"))
+	{
+		AddLogLine(FString::Printf(TEXT("[Error] %s"), *Event.Content));
+	}
 	else
 	{
-		// 알 수 없는 타입 — 그래도 로그에 표시
-		AddLogLine(FString::Printf(TEXT("[%s] %s"), *Event.Type, *Event.Content.Left(200)));
+		AddLogLine(FString::Printf(TEXT("[%s] %s"), *Event.EventType, *Event.Content.Left(200)));
 	}
-}
-
-void SHktGeneratorTab::OnClaudeComplete(int32 ExitCode)
-{
-	// Tick 해제
-	if (TickHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(TickHandle);
-		TickHandle.Reset();
-	}
-
-	if (ExitCode == 0)
-	{
-		AddLogLine(TEXT("[Done] Generation completed successfully."));
-		SetSectionVisibility(true, true, true);
-	}
-	else
-	{
-		AddLogLine(FString::Printf(TEXT("[Error] Generation ended with exit code %d"), ExitCode));
-		SetSectionVisibility(true, false, false);
-	}
-}
-
-void SHktGeneratorTab::OnClaudeError(const FString& ErrorMsg)
-{
-	AddLogLine(FString::Printf(TEXT("[Error] %s"), *ErrorMsg));
-}
-
-FHktClaudeEvent SHktGeneratorTab::ParseClaudeEvent(const FString& JsonLine) const
-{
-	FHktClaudeEvent Event;
-
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonLine);
-	TSharedPtr<FJsonObject> JsonObj;
-	if (!FJsonSerializer::Deserialize(Reader, JsonObj) || !JsonObj.IsValid())
-	{
-		// JSON 파싱 실패 — 일반 텍스트로 취급
-		Event.Type = TEXT("text");
-		Event.Content = JsonLine;
-		return Event;
-	}
-
-	JsonObj->TryGetStringField(TEXT("type"), Event.Type);
-
-	// assistant 메시지에서 텍스트 추출
-	if (Event.Type == TEXT("assistant"))
-	{
-		const TArray<TSharedPtr<FJsonValue>>* ContentArr;
-		if (JsonObj->TryGetArrayField(TEXT("content"), ContentArr))
-		{
-			for (const auto& Val : *ContentArr)
-			{
-				const TSharedPtr<FJsonObject>* ContentObj;
-				if (Val->TryGetObject(ContentObj))
-				{
-					FString ContentType;
-					(*ContentObj)->TryGetStringField(TEXT("type"), ContentType);
-					if (ContentType == TEXT("text"))
-					{
-						FString Text;
-						(*ContentObj)->TryGetStringField(TEXT("text"), Text);
-						if (!Event.Content.IsEmpty()) Event.Content += TEXT("\n");
-						Event.Content += Text;
-					}
-				}
-			}
-		}
-	}
-	else if (Event.Type == TEXT("tool_use"))
-	{
-		JsonObj->TryGetStringField(TEXT("name"), Event.ToolName);
-		const TSharedPtr<FJsonObject>* InputObj;
-		if (JsonObj->TryGetObjectField(TEXT("input"), InputObj))
-		{
-			FString InputStr;
-			TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&InputStr);
-			FJsonSerializer::Serialize(InputObj->ToSharedRef(), Writer);
-			Event.ToolInput = InputStr;
-		}
-	}
-	else if (Event.Type == TEXT("tool_result"))
-	{
-		JsonObj->TryGetStringField(TEXT("content"), Event.Content);
-	}
-	else if (Event.Type == TEXT("result"))
-	{
-		JsonObj->TryGetStringField(TEXT("result"), Event.Content);
-		if (Event.Content.IsEmpty())
-		{
-			// result 필드가 없으면 전체 JSON을 Content로
-			Event.Content = JsonLine;
-		}
-	}
-
-	return Event;
 }
 
 void SHktGeneratorTab::UpdatePhaseFromToolUse(const FString& ToolName)
@@ -1160,20 +1195,6 @@ void SHktGeneratorTab::SetSectionVisibility(bool bShowProgress, bool bShowResult
 	}
 }
 
-bool SHktGeneratorTab::OnTick(float DeltaTime)
-{
-	if (ClaudeProcess.IsValid())
-	{
-		ClaudeProcess->Tick();
-
-		if (!ClaudeProcess->IsRunning())
-		{
-			return false; // Tick 해제
-		}
-	}
-	return true; // 계속 Tick
-}
-
 // ==================== NL → Intent Conversion ====================
 
 FString SHktGeneratorTab::BuildNLConversionPrompt(const FString& NaturalLanguage) const
@@ -1212,8 +1233,16 @@ void SHktGeneratorTab::OnConvertAndGenerate()
 
 void SHktGeneratorTab::OnConvertNL()
 {
-	if (NLProcess.IsValid() && NLProcess->IsRunning())
+	if (IsNLConverting())
 	{
+		return;
+	}
+
+	UHktMcpEditorSubsystem* McpSub = GEditor ? GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>() : nullptr;
+	if (!McpSub || !McpSub->IsExternalAgentConnected())
+	{
+		AddLogLine(TEXT("[NL Error] 외부 AI Agent가 연결되어 있지 않습니다."));
+		bAutoGenerateAfterConvert = false;
 		return;
 	}
 
@@ -1225,7 +1254,6 @@ void SHktGeneratorTab::OnConvertNL()
 		return;
 	}
 
-	// Progress 섹션 표시하여 로그를 사용자에게 보여줌
 	SetSectionVisibility(true, false, false);
 
 	AddLogLine(FString::Printf(TEXT("[NL] Converting: \"%s\"%s"),
@@ -1234,127 +1262,16 @@ void SHktGeneratorTab::OnConvertNL()
 
 	NLResultBuffer.Empty();
 
-	NLProcess = MakeShared<FHktClaudeProcess>();
-	NLProcess->OnOutput.BindSP(this, &SHktGeneratorTab::OnNLOutput);
-	NLProcess->OnComplete.BindSP(this, &SHktGeneratorTab::OnNLComplete);
-	NLProcess->OnError.BindSP(this, &SHktGeneratorTab::OnNLError);
+	// NL 변환 요청을 MCP를 통해 전송
+	FHktGenerationRequest Request;
+	Request.SkillName = TEXT("nl-convert");
+	Request.StepType = GeneratorInfo.StepType;
+	Request.ProjectId = ProjectId;
+	Request.IntentJson = BuildNLConversionPrompt(NaturalLanguage);
+	Request.SystemPrompt = TEXT("You output only valid JSON. No markdown, no explanation.");
 
-	FString Prompt = BuildNLConversionPrompt(NaturalLanguage);
-	FString SystemPrompt = TEXT("You output only valid JSON. No markdown, no explanation.");
-	FString WorkingDir = FindPluginDir();
-
-	if (!NLProcess->Start(Prompt, SystemPrompt, WorkingDir))
-	{
-		AddLogLine(TEXT("[NL Error] Failed to start Claude CLI for conversion."));
-		NLProcess.Reset();
-		bAutoGenerateAfterConvert = false;
-		return;
-	}
-
-	// NL Tick 등록
-	if (NLTickHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(NLTickHandle);
-		NLTickHandle.Reset();
-	}
-	NLTickHandle = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateSP(this, &SHktGeneratorTab::OnNLTick), 0.05f);
-}
-
-void SHktGeneratorTab::OnNLError(const FString& ErrorMsg)
-{
-	AddLogLine(FString::Printf(TEXT("[NL Error] %s"), *ErrorMsg));
-}
-
-void SHktGeneratorTab::OnNLOutput(const FString& JsonLine)
-{
-	FHktClaudeEvent Event = ParseClaudeEvent(JsonLine);
-
-	if (Event.Type == TEXT("result"))
-	{
-		NLResultBuffer = Event.Content;
-	}
-	else if (Event.Type == TEXT("assistant"))
-	{
-		// 스트리밍 텍스트가 JSON일 수 있으므로 누적
-		if (!Event.Content.IsEmpty())
-		{
-			NLResultBuffer += Event.Content;
-		}
-	}
-}
-
-void SHktGeneratorTab::OnNLComplete(int32 ExitCode)
-{
-	// NL Tick 해제
-	if (NLTickHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(NLTickHandle);
-		NLTickHandle.Reset();
-	}
-
-	if (ExitCode != 0 || NLResultBuffer.IsEmpty())
-	{
-		AddLogLine(FString::Printf(TEXT("[NL Error] Conversion failed (exit code: %d)"), ExitCode));
-		NLProcess.Reset();
-		bAutoGenerateAfterConvert = false;
-		return;
-	}
-
-	// JSON 추출 — markdown 코드 블록 제거
-	FString Result = NLResultBuffer.TrimStartAndEnd();
-	if (Result.StartsWith(TEXT("```")))
-	{
-		// 첫 줄(```json 등)과 마지막 줄(```) 제거
-		int32 FirstNewline;
-		if (Result.FindChar(TEXT('\n'), FirstNewline))
-		{
-			Result.RightChopInline(FirstNewline + 1);
-		}
-		if (Result.EndsWith(TEXT("```")))
-		{
-			Result.LeftChopInline(3);
-			Result.TrimEndInline();
-		}
-	}
-
-	// JSON 검증
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Result);
-	TSharedPtr<FJsonValue> Parsed;
-	if (FJsonSerializer::Deserialize(Reader, Parsed) && Parsed.IsValid())
-	{
-		IntentEditor->SetText(FText::FromString(Result));
-		AddLogLine(TEXT("[NL] Conversion successful. Intent JSON has been populated."));
-	}
-	else
-	{
-		// JSON이 아닌 경우에도 일단 표시 (사용자가 수정 가능)
-		IntentEditor->SetText(FText::FromString(Result));
-		AddLogLine(TEXT("[NL Warning] Output may not be valid JSON. Please review and fix if needed."));
-	}
-
-	NLProcess.Reset();
-
-	// Convert → Generate 연결
-	if (bAutoGenerateAfterConvert)
-	{
-		bAutoGenerateAfterConvert = false;
-		AddLogLine(TEXT("[NL] Auto-generating from converted intent..."));
-		OnGenerate();
-	}
-}
-
-bool SHktGeneratorTab::OnNLTick(float DeltaTime)
-{
-	if (NLProcess.IsValid())
-	{
-		NLProcess->Tick();
-		if (!NLProcess->IsRunning())
-		{
-			return false;
-		}
-	}
-	return true;
+	NLRequestId = McpSub->SubmitGenerationRequest(Request);
+	AddLogLine(FString::Printf(TEXT("[NL] Conversion request queued: %s"), *NLRequestId));
 }
 
 #undef LOCTEXT_NAMESPACE

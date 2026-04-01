@@ -733,6 +733,107 @@ FString UHktMcpEditorSubsystem::ExecutePythonScript(const FString& ScriptCode, f
 	return Output;
 }
 
+// ==================== Generation Request Queue ====================
+
+FString UHktMcpEditorSubsystem::SubmitGenerationRequest(const FHktGenerationRequest& InRequest)
+{
+	FHktGenerationRequest Request = InRequest;
+
+	// RequestId 생성 (비어 있으면)
+	if (Request.RequestId.IsEmpty())
+	{
+		Request.RequestId = FString::Printf(TEXT("gen-%d-%lld"), NextRequestId++, FDateTime::Now().GetTicks());
+	}
+
+	Request.Status = EHktGenerationStatus::Pending;
+	GenerationRequests.Add(Request.RequestId, Request);
+	PendingRequestQueue.Add(Request.RequestId);
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("Generation request submitted: %s (skill: %s, project: %s)"),
+		*Request.RequestId, *Request.SkillName, *Request.ProjectId);
+
+	return Request.RequestId;
+}
+
+FHktGenerationRequest UHktMcpEditorSubsystem::PollGenerationRequest()
+{
+	LastPollTimestamp = FPlatformTime::Seconds();
+
+	if (PendingRequestQueue.Num() == 0)
+	{
+		return FHktGenerationRequest();
+	}
+
+	FString RequestId = PendingRequestQueue[0];
+	PendingRequestQueue.RemoveAt(0);
+
+	FHktGenerationRequest* Request = GenerationRequests.Find(RequestId);
+	if (!Request)
+	{
+		return FHktGenerationRequest();
+	}
+
+	Request->Status = EHktGenerationStatus::InProgress;
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("Generation request polled: %s"), *RequestId);
+	return *Request;
+}
+
+void UHktMcpEditorSubsystem::SendGenerationEvent(const FHktGenerationEvent& Event)
+{
+	// 요청 상태 업데이트
+	FHktGenerationRequest* Request = GenerationRequests.Find(Event.RequestId);
+	if (Request)
+	{
+		if (Event.EventType == TEXT("complete"))
+		{
+			Request->Status = (Event.ExitCode == 0)
+				? EHktGenerationStatus::Completed
+				: EHktGenerationStatus::Failed;
+		}
+		else if (Event.EventType == TEXT("error"))
+		{
+			Request->Status = EHktGenerationStatus::Failed;
+		}
+	}
+
+	// UI에 브로드캐스트
+	OnGenerationEvent.Broadcast(Event);
+}
+
+void UHktMcpEditorSubsystem::CancelGenerationRequest(const FString& RequestId)
+{
+	// Pending 큐에서 제거
+	PendingRequestQueue.Remove(RequestId);
+
+	FHktGenerationRequest* Request = GenerationRequests.Find(RequestId);
+	if (Request)
+	{
+		Request->Status = EHktGenerationStatus::Cancelled;
+
+		// 취소 이벤트 브로드캐스트
+		FHktGenerationEvent CancelEvent;
+		CancelEvent.RequestId = RequestId;
+		CancelEvent.EventType = TEXT("error");
+		CancelEvent.Content = TEXT("Cancelled by user");
+		OnGenerationEvent.Broadcast(CancelEvent);
+	}
+
+	UE_LOG(LogHktMcpEditor, Log, TEXT("Generation request cancelled: %s"), *RequestId);
+}
+
+EHktGenerationStatus UHktMcpEditorSubsystem::GetGenerationStatus(const FString& RequestId) const
+{
+	const FHktGenerationRequest* Request = GenerationRequests.Find(RequestId);
+	return Request ? Request->Status : EHktGenerationStatus::Failed;
+}
+
+bool UHktMcpEditorSubsystem::IsExternalAgentConnected() const
+{
+	// 최근 10초 내 Poll이 있었으면 연결됨으로 판단
+	return (FPlatformTime::Seconds() - LastPollTimestamp) < 10.0;
+}
+
 // ==================== MCP Bridge Server (Editor-level) ====================
 
 bool UHktMcpEditorSubsystem::StartMcpServer(int32 Port)

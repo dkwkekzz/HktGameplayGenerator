@@ -71,6 +71,78 @@ struct FHktPropertyInfo
 	bool bIsEditable;
 };
 
+// ==================== Generation Request/Response ====================
+
+/** 생성 요청 상태 */
+UENUM(BlueprintType)
+enum class EHktGenerationStatus : uint8
+{
+	Pending,      // 큐에 대기 중
+	InProgress,   // 외부 에이전트가 처리 중
+	Completed,    // 완료
+	Failed,       // 실패
+	Cancelled     // 취소
+};
+
+/** 생성 요청 — 외부 에이전트에 전달 */
+USTRUCT(BlueprintType)
+struct FHktGenerationRequest
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString RequestId;          // 고유 요청 ID
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString SkillName;          // "vfx-gen", "char-gen" 등
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString StepType;           // "vfx_generation" 등
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString ProjectId;
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString IntentJson;         // Intent JSON 전체
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString SystemPrompt;       // SKILL.md 내용
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString Feedback;           // Refine 시 피드백
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString PreviousResult;     // Refine 시 이전 결과
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	EHktGenerationStatus Status = EHktGenerationStatus::Pending;
+};
+
+/** 생성 진행 이벤트 — 외부 에이전트가 보내는 진행 업데이트 */
+USTRUCT(BlueprintType)
+struct FHktGenerationEvent
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString RequestId;
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString EventType;          // "assistant", "tool_use", "tool_result", "result", "error", "complete"
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString Content;
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString ToolName;
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	FString ToolInput;
+
+	UPROPERTY(BlueprintReadWrite, Category = "MCP|Generation")
+	int32 ExitCode = 0;
+};
+
 /**
  * 에디터 전용 서브시스템
  * Python MCP 서버에서 unreal 모듈을 통해 호출 가능한 함수들을 제공
@@ -84,6 +156,45 @@ public:
 	// UEditorSubsystem Interface
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
+
+	// ==================== Generation Request Queue ====================
+
+	/**
+	 * 생성 요청을 큐에 추가. 외부 에이전트가 PollGenerationRequest로 가져감.
+	 * @return RequestId
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Generation")
+	FString SubmitGenerationRequest(const FHktGenerationRequest& Request);
+
+	/**
+	 * 외부 에이전트가 호출 — Pending 요청을 하나 가져감.
+	 * 없으면 빈 RequestId 반환.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Generation")
+	FHktGenerationRequest PollGenerationRequest();
+
+	/**
+	 * 외부 에이전트가 진행 이벤트를 보냄.
+	 * 해당 RequestId를 구독 중인 UI에 브로드캐스트.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Generation")
+	void SendGenerationEvent(const FHktGenerationEvent& Event);
+
+	/** 요청 취소 */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Generation")
+	void CancelGenerationRequest(const FString& RequestId);
+
+	/** 특정 요청의 현재 상태 조회 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Generation")
+	EHktGenerationStatus GetGenerationStatus(const FString& RequestId) const;
+
+	/** 생성 이벤트 수신 델리게이트 — UI가 구독 */
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnGenerationEvent, const FHktGenerationEvent&);
+	FOnGenerationEvent OnGenerationEvent;
+
+	/** 외부 에이전트 연결 여부 — 최근 N초 내 Poll이 있었는지 */
+	UFUNCTION(BlueprintPure, Category = "MCP|Generation")
+	bool IsExternalAgentConnected() const;
 
 	// ==================== Asset Tools ====================
 	
@@ -289,5 +400,11 @@ private:
 	bool bAgentVerifying = false;
 	FString AgentVersionString;
 	FString AgentCLIPath;
+
+	// ── Generation Request Queue ──
+	TMap<FString, FHktGenerationRequest> GenerationRequests;  // RequestId → Request
+	TArray<FString> PendingRequestQueue;                       // Pending RequestId 순서
+	double LastPollTimestamp = 0.0;                             // 외부 에이전트 마지막 Poll 시각
+	int32 NextRequestId = 1;
 };
 

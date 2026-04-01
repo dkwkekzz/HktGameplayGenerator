@@ -353,24 +353,32 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildMcpSection()
 
 TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
 {
-	FLinearColor StatusColor;
-	FString StatusText;
-
+	// CLI 검증 상태
+	FLinearColor CLIColor;
+	FString CLIText;
 	if (bAgentVerifying)
 	{
-		StatusColor = FLinearColor(0.8f, 0.8f, 0.2f);
-		StatusText = TEXT("Verifying...");
+		CLIColor = FLinearColor(0.8f, 0.8f, 0.2f);
+		CLIText = TEXT("Verifying...");
 	}
 	else if (bAgentVerified)
 	{
-		StatusColor = FLinearColor(0.2f, 0.8f, 0.2f);
-		StatusText = FString::Printf(TEXT("Connected (%s)"), *AgentVersionString);
+		CLIColor = FLinearColor(0.2f, 0.8f, 0.2f);
+		CLIText = FString::Printf(TEXT("CLI found (%s)"), *AgentVersionString);
 	}
 	else
 	{
-		StatusColor = FLinearColor(1.0f, 0.4f, 0.2f);
-		StatusText = AgentVersionString.IsEmpty() ? TEXT("Not verified") : AgentVersionString;
+		CLIColor = FLinearColor(1.0f, 0.4f, 0.2f);
+		CLIText = AgentVersionString.IsEmpty() ? TEXT("CLI not found") : AgentVersionString;
 	}
+
+	// 외부 에이전트 연결 상태
+	FLinearColor AgentColor = bExternalAgentConnected
+		? FLinearColor(0.2f, 0.8f, 0.2f)
+		: FLinearColor(1.0f, 0.4f, 0.2f);
+	FString AgentText = bExternalAgentConnected
+		? TEXT("Connected — 외부 Agent가 MCP를 통해 연결됨")
+		: TEXT("Not connected — 터미널에서 Claude CLI를 실행해주세요");
 
 	return SNew(SVerticalBox)
 
@@ -379,10 +387,23 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
 		.Padding(0, 0, 0, 4)
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("AgentHeader", "AI Agent (Claude CLI)"))
+			.Text(LOCTEXT("AgentHeader", "AI Agent (External Claude CLI)"))
 			.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
 		]
 
+		// 외부 에이전트 연결 상태
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		.Padding(0, 0, 0, 4)
+		[
+			SAssignNew(AgentStatusText, STextBlock)
+			.Text(FText::FromString(AgentText))
+			.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+			.ColorAndOpacity(FSlateColor(AgentColor))
+			.AutoWrapText(true)
+		]
+
+		// CLI 검증 상태
 		+ SVerticalBox::Slot()
 		.AutoHeight()
 		.Padding(0, 0, 0, 4)
@@ -394,18 +415,17 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
 			.Padding(0, 0, 6, 0)
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("AgentStatus", "Status:"))
+				.Text(LOCTEXT("CLIVerify", "CLI:"))
 				.Font(FCoreStyle::GetDefaultFontStyle("Regular", 9))
 			]
 
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
 			[
-				SAssignNew(AgentStatusText, STextBlock)
-				.Text(FText::FromString(StatusText))
+				SNew(STextBlock)
+				.Text(FText::FromString(CLIText))
 				.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
-				.ColorAndOpacity(FSlateColor(StatusColor))
-				.AutoWrapText(true)
+				.ColorAndOpacity(FSlateColor(CLIColor))
 			]
 
 			+ SHorizontalBox::Slot()
@@ -413,8 +433,8 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
 			.Padding(8, 0, 0, 0)
 			[
 				SNew(SButton)
-				.Text(LOCTEXT("AgentVerify", "Test Connection"))
-				.ToolTipText(LOCTEXT("AgentVerifyTip", "Claude CLI --version 을 실행하여 연결을 확인합니다"))
+				.Text(LOCTEXT("AgentVerify", "Test CLI"))
+				.ToolTipText(LOCTEXT("AgentVerifyTip", "Claude CLI --version 을 실행하여 설치 여부를 확인합니다"))
 				.OnClicked_Lambda([this]() { OnVerifyAgent(); return FReply::Handled(); })
 			]
 		]
@@ -424,7 +444,9 @@ TSharedRef<SWidget> SHktAgentConnectionPanel::BuildAgentSection()
 		.Padding(0, 2, 0, 0)
 		[
 			SNew(STextBlock)
-			.Text(LOCTEXT("AgentNote", "Claude CLI 실행 파일을 검증합니다. --version 명령어로 실제 연결 가능 여부를 확인합니다."))
+			.Text(LOCTEXT("AgentNote",
+				"사용자가 직접 터미널에서 Claude CLI를 실행하면, MCP 서버를 통해 자동으로 연결됩니다.\n"
+				"Generator 패널에서 생성 요청 시 연결된 외부 Agent가 처리합니다."))
 			.Font(FCoreStyle::GetDefaultFontStyle("Italic", 8))
 			.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
 			.AutoWrapText(true)
@@ -676,6 +698,7 @@ void SHktAgentConnectionPanel::RefreshAgentStatus()
 	bAgentVerified = false;
 	bAgentVerifying = false;
 	AgentVersionString.Empty();
+	bExternalAgentConnected = false;
 
 	if (GEditor)
 	{
@@ -685,6 +708,7 @@ void SHktAgentConnectionPanel::RefreshAgentStatus()
 			bAgentVerified = McpSub->IsAgentVerified();
 			bAgentVerifying = McpSub->IsAgentVerifying();
 			AgentVersionString = McpSub->GetAgentVersion();
+			bExternalAgentConnected = McpSub->IsExternalAgentConnected();
 		}
 	}
 }
