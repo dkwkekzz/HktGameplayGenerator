@@ -599,6 +599,17 @@ void SHktAgentConnectionPanel::OnSave()
 
 void SHktAgentConnectionPanel::OnClose()
 {
+	// 델리게이트 정리
+	if (AgentVerifiedHandle.IsValid() && GEditor)
+	{
+		UHktMcpEditorSubsystem* McpSub = GEditor->GetEditorSubsystem<UHktMcpEditorSubsystem>();
+		if (McpSub)
+		{
+			McpSub->OnAgentVerified.Remove(AgentVerifiedHandle);
+		}
+		AgentVerifiedHandle.Reset();
+	}
+
 	TSharedPtr<SWindow> Window = OwnerWindow.Pin();
 	if (Window.IsValid())
 	{
@@ -656,9 +667,15 @@ void SHktAgentConnectionPanel::OnVerifyAgent()
 		AgentStatusText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.8f, 0.2f)));
 	}
 
-	// 검증 완료 콜백 등록
+	// 이전 핸들 제거 후 새로 등록 (leak 방지)
+	if (AgentVerifiedHandle.IsValid())
+	{
+		McpSub->OnAgentVerified.Remove(AgentVerifiedHandle);
+		AgentVerifiedHandle.Reset();
+	}
+
 	TWeakPtr<SHktAgentConnectionPanel> WeakThis = SharedThis(this);
-	McpSub->OnAgentVerified.AddLambda([WeakThis](bool bSuccess, const FString& VersionOrError)
+	AgentVerifiedHandle = McpSub->OnAgentVerified.AddLambda([WeakThis](bool bSuccess, const FString& VersionOrError)
 	{
 		// GameThread에서 실행되므로 안전하게 UI 업데이트
 		TSharedPtr<SHktAgentConnectionPanel> PinnedThis = WeakThis.Pin();

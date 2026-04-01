@@ -383,7 +383,7 @@ TSharedRef<SWidget> SHktGeneratorTab::BuildIntentSection()
 						.Text(LOCTEXT("Generate", "Generate"))
 						.ToolTipText(LOCTEXT("GenerateTip", "Generate from intent JSON"))
 						.OnClicked_Lambda([this]() { OnGenerate(); return FReply::Handled(); })
-						.IsEnabled_Lambda([this]() { return !IsGenerating(); })
+						.IsEnabled_Lambda([this]() { return !IsGenerating() && !IsNLConverting(); })
 						.ButtonColorAndOpacity(FLinearColor(0.2f, 0.6f, 0.2f, 1.0f))
 					]
 
@@ -792,9 +792,12 @@ void SHktGeneratorTab::OnCancel()
 	{
 		McpSub->CancelGenerationRequest(NLRequestId);
 		NLRequestId.Empty();
+		NLResultBuffer.Empty();
 		bAutoGenerateAfterConvert = false;
 		AddLogLine(TEXT("[Cancelled] NL conversion cancelled by user"));
 	}
+
+	SetSectionVisibility(false, false, false);
 }
 
 void SHktGeneratorTab::OnAccept()

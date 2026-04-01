@@ -31,8 +31,7 @@ public class HktMcpBridgeEditor : ModuleRules
 				"AssetRegistry",
 				"ContentBrowser",
 				"EditorScriptingUtilities",
-				"PythonScriptPlugin",
-				"HktMcpBridge"
+				"PythonScriptPlugin"
 			}
 		);
 	}

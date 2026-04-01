@@ -6,6 +6,7 @@
 #include "HktClaudeProcess.h"
 #include "HktMcpEditorSubsystem.h"
 #include "HktGeneratorEditorModule.h"
+#include "Editor.h"
 #include "HktGeneratorEditorSettings.h"
 #include "Widgets/Layout/SSeparator.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"

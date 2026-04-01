@@ -415,7 +415,7 @@ public:
 
 	/** 연결된 MCP 클라이언트 수 */
 	UFUNCTION(BlueprintPure, Category = "MCP|Server")
-	int32 GetMcpClientCount() const { return McpConnectedClients.Num(); }
+	int32 GetMcpClientCount() const { return McpClientCount; }
 
 	/** MCP 서버 포트 */
 	UFUNCTION(BlueprintPure, Category = "MCP|Server")
@@ -460,7 +460,7 @@ private:
 	// ── MCP Server State ──
 	bool bMcpServerRunning = false;
 	int32 McpServerPort = 9876;
-	TMap<FString, TSharedPtr<class INetworkingWebSocket>> McpConnectedClients;
+	int32 McpClientCount = 0;  // TODO: 실제 WebSocket 서버 구현 시 클라이언트 연결 추적으로 교체
 
 	// ── Agent Verification State ──
 	bool bAgentVerified = false;

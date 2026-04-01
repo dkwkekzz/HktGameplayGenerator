@@ -988,7 +988,7 @@ void UHktMcpEditorSubsystem::StopMcpServer()
 		return;
 	}
 
-	McpConnectedClients.Empty();
+	McpClientCount = 0;
 	bMcpServerRunning = false;
 
 	UE_LOG(LogHktMcpEditor, Log, TEXT("MCP Bridge server stopped"));

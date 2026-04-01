@@ -76,4 +76,7 @@ private:
 
 	/** 부모 윈도우 참조 (닫기용) */
 	TWeakPtr<SWindow> OwnerWindow;
+
+	/** Agent 검증 델리게이트 핸들 (leak 방지) */
+	FDelegateHandle AgentVerifiedHandle;
 };
