@@ -674,11 +674,11 @@ void SHktAgentConnectionPanel::OnVerifyAgent()
 		AgentVerifiedHandle.Reset();
 	}
 
-	TWeakPtr<SHktAgentConnectionPanel> WeakThis = SharedThis(this);
-	AgentVerifiedHandle = McpSub->OnAgentVerified.AddLambda([WeakThis](bool bSuccess, const FString& VersionOrError)
+	TWeakPtr<SHktAgentConnectionPanel> WeakPanel = SharedThis(this);
+	AgentVerifiedHandle = McpSub->OnAgentVerified.AddLambda([WeakPanel](bool bSuccess, const FString& VersionOrError)
 	{
 		// GameThread에서 실행되므로 안전하게 UI 업데이트
-		TSharedPtr<SHktAgentConnectionPanel> PinnedThis = WeakThis.Pin();
+		TSharedPtr<SHktAgentConnectionPanel> PinnedThis = WeakPanel.Pin();
 		if (!PinnedThis.IsValid())
 		{
 			return;
