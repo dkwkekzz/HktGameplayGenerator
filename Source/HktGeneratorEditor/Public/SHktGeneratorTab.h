@@ -7,7 +7,6 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
-#include "Containers/Ticker.h"
 #include "HktGeneratorPromptTypes.h"
 
 struct FHktGenerationEvent;

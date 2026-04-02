@@ -119,6 +119,10 @@ void SHktGeneratorTab::Construct(const FArguments& InArgs)
 SHktGeneratorTab::~SHktGeneratorTab()
 {
 	UnsubscribeFromEvents();
+
+	// 진행 중인 요청 ID를 클리어하여, 지연된 이벤트가 도착해도 무시되도록 함
+	CurrentRequestId.Empty();
+	NLRequestId.Empty();
 }
 
 // ==================== SetProject ====================
@@ -748,6 +752,11 @@ void SHktGeneratorTab::OnGenerate()
 
 	SetSectionVisibility(true, false, false);
 
+	if (!IntentEditor.IsValid())
+	{
+		return;
+	}
+
 	FString IntentJson = IntentEditor->GetText().ToString();
 	if (IntentJson.TrimStartAndEnd().IsEmpty())
 	{
@@ -828,6 +837,11 @@ void SHktGeneratorTab::OnReject()
 void SHktGeneratorTab::OnRefine()
 {
 	if (IsGenerating())
+	{
+		return;
+	}
+
+	if (!FeedbackEditor.IsValid() || !IntentEditor.IsValid())
 	{
 		return;
 	}
@@ -947,6 +961,13 @@ void SHktGeneratorTab::OnGenerationEventReceived(const FHktGenerationEvent& Even
 						Result.LeftChopInline(3);
 						Result.TrimEndInline();
 					}
+				}
+
+				if (!IntentEditor.IsValid())
+				{
+					NLResultBuffer.Empty();
+					bAutoGenerateAfterConvert = false;
+					return;
 				}
 
 				IntentEditor->SetText(FText::FromString(Result));
@@ -1245,6 +1266,12 @@ void SHktGeneratorTab::OnConvertNL()
 	if (!McpSub || !McpSub->IsExternalAgentConnected())
 	{
 		AddLogLine(TEXT("[NL Error] 외부 AI Agent가 연결되어 있지 않습니다."));
+		bAutoGenerateAfterConvert = false;
+		return;
+	}
+
+	if (!NaturalLanguageEditor.IsValid())
+	{
 		bAutoGenerateAfterConvert = false;
 		return;
 	}
