@@ -779,6 +779,21 @@ FHktGenerationRequest UHktMcpEditorSubsystem::PollGenerationRequest()
 
 void UHktMcpEditorSubsystem::SendGenerationEvent(const FHktGenerationEvent& Event)
 {
+	// Remote Control API 등 비-게임스레드에서 호출될 수 있으므로 게임스레드로 디스패치
+	if (!IsInGameThread())
+	{
+		FHktGenerationEvent EventCopy = Event;
+		TWeakObjectPtr<UHktMcpEditorSubsystem> WeakThis(this);
+		AsyncTask(ENamedThreads::GameThread, [WeakThis, EventCopy]()
+		{
+			if (UHktMcpEditorSubsystem* Self = WeakThis.Get())
+			{
+				Self->SendGenerationEvent(EventCopy);
+			}
+		});
+		return;
+	}
+
 	// 요청 상태 업데이트
 	FHktGenerationRequest* Request = GenerationRequests.Find(Event.RequestId);
 	if (Request)
