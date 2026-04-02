@@ -8,6 +8,9 @@
 #include "Engine/Texture2D.h"
 #include "Factories/TextureFactory.h"
 #include "EditorFramework/AssetImportData.h"
+#include "HttpModule.h"
+#include "Interfaces/IHttpRequest.h"
+#include "Interfaces/IHttpResponse.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Dom/JsonObject.h"
@@ -15,6 +18,9 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/SavePackage.h"
+#include "HAL/PlatformProcess.h"
+#include "TimerManager.h"
+#include "Editor.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktTextureGenerator, Log, All);
 
@@ -31,6 +37,10 @@ void UHktTextureGeneratorSubsystem::Initialize(FSubsystemCollectionBase& Collect
 
 void UHktTextureGeneratorSubsystem::Deinitialize()
 {
+	if (GEditor && SDServerPollTimerHandle.IsValid())
+	{
+		GEditor->GetTimerManager()->ClearTimer(SDServerPollTimerHandle);
+	}
 	TextureCache.Empty();
 	Super::Deinitialize();
 }
@@ -511,6 +521,218 @@ FString UHktTextureGeneratorSubsystem::GetUsageSubDir(EHktTextureUsage Usage)
 	case EHktTextureUsage::MaterialMask: return TEXT("Materials");
 	default:                             return TEXT("Misc");
 	}
+}
+
+// ============================================================================
+// SD WebUI 서버 관리
+// ============================================================================
+
+void UHktTextureGeneratorSubsystem::CheckSDServerStatus()
+{
+	const auto* Settings = UHktTextureGeneratorSettings::Get();
+	const FString ServerURL = Settings->SDWebUIServerURL;
+
+	if (ServerURL.IsEmpty())
+	{
+		bSDServerAlive = false;
+		SDServerStatusMessage = TEXT("Server URL not configured");
+		OnSDServerStatusChanged.Broadcast(false, SDServerStatusMessage);
+		return;
+	}
+
+	// 비동기 HTTP GET — SD WebUI 헬스 체크 엔드포인트
+	const FString HealthURL = ServerURL / TEXT("sdapi/v1/sd-models");
+
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+	Request->SetURL(HealthURL);
+	Request->SetVerb(TEXT("GET"));
+	Request->SetTimeout(5.0f);
+
+	TWeakObjectPtr<UHktTextureGeneratorSubsystem> WeakThis(this);
+	Request->OnProcessRequestComplete().BindLambda(
+		[WeakThis, ServerURL](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bConnected)
+		{
+			if (!WeakThis.IsValid()) return;
+
+			auto* Self = WeakThis.Get();
+			if (bConnected && Resp.IsValid() && Resp->GetResponseCode() == 200)
+			{
+				Self->bSDServerAlive = true;
+				Self->SDServerStatusMessage = FString::Printf(TEXT("Connected (%s)"), *ServerURL);
+				UE_LOG(LogHktTextureGenerator, Log, TEXT("SD WebUI alive at %s"), *ServerURL);
+			}
+			else
+			{
+				Self->bSDServerAlive = false;
+				if (!bConnected)
+				{
+					Self->SDServerStatusMessage = FString::Printf(TEXT("Connection refused (%s)"), *ServerURL);
+				}
+				else if (Resp.IsValid())
+				{
+					Self->SDServerStatusMessage = FString::Printf(
+						TEXT("HTTP %d (%s)"), Resp->GetResponseCode(), *ServerURL);
+				}
+				else
+				{
+					Self->SDServerStatusMessage = FString::Printf(TEXT("No response (%s)"), *ServerURL);
+				}
+				UE_LOG(LogHktTextureGenerator, Log, TEXT("SD WebUI not available: %s"), *Self->SDServerStatusMessage);
+			}
+
+			Self->OnSDServerStatusChanged.Broadcast(Self->bSDServerAlive, Self->SDServerStatusMessage);
+		});
+
+	Request->ProcessRequest();
+}
+
+void UHktTextureGeneratorSubsystem::LaunchSDServer()
+{
+	const auto* Settings = UHktTextureGeneratorSettings::Get();
+	const FString BatchFilePath = Settings->SDWebUIBatchFilePath;
+
+	if (BatchFilePath.IsEmpty())
+	{
+		SDServerStatusMessage = TEXT("Batch file path not configured (Project Settings > HktGameplay > HktTextureGenerator)");
+		OnSDServerStatusChanged.Broadcast(false, SDServerStatusMessage);
+		return;
+	}
+
+	if (!FPaths::FileExists(BatchFilePath))
+	{
+		SDServerStatusMessage = FString::Printf(TEXT("Batch file not found: %s"), *BatchFilePath);
+		OnSDServerStatusChanged.Broadcast(false, SDServerStatusMessage);
+		return;
+	}
+
+	if (bSDServerAlive)
+	{
+		SDServerStatusMessage = TEXT("Server is already running");
+		OnSDServerStatusChanged.Broadcast(true, SDServerStatusMessage);
+		return;
+	}
+
+	if (bSDServerLaunching)
+	{
+		SDServerStatusMessage = TEXT("Server is already launching...");
+		OnSDServerStatusChanged.Broadcast(false, SDServerStatusMessage);
+		return;
+	}
+
+	// 배치 파일 실행
+	bSDServerLaunching = true;
+	SDServerStatusMessage = TEXT("Launching SD WebUI server...");
+	OnSDServerStatusChanged.Broadcast(false, SDServerStatusMessage);
+
+	UE_LOG(LogHktTextureGenerator, Log, TEXT("Launching SD WebUI: %s"), *BatchFilePath);
+
+	const FString WorkingDir = FPaths::GetPath(BatchFilePath);
+	const FString Params = TEXT("");
+	const bool bLaunchDetached = true;
+	const bool bLaunchHidden = false;
+	const bool bLaunchReallyHidden = false;
+	uint32 ProcessID = 0;
+
+	FProcHandle Handle = FPlatformProcess::CreateProc(
+		*BatchFilePath, *Params, bLaunchDetached, bLaunchHidden, bLaunchReallyHidden,
+		&ProcessID, 0, *WorkingDir, nullptr);
+
+	if (!Handle.IsValid())
+	{
+		bSDServerLaunching = false;
+		SDServerStatusMessage = FString::Printf(TEXT("Failed to launch: %s"), *BatchFilePath);
+		OnSDServerStatusChanged.Broadcast(false, SDServerStatusMessage);
+		return;
+	}
+
+	SDServerProcessHandle = Handle;
+	SDServerPollCount = 0;
+
+	UE_LOG(LogHktTextureGenerator, Log, TEXT("SD WebUI process started (PID: %u). Polling for readiness..."), ProcessID);
+
+	// 3초 간격으로 헬스 체크 폴링
+	if (GEditor)
+	{
+		GEditor->GetTimerManager()->SetTimer(
+			SDServerPollTimerHandle,
+			FTimerDelegate::CreateWeakLambda(this, [this]()
+			{
+				SDServerPollCount++;
+
+				if (SDServerPollCount > SDServerMaxPollCount)
+				{
+					// 타임아웃
+					bSDServerLaunching = false;
+					SDServerStatusMessage = TEXT("Launch timed out (3 min). Check the batch file and server logs.");
+					OnSDServerStatusChanged.Broadcast(false, SDServerStatusMessage);
+					GEditor->GetTimerManager()->ClearTimer(SDServerPollTimerHandle);
+					return;
+				}
+
+				// 비동기 헬스 체크
+				const auto* Settings = UHktTextureGeneratorSettings::Get();
+				const FString HealthURL = Settings->SDWebUIServerURL / TEXT("sdapi/v1/sd-models");
+
+				TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Req = FHttpModule::Get().CreateRequest();
+				Req->SetURL(HealthURL);
+				Req->SetVerb(TEXT("GET"));
+				Req->SetTimeout(3.0f);
+
+				TWeakObjectPtr<UHktTextureGeneratorSubsystem> WeakThis(this);
+				Req->OnProcessRequestComplete().BindLambda(
+					[WeakThis](FHttpRequestPtr HttpReq, FHttpResponsePtr Resp, bool bConnected)
+					{
+						if (!WeakThis.IsValid()) return;
+						auto* Self = WeakThis.Get();
+
+						if (bConnected && Resp.IsValid() && Resp->GetResponseCode() == 200)
+						{
+							// 서버 준비 완료
+							Self->bSDServerAlive = true;
+							Self->bSDServerLaunching = false;
+							Self->SDServerStatusMessage = FString::Printf(
+								TEXT("Connected (%s) — launched in %ds"),
+								*UHktTextureGeneratorSettings::Get()->SDWebUIServerURL,
+								Self->SDServerPollCount * 3);
+							Self->OnSDServerStatusChanged.Broadcast(true, Self->SDServerStatusMessage);
+
+							if (GEditor)
+							{
+								GEditor->GetTimerManager()->ClearTimer(Self->SDServerPollTimerHandle);
+							}
+							UE_LOG(LogHktTextureGenerator, Log,
+								TEXT("SD WebUI ready after %d polls"), Self->SDServerPollCount);
+						}
+						else
+						{
+							Self->SDServerStatusMessage = FString::Printf(
+								TEXT("Launching... (%ds elapsed)"), Self->SDServerPollCount * 3);
+							Self->OnSDServerStatusChanged.Broadcast(false, Self->SDServerStatusMessage);
+						}
+					});
+
+				Req->ProcessRequest();
+			}),
+			3.0f, true);
+	}
+}
+
+FString UHktTextureGeneratorSubsystem::McpCheckSDServerStatus()
+{
+	const auto* Settings = UHktTextureGeneratorSettings::Get();
+
+	FString Output;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	Writer->WriteObjectStart();
+	Writer->WriteValue(TEXT("alive"), bSDServerAlive);
+	Writer->WriteValue(TEXT("launching"), bSDServerLaunching);
+	Writer->WriteValue(TEXT("message"), SDServerStatusMessage);
+	Writer->WriteValue(TEXT("serverURL"), Settings->SDWebUIServerURL);
+	Writer->WriteValue(TEXT("batchFilePath"), Settings->SDWebUIBatchFilePath);
+	Writer->WriteValue(TEXT("batchFileExists"), !Settings->SDWebUIBatchFilePath.IsEmpty() && FPaths::FileExists(Settings->SDWebUIBatchFilePath));
+	Writer->WriteObjectEnd();
+	Writer->Close();
+	return Output;
 }
 
 // ============================================================================

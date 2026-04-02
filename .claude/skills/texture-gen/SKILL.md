@@ -19,16 +19,40 @@ argument-hint: <project_id | intent_json | "batch" intent_list_file>
 
 ## 선행 조건
 
-- SD WebUI 서버가 실행 중이어야 한다 (`http://127.0.0.1:7860`)
 - UE5 에디터가 실행 중이어야 한다 (Remote Control API 활성)
+- SD WebUI 서버가 실행 중이어야 한다 — **반드시 `check_sd_server_status`로 확인**
 
-## 핵심 원칙: 배치 우선, 캐시 우선
+## 핵심 원칙: 서버 확인 → 배치 우선, 캐시 우선
 
+0. **반드시 `check_sd_server_status`를 먼저 호출**하여 SD 서버 상태를 확인한다
+   - `alive: true` → 정상, 생성 진행
+   - `alive: false` → `launch_sd_server`로 자동 시작 시도 (batch file 설정 시)
+   - batch file 미설정 → 사용자에게 Project Settings 설정 안내
 1. **항상 `get_pending_texture_requests`를 먼저 호출**하여 캐시 히트를 걸러낸다
 2. pending 목록만 SD WebUI로 생성한다 — 불필요한 생성을 방지
 3. 다수 텍스처는 순차 호출하되, 각 생성 후 즉시 임포트한다
 
 ## 실행 절차
+
+### 0. SD WebUI 서버 상태 확인
+
+`check_sd_server_status` MCP 도구 호출:
+
+```json
+{
+  "alive": true,
+  "launching": false,
+  "message": "Connected (http://127.0.0.1:7860)",
+  "serverURL": "http://127.0.0.1:7860",
+  "batchFilePath": "E:/AI/webui_forge/run.bat",
+  "batchFileExists": true
+}
+```
+
+- `alive: false`이면 `launch_sd_server`를 호출하여 자동 시작
+- `batchFileExists: false`이면 사용자에게 안내:
+  "SD WebUI 배치 파일 경로가 설정되지 않았습니다. Project Settings > HktGameplay > HktTextureGenerator에서 SDWebUIBatchFilePath를 설정하세요."
+- 서버 시작 후 다시 `check_sd_server_status`로 확인
 
 ### 1. 텍스처 Intent 목록 수집
 
@@ -148,7 +172,7 @@ SD WebUI 없이 외부에서 이미지를 생성한 경우:
 
 ## 디버깅
 
-- SD WebUI 상태 확인: `curl http://127.0.0.1:7860/sdapi/v1/sd-models`
+- SD WebUI 상태 확인: `check_sd_server_status` MCP 도구 (또는 에디터 Texture 탭의 "Check Connection" 버튼)
 - 캐시 확인: `Saved/TextureGenerator/` 폴더의 PNG 파일
 - UE5 어셋 확인: `list_generated_textures` 호출
 - 로그: MCP 서버의 `hkt_mcp.tools.texture` 로거
