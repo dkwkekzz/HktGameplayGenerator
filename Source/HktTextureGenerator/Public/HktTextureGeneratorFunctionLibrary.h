@@ -56,6 +56,17 @@ public:
 	static FString McpGetPendingRequests(const FString& JsonRequests);
 
 	// =========================================================================
+	// SD WebUI 서버 관리
+	// =========================================================================
+
+	/**
+	 * SD WebUI 서버 연결 상태 확인.
+	 * alive, launching, serverURL, batchFilePath, batchFileExists 반환.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|TextureGenerator|MCP")
+	static FString McpCheckSDServerStatus();
+
+	// =========================================================================
 	// 조회
 	// =========================================================================
 

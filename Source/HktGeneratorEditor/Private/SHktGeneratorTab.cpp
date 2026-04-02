@@ -3,6 +3,8 @@
 #include "SHktGeneratorTab.h"
 #include "HktGeneratorEditorModule.h"
 #include "HktMcpEditorSubsystem.h"
+#include "HktTextureGeneratorSubsystem.h"
+#include "HktTextureGeneratorSettings.h"
 #include "Editor.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSeparator.h"
@@ -20,6 +22,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Layout/SExpandableArea.h"
+#include "ISettingsModule.h"
 
 #define LOCTEXT_NAMESPACE "HktGeneratorTab"
 
@@ -64,10 +67,18 @@ void SHktGeneratorTab::Construct(const FArguments& InArgs)
 	ProjectId = InArgs._ProjectId;
 
 	SubscribeToEvents();
+	SubscribeSDStatus();
 
 	ChildSlot
 	[
 		SNew(SScrollBox)
+
+		// SD WebUI Status (Texture tab only)
+		+ SScrollBox::Slot()
+		.Padding(8.0f, 8.0f, 8.0f, 0.0f)
+		[
+			BuildSDStatusSection()
+		]
 
 		+ SScrollBox::Slot()
 		.Padding(8.0f)
@@ -119,6 +130,7 @@ void SHktGeneratorTab::Construct(const FArguments& InArgs)
 SHktGeneratorTab::~SHktGeneratorTab()
 {
 	UnsubscribeFromEvents();
+	UnsubscribeSDStatus();
 }
 
 // ==================== SetProject ====================
@@ -1099,6 +1111,319 @@ void SHktGeneratorTab::ExtractGeneratedAssets(const FString& ResultJson)
 	{
 		ResultListView->RequestListRefresh();
 	}
+}
+
+// ==================== SD WebUI Status ====================
+
+bool SHktGeneratorTab::IsTextureTab() const
+{
+	return GeneratorInfo.Type == EHktGeneratorType::Texture;
+}
+
+TSharedRef<SWidget> SHktGeneratorTab::BuildSDStatusSection()
+{
+	const auto* Settings = UHktTextureGeneratorSettings::Get();
+	const bool bHasBatchFile = !Settings->SDWebUIBatchFilePath.IsEmpty();
+	const FString ServerURL = Settings->SDWebUIServerURL;
+
+	return SAssignNew(SDStatusSection, SVerticalBox)
+		.Visibility(IsTextureTab() ? EVisibility::Visible : EVisibility::Collapsed)
+
+		+ SVerticalBox::Slot()
+		.AutoHeight()
+		[
+			SNew(SBorder)
+			.BorderImage(FAppStyle::GetBrush("ToolPanel.DarkGroupBorder"))
+			.Padding(8)
+			[
+				SNew(SVerticalBox)
+
+				// 헤더
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 0, 0, 4)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0, 0, 8, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("SDHeader", "SD WebUI Server"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 11))
+					]
+
+					// 상태 인디케이터 (동그라미)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(SBox)
+						.WidthOverride(10.0f)
+						.HeightOverride(10.0f)
+						[
+							SNew(SBorder)
+							.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+							.BorderBackgroundColor_Lambda([this]() -> FSlateColor
+							{
+								if (GEditor)
+								{
+									auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+									if (TexSub)
+									{
+										if (TexSub->IsSDServerAlive())
+											return FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f)); // Green
+										if (TexSub->IsSDServerLaunching())
+											return FSlateColor(FLinearColor(0.9f, 0.7f, 0.1f)); // Yellow
+									}
+								}
+								return FSlateColor(FLinearColor(0.8f, 0.2f, 0.2f)); // Red
+							})
+						]
+					]
+
+					// 상태 텍스트
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					.VAlign(VAlign_Center)
+					[
+						SAssignNew(SDStatusText, STextBlock)
+						.Text_Lambda([this]() -> FText
+						{
+							if (GEditor)
+							{
+								auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+								if (TexSub)
+								{
+									const FString& Msg = TexSub->GetSDServerStatusMessage();
+									if (!Msg.IsEmpty())
+										return FText::FromString(Msg);
+
+									return TexSub->IsSDServerAlive()
+										? LOCTEXT("SDConnected", "Connected")
+										: LOCTEXT("SDNotChecked", "Not checked");
+								}
+							}
+							return LOCTEXT("SDUnavailable", "Subsystem not available");
+						})
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 9))
+						.ColorAndOpacity_Lambda([this]() -> FSlateColor
+						{
+							if (GEditor)
+							{
+								auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+								if (TexSub)
+								{
+									if (TexSub->IsSDServerAlive())
+										return FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f));
+									if (TexSub->IsSDServerLaunching())
+										return FSlateColor(FLinearColor(0.9f, 0.7f, 0.1f));
+								}
+							}
+							return FSlateColor(FLinearColor(1.0f, 0.4f, 0.2f));
+						})
+						.AutoWrapText(true)
+					]
+				]
+
+				// 상세 정보 행: URL + Batch File
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 2, 0, 4)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("SDURLLabel", "URL:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 12, 0)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(ServerURL.IsEmpty() ? TEXT("(not set)") : ServerURL))
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						.ColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)))
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("SDBatchLabel", "Launcher:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+						.ColorAndOpacity(FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f)))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(bHasBatchFile ? FPaths::GetCleanFilename(Settings->SDWebUIBatchFilePath) : TEXT("(not set)")))
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						.ColorAndOpacity(FSlateColor(bHasBatchFile
+							? FLinearColor(0.6f, 0.6f, 0.6f)
+							: FLinearColor(0.8f, 0.5f, 0.2f)))
+						.ToolTipText(FText::FromString(bHasBatchFile
+							? Settings->SDWebUIBatchFilePath
+							: TEXT("Project Settings > HktGameplay > HktTextureGenerator > SD WebUI Batch File Path")))
+					]
+				]
+
+				// 액션 버튼
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 4, 0)
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("SDCheck", "Check Connection"))
+						.ToolTipText(LOCTEXT("SDCheckTip", "SD WebUI 서버에 핑을 보내 연결 상태를 확인합니다"))
+						.OnClicked_Lambda([this]() { OnCheckSDServer(); return FReply::Handled(); })
+						.IsEnabled_Lambda([this]()
+						{
+							if (!GEditor) return false;
+							auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+							return TexSub && !TexSub->IsSDServerLaunching();
+						})
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(4, 0, 4, 0)
+					[
+						SNew(SButton)
+						.Text_Lambda([this]() -> FText
+						{
+							if (GEditor)
+							{
+								auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+								if (TexSub && TexSub->IsSDServerLaunching())
+									return LOCTEXT("SDLaunching", "Launching...");
+								if (TexSub && TexSub->IsSDServerAlive())
+									return LOCTEXT("SDRunning", "Server Running");
+							}
+							return LOCTEXT("SDLaunch", "Launch Server");
+						})
+						.ToolTipText_Lambda([this]() -> FText
+						{
+							const auto* Settings = UHktTextureGeneratorSettings::Get();
+							if (Settings->SDWebUIBatchFilePath.IsEmpty())
+								return LOCTEXT("SDLaunchTipNoBat", "Batch file not configured. Set it in Project Settings > HktGameplay > HktTextureGenerator");
+							return FText::Format(
+								LOCTEXT("SDLaunchTipFmt", "Launch: {0}"),
+								FText::FromString(Settings->SDWebUIBatchFilePath));
+						})
+						.OnClicked_Lambda([this]() { OnLaunchSDServer(); return FReply::Handled(); })
+						.IsEnabled_Lambda([this]()
+						{
+							if (!GEditor) return false;
+							auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+							if (!TexSub) return false;
+							if (TexSub->IsSDServerAlive() || TexSub->IsSDServerLaunching()) return false;
+							return !UHktTextureGeneratorSettings::Get()->SDWebUIBatchFilePath.IsEmpty();
+						})
+						.ButtonColorAndOpacity_Lambda([this]() -> FLinearColor
+						{
+							if (GEditor)
+							{
+								auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+								if (TexSub && TexSub->IsSDServerAlive())
+									return FLinearColor(0.15f, 0.15f, 0.15f, 0.5f);
+							}
+							return FLinearColor(0.3f, 0.5f, 0.9f, 1.0f);
+						})
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					[
+						SNew(SButton)
+						.Text(LOCTEXT("SDSettings", "Settings"))
+						.ToolTipText(LOCTEXT("SDSettingsTip", "Open Project Settings > HktGameplay > HktTextureGenerator"))
+						.OnClicked_Lambda([]()
+						{
+							FModuleManager::LoadModuleChecked<ISettingsModule>("Settings")
+								.ShowViewer("Project", "HktGameplay", "HktTextureGenerator");
+							return FReply::Handled();
+						})
+					]
+				]
+			]
+		];
+}
+
+void SHktGeneratorTab::OnCheckSDServer()
+{
+	if (!GEditor) return;
+	auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+	if (TexSub)
+	{
+		AddLogLine(TEXT("[SD] Checking SD WebUI server connection..."));
+		TexSub->CheckSDServerStatus();
+	}
+}
+
+void SHktGeneratorTab::OnLaunchSDServer()
+{
+	if (!GEditor) return;
+	auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+	if (TexSub)
+	{
+		AddLogLine(TEXT("[SD] Launching SD WebUI server..."));
+		TexSub->LaunchSDServer();
+	}
+}
+
+void SHktGeneratorTab::OnSDServerStatusChanged(bool bAlive, const FString& StatusMessage)
+{
+	if (bAlive)
+	{
+		AddLogLine(FString::Printf(TEXT("[SD] Server connected: %s"), *StatusMessage));
+	}
+	else if (StatusMessage.Contains(TEXT("Launching")))
+	{
+		// 폴링 중에는 로그 안 남김 (너무 빈번)
+	}
+	else
+	{
+		AddLogLine(FString::Printf(TEXT("[SD] %s"), *StatusMessage));
+	}
+}
+
+void SHktGeneratorTab::SubscribeSDStatus()
+{
+	if (!IsTextureTab() || !GEditor) return;
+
+	auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+	if (TexSub)
+	{
+		// 초기 상태 체크 (Slate Lambda가 매 프레임 상태를 반영)
+		TexSub->CheckSDServerStatus();
+	}
+}
+
+void SHktGeneratorTab::UnsubscribeSDStatus()
+{
+	// Slate Lambda 바인딩 방식이므로 별도 해제 불필요
 }
 
 // ==================== Helpers ====================

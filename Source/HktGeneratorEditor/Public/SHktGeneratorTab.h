@@ -66,6 +66,10 @@ private:
 	bool bAutoGenerateAfterConvert = false;
 	FDelegateHandle GenerationEventHandle;  // OnGenerationEvent 구독 핸들
 
+	// ── SD WebUI Status (Texture tab only) ──
+	TSharedPtr<SVerticalBox> SDStatusSection;
+	TSharedPtr<STextBlock> SDStatusText;
+
 	// ── Widgets ──
 	TSharedPtr<SMultiLineEditableTextBox> NaturalLanguageEditor;
 	TSharedPtr<SMultiLineEditableTextBox> IntentEditor;
@@ -80,6 +84,7 @@ private:
 	TArray<TSharedPtr<FString>> ResultListItems;
 
 	// ── UI Builders ──
+	TSharedRef<SWidget> BuildSDStatusSection();
 	TSharedRef<SWidget> BuildIntentSection();
 	TSharedRef<SWidget> BuildProgressSection();
 	TSharedRef<SWidget> BuildResultSection();
@@ -113,6 +118,14 @@ private:
 
 	void UpdatePhaseFromToolUse(const FString& ToolName);
 	void ExtractGeneratedAssets(const FString& ResultJson);
+
+	// ── SD WebUI ──
+	void OnCheckSDServer();
+	void OnLaunchSDServer();
+	void OnSDServerStatusChanged(bool bAlive, const FString& StatusMessage);
+	void SubscribeSDStatus();
+	void UnsubscribeSDStatus();
+	bool IsTextureTab() const;
 
 	// ── Helpers ──
 	FString LoadSkillMd() const;

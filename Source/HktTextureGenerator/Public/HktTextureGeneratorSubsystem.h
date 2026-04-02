@@ -9,6 +9,7 @@
 #include "HktTextureGeneratorSubsystem.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnTextureGenerated, const FHktTextureResult&, Result);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSDServerStatusChanged, bool, bAlive, const FString&, StatusMessage);
 
 /**
  * UHktTextureGeneratorSubsystem
@@ -88,6 +89,38 @@ public:
 	FString McpGetPendingRequests(const FString& JsonRequests);
 
 	// =========================================================================
+	// SD WebUI 서버 관리
+	// =========================================================================
+
+	/** SD WebUI 서버가 응답 중인지 비동기 확인. 결과는 OnSDServerStatusChanged로 전달. */
+	UFUNCTION(BlueprintCallable, Category = "HKT|TextureGenerator")
+	void CheckSDServerStatus();
+
+	/** SD WebUI 배치 파일을 실행하여 서버를 시작. 결과는 OnSDServerStatusChanged로 전달. */
+	UFUNCTION(BlueprintCallable, Category = "HKT|TextureGenerator")
+	void LaunchSDServer();
+
+	/** SD WebUI 서버가 마지막 체크 시 응답했는지 (캐시된 상태) */
+	UFUNCTION(BlueprintCallable, Category = "HKT|TextureGenerator")
+	bool IsSDServerAlive() const { return bSDServerAlive; }
+
+	/** SD WebUI 서버 상태 마지막 메시지 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|TextureGenerator")
+	FString GetSDServerStatusMessage() const { return SDServerStatusMessage; }
+
+	/** SD WebUI 서버가 현재 시작 중인지 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|TextureGenerator")
+	bool IsSDServerLaunching() const { return bSDServerLaunching; }
+
+	/** SD WebUI 서버 상태 변경 이벤트 */
+	UPROPERTY(BlueprintAssignable, Category = "HKT|TextureGenerator")
+	FOnSDServerStatusChanged OnSDServerStatusChanged;
+
+	/** MCP용: SD 서버 상태를 JSON으로 반환 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|TextureGenerator")
+	FString McpCheckSDServerStatus();
+
+	// =========================================================================
 	// 캐시 / 조회
 	// =========================================================================
 
@@ -127,4 +160,13 @@ private:
 
 	/** AssetKey → SoftObjectPath 캐시 */
 	TMap<FString, FSoftObjectPath> TextureCache;
+
+	// ── SD WebUI 상태 ──
+	bool bSDServerAlive = false;
+	bool bSDServerLaunching = false;
+	FString SDServerStatusMessage;
+	FProcHandle SDServerProcessHandle;
+	FTimerHandle SDServerPollTimerHandle;
+	int32 SDServerPollCount = 0;
+	static constexpr int32 SDServerMaxPollCount = 60; // 최대 3분 (3초 간격)
 };
