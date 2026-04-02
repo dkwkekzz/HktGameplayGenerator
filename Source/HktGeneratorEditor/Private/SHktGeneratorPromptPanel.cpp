@@ -6,6 +6,8 @@
 #include "HktClaudeProcess.h"
 #include "HktMcpEditorSubsystem.h"
 #include "HktGeneratorEditorModule.h"
+#include "HktTextureGeneratorSubsystem.h"
+#include "HktTextureGeneratorSettings.h"
 #include "Editor.h"
 #include "HktGeneratorEditorSettings.h"
 #include "Widgets/Layout/SSeparator.h"
@@ -361,6 +363,66 @@ TSharedRef<SWidget> SHktGeneratorPromptPanel::BuildStatusBar()
 								? FLinearColor(0.2f, 0.8f, 0.2f)
 								: FLinearColor(0.5f, 0.5f, 0.5f));
 						})
+					]
+				]
+
+				// SD WebUI
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0, 1)
+				[
+					SNew(SHorizontalBox)
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0, 0, 6, 0)
+					[
+						SNew(STextBlock)
+						.Text(LOCTEXT("StatusSD", "SD WebUI:"))
+						.Font(FCoreStyle::GetDefaultFontStyle("Bold", 8))
+					]
+
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([]()
+						{
+							if (GEditor)
+							{
+								auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+								if (TexSub)
+								{
+									if (TexSub->IsSDServerAlive())
+									{
+										return FText::FromString(FString::Printf(TEXT("Connected (%s)"),
+											*UHktTextureGeneratorSettings::Get()->SDWebUIServerURL));
+									}
+									if (TexSub->IsSDServerLaunching())
+									{
+										return FText::FromString(TexSub->GetSDServerStatusMessage());
+									}
+								}
+							}
+							return FText::FromString(TEXT("Not connected"));
+						})
+						.Font(FCoreStyle::GetDefaultFontStyle("Mono", 8))
+						.ColorAndOpacity_Lambda([]() -> FSlateColor
+						{
+							if (GEditor)
+							{
+								auto* TexSub = GEditor->GetEditorSubsystem<UHktTextureGeneratorSubsystem>();
+								if (TexSub)
+								{
+									if (TexSub->IsSDServerAlive())
+										return FSlateColor(FLinearColor(0.2f, 0.8f, 0.2f));
+									if (TexSub->IsSDServerLaunching())
+										return FSlateColor(FLinearColor(0.9f, 0.7f, 0.1f));
+								}
+							}
+							return FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f));
+						})
+						.AutoWrapText(true)
 					]
 				]
 			]

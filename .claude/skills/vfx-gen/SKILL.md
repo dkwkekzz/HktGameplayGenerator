@@ -18,6 +18,7 @@ VFX의 설계(에미터 구성, 색상, 스케일 등)는 이미 asset_discovery
 ## 선행 조건
 
 - `asset_discovery` 스텝이 completed 상태여야 한다
+- 커스텀 텍스처가 필요한 VFX가 있으면 SD WebUI 서버가 필요하다 → 실행 절차 Phase 1 참조
 
 ## 입력 데이터
 
@@ -46,6 +47,11 @@ MCP 도구 `step_begin`을 호출한다:
 ### Phase 1: 텍스처/머티리얼 준비 (Material Prep)
 
 **목표**: `visual_design.emitter_layers`에서 `needs_custom_texture`/`needs_custom_material`이 true인 레이어의 리소스를 생성
+
+**SD WebUI 서버 사전 점검**: 커스텀 텍스처가 필요한 레이어가 하나라도 있으면 텍스처 생성 **전에** 반드시 수행:
+1. `check_sd_server_status` 호출
+2. `alive: false`이면 `launch_sd_server` 호출하여 자동 시작
+3. 시작 실패 또는 batch file 미설정 시 → 사용자에게 안내하고 해당 텍스처는 **템플릿 기본 머티리얼로 폴백**
 
 #### 1-A. 텍스처 생성 (needs_custom_texture=true인 레이어)
 
