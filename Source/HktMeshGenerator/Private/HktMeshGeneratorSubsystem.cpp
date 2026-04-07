@@ -91,7 +91,9 @@ UObject* UHktMeshGeneratorSubsystem::ImportMeshFromFile(const FString& FilePath,
 	ImportTask->bSave = true;
 
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	AssetTools.ImportAssetTasks({ ImportTask });
+	TArray<UAssetImportTask*> Tasks;
+	Tasks.Add(ImportTask);
+	AssetTools.ImportAssetTasks(Tasks);
 
 	// 결과 확인
 	if (ImportTask->GetObjects().Num() == 0)

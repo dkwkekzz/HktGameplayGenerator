@@ -255,20 +255,21 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 		}
 	}
 
-	// TSoftObjectPtr<T> — FSoftObjectProperty는 FObjectPropertyBase가 아닌 별도 타입
+	// TSoftObjectPtr<T> / TSoftClassPtr<T> — ImportText로 경로 문자열 직접 처리
 	if (!bSuccess)
 	{
-		if (FSoftObjectProperty* SoftObjProp = CastField<FSoftObjectProperty>(Property))
+		if (CastField<FSoftObjectProperty>(Property) || CastField<FSoftClassProperty>(Property))
 		{
-			FSoftObjectPtr SoftPtr(FSoftObjectPath(NewValue));
-			SoftObjProp->SetPropertyValue(PropertyValue, SoftPtr);
-			bSuccess = true;
-		}
-		else if (FSoftClassProperty* SoftClsProp = CastField<FSoftClassProperty>(Property))
-		{
-			FSoftObjectPtr SoftPtr(FSoftObjectPath(NewValue));
-			SoftClsProp->SetPropertyValue(PropertyValue, SoftPtr);
-			bSuccess = true;
+			const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
+			if (Ret != nullptr)
+			{
+				bSuccess = true;
+			}
+			else
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set soft reference %s = %s"), *PropertyName, *NewValue);
+				return false;
+			}
 		}
 	}
 
@@ -361,12 +362,24 @@ FString UHktMcpEditorSubsystem::CreateDataAssetWithProperties(const FString& Ass
 				}
 				else
 				{
-					// 비-문자열 값은 JSON 직렬화하여 전달
-					TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> JsonWriter =
-						TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Value);
-					FJsonSerializer::Serialize(Pair.Value.ToSharedRef(), TEXT(""), JsonWriter);
-					// Serialize wraps in {"":...}, extract inner value
-					// Fallback: use ImportText with raw JSON
+					// 비-문자열 값 → 문자열 변환
+					double NumVal;
+					if (Pair.Value->TryGetNumber(NumVal))
+					{
+						Value = FString::SanitizeFloat(NumVal);
+					}
+					else if (Pair.Value->TryGetBool(bSuccess))
+					{
+						Value = bSuccess ? TEXT("true") : TEXT("false");
+						bSuccess = false; // bSuccess 리셋 (위에서 bool 변환용으로만 사용)
+					}
+					else
+					{
+						UE_LOG(LogHktMcpEditor, Warning, TEXT("Unsupported JSON value type for property: %s"), *Pair.Key);
+						FailedProps.Add(Pair.Key);
+						continue;
+					}
+
 					if (!ModifyAssetProperty(AssetPath, Pair.Key, Value))
 					{
 						FailedProps.Add(Pair.Key);
