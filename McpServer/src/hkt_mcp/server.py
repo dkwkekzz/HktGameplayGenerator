@@ -137,8 +137,33 @@ async def list_tools() -> list[Tool]:
                 "required": ["asset_path", "property_name", "new_value"]
             }
         ),
+        Tool(
+            name="create_data_asset_with_properties",
+            description="Create any UDataAsset subclass and set properties in one call. "
+                        "Supports FGameplayTag ('Entity.Character.Goblin'), FSoftObjectPath, TSoftObjectPtr, "
+                        "hard UObject* refs, FGameplayTagContainer ('Tag.A, Tag.B'), int/float/bool/string/enum.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "asset_path": {
+                        "type": "string",
+                        "description": "UE5 asset path (e.g. /Game/Generated/DA_MyAsset)"
+                    },
+                    "parent_class": {
+                        "type": "string",
+                        "description": "Full class path (e.g. /Script/HktAsset.HktVFXVisualDataAsset)"
+                    },
+                    "properties": {
+                        "type": "object",
+                        "description": "Property name-value pairs to set (e.g. {\"IdentifierTag\": \"VFX.Fire\", \"NiagaraSystem\": \"/Game/VFX/NS_Fire.NS_Fire\"})",
+                        "additionalProperties": {"type": "string"}
+                    }
+                },
+                "required": ["asset_path", "parent_class"]
+            }
+        ),
     ])
-    
+
     # Level Tools
     tools.extend([
         Tool(
@@ -1451,7 +1476,14 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             arguments["property_name"],
             arguments["new_value"]
         )
-    
+    elif name == "create_data_asset_with_properties":
+        return await asset_tools.create_data_asset_with_properties(
+            bridge,
+            arguments["asset_path"],
+            arguments["parent_class"],
+            arguments.get("properties"),
+        )
+
     # Level Tools
     elif name == "list_actors":
         return await level_tools.list_actors(
