@@ -326,6 +326,87 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 	return true;
 }
 
+FString UHktMcpEditorSubsystem::CreateDataAssetWithProperties(const FString& AssetPath, const FString& ParentClassName, const FString& PropertiesJson)
+{
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+
+	// 1. DataAsset 생성
+	if (!CreateDataAsset(AssetPath, ParentClassName))
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Failed to create DataAsset: %s (%s)"), *AssetPath, *ParentClassName));
+		FString Str;
+		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
+		FJsonSerializer::Serialize(Result, W);
+		return Str;
+	}
+
+	// 2. 속성 일괄 설정 (PropertiesJson이 비어있으면 생성만)
+	TArray<FString> FailedProps;
+	if (!PropertiesJson.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> Props;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+		if (FJsonSerializer::Deserialize(Reader, Props) && Props.IsValid())
+		{
+			for (const auto& Pair : Props->Values)
+			{
+				FString Value;
+				if (Pair.Value->TryGetString(Value))
+				{
+					if (!ModifyAssetProperty(AssetPath, Pair.Key, Value))
+					{
+						FailedProps.Add(Pair.Key);
+					}
+				}
+				else
+				{
+					// 비-문자열 값은 JSON 직렬화하여 전달
+					TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> JsonWriter =
+						TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Value);
+					FJsonSerializer::Serialize(Pair.Value.ToSharedRef(), TEXT(""), JsonWriter);
+					// Serialize wraps in {"":...}, extract inner value
+					// Fallback: use ImportText with raw JSON
+					if (!ModifyAssetProperty(AssetPath, Pair.Key, Value))
+					{
+						FailedProps.Add(Pair.Key);
+					}
+				}
+			}
+		}
+		else
+		{
+			Result->SetBoolField(TEXT("success"), false);
+			Result->SetStringField(TEXT("error"), TEXT("Invalid PropertiesJson format"));
+			FString Str;
+			TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
+			FJsonSerializer::Serialize(Result, W);
+			return Str;
+		}
+	}
+
+	// 3. 결과
+	Result->SetBoolField(TEXT("success"), true);
+	Result->SetStringField(TEXT("asset_path"), AssetPath);
+	Result->SetStringField(TEXT("class"), ParentClassName);
+
+	if (FailedProps.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> FailedArr;
+		for (const FString& P : FailedProps)
+		{
+			FailedArr.Add(MakeShared<FJsonValueString>(P));
+		}
+		Result->SetArrayField(TEXT("failed_properties"), FailedArr);
+		Result->SetStringField(TEXT("warning"), TEXT("Some properties failed to set"));
+	}
+
+	FString ResultStr;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultStr);
+	FJsonSerializer::Serialize(Result, Writer);
+	return ResultStr;
+}
+
 bool UHktMcpEditorSubsystem::DeleteAsset(const FString& AssetPath)
 {
 	return UEditorAssetLibrary::DeleteAsset(AssetPath);

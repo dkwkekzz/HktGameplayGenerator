@@ -139,9 +139,7 @@ async def create_data_asset(
     asset_path: str,
     parent_class: str
 ) -> str:
-    """
-    Create a new DataAsset
-    """
+    """Create a new DataAsset (without setting properties)."""
     logger.info(f"Creating DataAsset: {asset_path} ({parent_class})")
 
     data = await bridge.call_method(
@@ -152,5 +150,45 @@ async def create_data_asset(
 
     if isinstance(data, dict):
         return json.dumps(data, indent=2)
+
+    return json.dumps({"success": False, "error": "Unexpected response"}, indent=2)
+
+
+async def create_data_asset_with_properties(
+    bridge: EditorBridge,
+    asset_path: str,
+    parent_class: str,
+    properties: dict | None = None,
+) -> str:
+    """Create a DataAsset and set properties in one call.
+
+    Works with ANY UDataAsset subclass. Properties use the same formats as modify_asset:
+      - FGameplayTag: "Entity.Character.Goblin"
+      - FSoftObjectPath: "/Game/Path/Asset.Asset"
+      - TSoftObjectPtr: "/Game/Path/Asset.Asset"
+      - UObject* hard ref: "/Game/Path/Asset"
+      - FGameplayTagContainer: "Tag.A, Tag.B, Tag.C"
+      - int/float/bool/string/enum: "42", "true", "Hello"
+
+    Args:
+        asset_path: UE5 asset path (e.g. /Game/Generated/VFX/DA_VFX_Fire)
+        parent_class: Full class path (e.g. /Script/HktAsset.HktVFXVisualDataAsset)
+        properties: Dict of {PropertyName: Value} to set after creation
+    """
+    logger.info(f"Creating DataAsset with properties: {asset_path} ({parent_class})")
+
+    properties_json = json.dumps(properties) if properties else ""
+
+    data = await bridge.call_method(
+        "McpCreateDataAssetWithProperties",
+        AssetPath=asset_path,
+        ParentClassName=parent_class,
+        PropertiesJson=properties_json,
+    )
+
+    if isinstance(data, dict):
+        return json.dumps(data, indent=2)
+    if isinstance(data, str):
+        return data
 
     return json.dumps({"success": False, "error": "Unexpected response"}, indent=2)

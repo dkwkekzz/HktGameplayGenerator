@@ -83,10 +83,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator")
 	FString McpGetSkeletonPool();
 
-	/** 임포트된 메시/BP에 대해 ActorVisualDataAsset 생성 (JSON) */
-	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator")
-	FString McpCreateActorDataAsset(const FString& TagString, const FString& ActorClassPath, const FString& OutputDir);
-
 private:
 	FString ResolveOutputDir(const FString& OutputDir) const;
 	FString BuildPrompt(const FHktCharacterIntent& Intent) const;

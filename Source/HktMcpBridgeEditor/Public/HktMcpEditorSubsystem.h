@@ -285,6 +285,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MCP|Assets")
 	bool ModifyAssetProperty(const FString& AssetPath, const FString& PropertyName, const FString& NewValue);
 
+	/** DataAsset 생성 + 속성 일괄 설정. 아무 UDataAsset 서브클래스에 사용 가능.
+	 *  PropertiesJson: {"PropertyName": "Value", ...} 형식. 모든 ModifyAssetProperty 지원 타입 사용 가능. */
+	UFUNCTION(BlueprintCallable, Category = "MCP|Assets")
+	FString CreateDataAssetWithProperties(const FString& AssetPath, const FString& ParentClassName, const FString& PropertiesJson);
+
 	// 에셋 삭제
 	UFUNCTION(BlueprintCallable, Category = "MCP|Assets")
 	bool DeleteAsset(const FString& AssetPath);

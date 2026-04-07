@@ -301,61 +301,6 @@ FString UHktMeshGeneratorSubsystem::McpGetSkeletonPool()
 	return ResultStr;
 }
 
-FString UHktMeshGeneratorSubsystem::McpCreateActorDataAsset(const FString& TagString, const FString& ActorClassPath, const FString& OutputDir)
-{
-	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
-
-	if (TagString.IsEmpty())
-	{
-		Result->SetBoolField(TEXT("success"), false);
-		Result->SetStringField(TEXT("error"), TEXT("TagString is required"));
-		FString Str;
-		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
-		FJsonSerializer::Serialize(Result, W);
-		return Str;
-	}
-
-	FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagString), false);
-	if (!Tag.IsValid())
-	{
-		Result->SetBoolField(TEXT("success"), false);
-		Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Invalid GameplayTag: %s"), *TagString));
-		FString Str;
-		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
-		FJsonSerializer::Serialize(Result, W);
-		return Str;
-	}
-
-	if (!MeshHandler)
-	{
-		Result->SetBoolField(TEXT("success"), false);
-		Result->SetStringField(TEXT("error"), TEXT("MeshHandler not initialized"));
-		FString Str;
-		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
-		FJsonSerializer::Serialize(Result, W);
-		return Str;
-	}
-
-	FSoftObjectPath DataAssetPath = MeshHandler->CreateActorVisualDataAsset(Tag, FSoftObjectPath(ActorClassPath), OutputDir);
-
-	if (DataAssetPath.IsValid())
-	{
-		Result->SetBoolField(TEXT("success"), true);
-		Result->SetStringField(TEXT("dataAssetPath"), DataAssetPath.ToString());
-		Result->SetStringField(TEXT("tag"), TagString);
-	}
-	else
-	{
-		Result->SetBoolField(TEXT("success"), false);
-		Result->SetStringField(TEXT("error"), TEXT("Failed to create ActorVisualDataAsset"));
-	}
-
-	FString ResultStr;
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultStr);
-	FJsonSerializer::Serialize(Result, Writer);
-	return ResultStr;
-}
-
 FString UHktMeshGeneratorSubsystem::ResolveOutputDir(const FString& OutputDir) const
 {
 	if (!OutputDir.IsEmpty()) return OutputDir;

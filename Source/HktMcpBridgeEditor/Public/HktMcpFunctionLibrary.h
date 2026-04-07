@@ -145,6 +145,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "MCP|Assets")
     static FString McpCreateDataAsset(const FString& AssetPath, const FString& ParentClassName);
 
+    /** Create a DataAsset and set properties in one call. Works with any UDataAsset subclass.
+     *  PropertiesJson: {"PropName": "Value", ...} — supports all ModifyAssetProperty types. */
+    UFUNCTION(BlueprintCallable, Category = "MCP|Assets")
+    static FString McpCreateDataAssetWithProperties(const FString& AssetPath, const FString& ParentClassName, const FString& PropertiesJson);
+
 private:
     static UHktMcpEditorSubsystem* GetSubsystem();
 };

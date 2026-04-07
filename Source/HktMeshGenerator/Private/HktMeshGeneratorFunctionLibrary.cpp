@@ -48,12 +48,3 @@ FString UHktMeshGeneratorFunctionLibrary::McpGetSkeletonPool()
 	}
 	return TEXT("{\"error\": \"MeshGeneratorSubsystem not available\"}");
 }
-
-FString UHktMeshGeneratorFunctionLibrary::McpCreateActorDataAsset(const FString& TagString, const FString& ActorClassPath, const FString& OutputDir)
-{
-	if (UHktMeshGeneratorSubsystem* Sub = GEditor->GetEditorSubsystem<UHktMeshGeneratorSubsystem>())
-	{
-		return Sub->McpCreateActorDataAsset(TagString, ActorClassPath, OutputDir);
-	}
-	return TEXT("{\"error\": \"MeshGeneratorSubsystem not available\"}");
-}

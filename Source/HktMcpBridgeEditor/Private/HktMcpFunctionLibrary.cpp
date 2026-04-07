@@ -469,3 +469,14 @@ FString UHktMcpFunctionLibrary::McpCreateDataAsset(const FString& AssetPath, con
     FJsonSerializer::Serialize(Result, Writer);
     return Output;
 }
+
+FString UHktMcpFunctionLibrary::McpCreateDataAssetWithProperties(const FString& AssetPath, const FString& ParentClassName, const FString& PropertiesJson)
+{
+    UHktMcpEditorSubsystem* Subsystem = GetSubsystem();
+    if (!Subsystem)
+    {
+        return TEXT("{\"success\":false,\"error\":\"Subsystem not available\"}");
+    }
+
+    return Subsystem->CreateDataAssetWithProperties(AssetPath, ParentClassName, PropertiesJson);
+}
