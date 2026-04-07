@@ -29,6 +29,7 @@ public class HktTextureGenerator : ModuleRules
 				"AssetTools",
 				"ImageWrapper",
 				"RenderCore",
+				"HTTP",
 			}
 		);
 	}

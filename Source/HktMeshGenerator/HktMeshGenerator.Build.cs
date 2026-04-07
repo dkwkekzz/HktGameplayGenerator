@@ -36,6 +36,7 @@ public class HktMeshGenerator : ModuleRules
 			{
 				"UnrealEd",
 				"EditorSubsystem",
+				"EditorScriptingUtilities",
 				"DeveloperSettings",
 				"AssetRegistry",
 				"AssetTools",

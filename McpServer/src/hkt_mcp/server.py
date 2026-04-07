@@ -137,8 +137,33 @@ async def list_tools() -> list[Tool]:
                 "required": ["asset_path", "property_name", "new_value"]
             }
         ),
+        Tool(
+            name="create_data_asset_with_properties",
+            description="Create any UDataAsset subclass and set properties in one call. "
+                        "Supports FGameplayTag ('Entity.Character.Goblin'), FSoftObjectPath, TSoftObjectPtr, "
+                        "hard UObject* refs, FGameplayTagContainer ('Tag.A, Tag.B'), int/float/bool/string/enum.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "asset_path": {
+                        "type": "string",
+                        "description": "UE5 asset path (e.g. /Game/Generated/DA_MyAsset)"
+                    },
+                    "parent_class": {
+                        "type": "string",
+                        "description": "Full class path (e.g. /Script/HktAsset.HktVFXVisualDataAsset)"
+                    },
+                    "properties": {
+                        "type": "object",
+                        "description": "Property name-value pairs to set (e.g. {\"IdentifierTag\": \"VFX.Fire\", \"NiagaraSystem\": \"/Game/VFX/NS_Fire.NS_Fire\"})",
+                        "additionalProperties": {"type": "string"}
+                    }
+                },
+                "required": ["asset_path", "parent_class"]
+            }
+        ),
     ])
-    
+
     # Level Tools
     tools.extend([
         Tool(
@@ -648,6 +673,22 @@ async def list_tools() -> list[Tool]:
 
     # ==================== Texture Generator Tools ====================
     tools.extend([
+        Tool(
+            name="check_sd_server_status",
+            description="Check SD WebUI server connection status. Returns alive state, server URL, batch file path, and configuration. Call this before generating textures to verify the server is ready.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        Tool(
+            name="launch_sd_server",
+            description="Launch the SD WebUI server using the configured batch file. Blocks until the server is ready or times out. Use check_sd_server_status first to see if the server is already running.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
         Tool(
             name="generate_texture",
             description="Generate or lookup texture. Cache hit returns asset path; cache miss auto-generates via local SD WebUI (if running) or returns pending + prompt for external generation.",
@@ -1435,7 +1476,14 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
             arguments["property_name"],
             arguments["new_value"]
         )
-    
+    elif name == "create_data_asset_with_properties":
+        return await asset_tools.create_data_asset_with_properties(
+            bridge,
+            arguments["asset_path"],
+            arguments["parent_class"],
+            arguments.get("properties"),
+        )
+
     # Level Tools
     elif name == "list_actors":
         return await level_tools.list_actors(
@@ -1574,6 +1622,10 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await story_tools.list_stories(bridge)
 
     # Texture Generator Tools
+    elif name == "check_sd_server_status":
+        return await texture_tools.check_sd_server_status(bridge)
+    elif name == "launch_sd_server":
+        return await texture_tools.launch_sd_server(bridge)
     elif name == "generate_texture":
         return await texture_tools.generate_texture(
             bridge, arguments["json_intent"], arguments.get("output_dir", "")

@@ -47,6 +47,108 @@ def _get_sd_client(server_url: str = ""):
     return _sd_client
 
 
+async def check_sd_server_status(bridge: EditorBridge) -> str:
+    """Check SD WebUI server connection status and configuration.
+
+    Returns server alive status, URL, batch file path, and launch state.
+    Also triggers an async health check on the C++ side.
+    """
+    logger.info("Checking SD WebUI server status")
+
+    # Get status from C++ subsystem (includes settings info)
+    data = await bridge.call_method(
+        "McpCheckSDServerStatus", object_path=OBJECT_PATH,
+    )
+
+    if data is None:
+        # Fall back to direct health check via SD client
+        config = get_config()
+        client = _get_sd_client(config.sd_url)
+        if client is not None:
+            try:
+                alive = await client.is_alive()
+                return json.dumps({
+                    "success": True,
+                    "alive": alive,
+                    "serverURL": config.sd_url,
+                    "source": "direct_check",
+                }, indent=2)
+            except Exception as e:
+                return json.dumps({
+                    "success": False,
+                    "alive": False,
+                    "error": str(e),
+                    "serverURL": config.sd_url,
+                }, indent=2)
+
+        return json.dumps({
+            "success": False,
+            "error": "C++ call failed and SD client not configured",
+        }, indent=2)
+
+    return json.dumps({"success": True, "data": data}, indent=2)
+
+
+async def launch_sd_server(bridge: EditorBridge) -> str:
+    """Launch the SD WebUI server using the configured batch file.
+
+    Triggers server launch on the C++ side which handles process management
+    and health check polling. Monitor status via check_sd_server_status.
+    """
+    logger.info("Requesting SD WebUI server launch")
+
+    # First check current status
+    data = await bridge.call_method(
+        "McpCheckSDServerStatus", object_path=OBJECT_PATH,
+    )
+
+    if data is None:
+        return json.dumps({"success": False, "error": "C++ call failed"}, indent=2)
+
+    if data.get("alive", False):
+        return json.dumps({
+            "success": True,
+            "message": "Server is already running",
+            "data": data,
+        }, indent=2)
+
+    if not data.get("batchFileExists", False):
+        batch_path = data.get("batchFilePath", "")
+        return json.dumps({
+            "success": False,
+            "error": f"Batch file not found or not configured: {batch_path}",
+            "hint": "Configure SDWebUIBatchFilePath in Project Settings > HktGameplay > HktTextureGenerator",
+            "data": data,
+        }, indent=2)
+
+    # Trigger launch via SD client (same mechanism as generate_texture)
+    server_url = data.get("serverURL", "")
+    batch_file = data.get("batchFilePath", "")
+    client = _get_sd_client(server_url)
+
+    if client is None:
+        return json.dumps({
+            "success": False,
+            "error": "SD client not available (sd_auto_generate may be disabled)",
+            "data": data,
+        }, indent=2)
+
+    try:
+        ready = await client.ensure_running(batch_file)
+        return json.dumps({
+            "success": ready,
+            "message": "Server is ready" if ready else "Server launch timed out",
+            "alive": ready,
+            "data": data,
+        }, indent=2)
+    except Exception as e:
+        return json.dumps({
+            "success": False,
+            "error": f"Launch failed: {e}",
+            "data": data,
+        }, indent=2)
+
+
 async def generate_texture(bridge: EditorBridge, json_intent: str, output_dir: str = "") -> str:
     """Generate or lookup texture. Auto-launches SD WebUI and generates on cache miss."""
     logger.info("Generating texture from intent")

@@ -24,6 +24,7 @@
 #include "IPythonScriptPlugin.h"
 #include "UObject/SavePackage.h"
 #include "Factories/DataAssetFactory.h"
+#include "GameplayTagContainer.h"
 #include "HAL/PlatformProcess.h"
 #include "Async/Async.h"
 
@@ -198,20 +199,225 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 	FProperty* Property = Asset->GetClass()->FindPropertyByName(FName(*PropertyName));
 	if (!Property)
 	{
-		UE_LOG(LogHktMcpEditor, Warning, TEXT("Property not found: %s"), *PropertyName);
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("Property not found: %s on %s"), *PropertyName, *Asset->GetClass()->GetName());
 		return false;
 	}
 
 	void* PropertyValue = Property->ContainerPtrToValuePtr<void>(Asset);
-	const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
-	if (Ret == nullptr)
+	bool bSuccess = false;
+
+	// FGameplayTag — "Entity.Character.Goblin" 단순 문자열
+	if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
 	{
-		UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set property value"));
-		return false;
+		if (StructProp->Struct == FGameplayTag::StaticStruct())
+		{
+			FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*NewValue), false);
+			if (!Tag.IsValid())
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Invalid GameplayTag: %s"), *NewValue);
+				return false;
+			}
+			*static_cast<FGameplayTag*>(PropertyValue) = Tag;
+			bSuccess = true;
+		}
+		else if (StructProp->Struct == FGameplayTagContainer::StaticStruct())
+		{
+			// 쉼표 구분 태그 목록: "Tag.A, Tag.B, Tag.C"
+			FGameplayTagContainer* Container = static_cast<FGameplayTagContainer*>(PropertyValue);
+			Container->Reset();
+			TArray<FString> TagStrings;
+			NewValue.ParseIntoArray(TagStrings, TEXT(","));
+			for (FString& TagStr : TagStrings)
+			{
+				TagStr.TrimStartAndEndInline();
+				FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
+				if (Tag.IsValid())
+				{
+					Container->AddTag(Tag);
+				}
+			}
+			bSuccess = Container->Num() > 0;
+			if (!bSuccess)
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("No valid tags in container value: %s"), *NewValue);
+				return false;
+			}
+		}
+		else if (StructProp->Struct == TBaseStructure<FSoftObjectPath>::Get())
+		{
+			*static_cast<FSoftObjectPath*>(PropertyValue) = FSoftObjectPath(NewValue);
+			bSuccess = true;
+		}
+		else if (StructProp->Struct == TBaseStructure<FSoftClassPath>::Get())
+		{
+			*static_cast<FSoftClassPath*>(PropertyValue) = FSoftClassPath(NewValue);
+			bSuccess = true;
+		}
 	}
 
+	// TSoftObjectPtr<T> / TSoftClassPtr<T> — ImportText로 경로 문자열 직접 처리
+	if (!bSuccess)
+	{
+		if (CastField<FSoftObjectProperty>(Property) || CastField<FSoftClassProperty>(Property))
+		{
+			const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
+			if (Ret != nullptr)
+			{
+				bSuccess = true;
+			}
+			else
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set soft reference %s = %s"), *PropertyName, *NewValue);
+				return false;
+			}
+		}
+	}
+
+	// 하드 오브젝트 참조 (UObject*, TObjectPtr) — 경로로 로드 후 설정
+	if (!bSuccess)
+	{
+		if (FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(Property))
+		{
+			UObject* RefObj = UEditorAssetLibrary::LoadAsset(NewValue);
+			if (!RefObj)
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to load referenced object: %s"), *NewValue);
+				return false;
+			}
+			ObjProp->SetObjectPropertyValue(PropertyValue, RefObj);
+			bSuccess = true;
+		}
+	}
+
+	// TArray — JSON 배열 문자열: ["a","b","c"] 또는 쉼표 구분 값
+	if (!bSuccess)
+	{
+		if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
+		{
+			// ImportText로 시도 (UE5 내부 배열 형식 지원)
+			const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
+			if (Ret != nullptr)
+			{
+				bSuccess = true;
+			}
+			else
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set array property %s (try UE5 text format like: (\"a\",\"b\",\"c\"))"), *PropertyName);
+				return false;
+			}
+		}
+	}
+
+	// 기본: ImportText_Direct 사용 (int, float, bool, FString, enum 등)
+	if (!bSuccess)
+	{
+		const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
+		if (Ret == nullptr)
+		{
+			UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set property %s = %s (ImportText failed)"), *PropertyName, *NewValue);
+			return false;
+		}
+		bSuccess = true;
+	}
+
+	// 수정 후 저장
 	Asset->MarkPackageDirty();
+	UEditorAssetLibrary::SaveAsset(AssetPath, false);
+	UE_LOG(LogHktMcpEditor, Log, TEXT("ModifyAssetProperty: %s.%s = %s"), *AssetPath, *PropertyName, *NewValue);
 	return true;
+}
+
+FString UHktMcpEditorSubsystem::CreateDataAssetWithProperties(const FString& AssetPath, const FString& ParentClassName, const FString& PropertiesJson)
+{
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+
+	// 1. DataAsset 생성
+	if (!CreateDataAsset(AssetPath, ParentClassName))
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Failed to create DataAsset: %s (%s)"), *AssetPath, *ParentClassName));
+		FString Str;
+		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
+		FJsonSerializer::Serialize(Result, W);
+		return Str;
+	}
+
+	// 2. 속성 일괄 설정 (PropertiesJson이 비어있으면 생성만)
+	TArray<FString> FailedProps;
+	if (!PropertiesJson.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> Props;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(PropertiesJson);
+		if (FJsonSerializer::Deserialize(Reader, Props) && Props.IsValid())
+		{
+			for (const auto& Pair : Props->Values)
+			{
+				FString Value;
+				if (Pair.Value->TryGetString(Value))
+				{
+					if (!ModifyAssetProperty(AssetPath, Pair.Key, Value))
+					{
+						FailedProps.Add(Pair.Key);
+					}
+				}
+				else
+				{
+					// 비-문자열 값 → 문자열 변환
+					double NumVal;
+					if (Pair.Value->TryGetNumber(NumVal))
+					{
+						Value = FString::SanitizeFloat(NumVal);
+					}
+					else if (Pair.Value->TryGetBool(bSuccess))
+					{
+						Value = bSuccess ? TEXT("true") : TEXT("false");
+						bSuccess = false; // bSuccess 리셋 (위에서 bool 변환용으로만 사용)
+					}
+					else
+					{
+						UE_LOG(LogHktMcpEditor, Warning, TEXT("Unsupported JSON value type for property: %s"), *Pair.Key);
+						FailedProps.Add(Pair.Key);
+						continue;
+					}
+
+					if (!ModifyAssetProperty(AssetPath, Pair.Key, Value))
+					{
+						FailedProps.Add(Pair.Key);
+					}
+				}
+			}
+		}
+		else
+		{
+			Result->SetBoolField(TEXT("success"), false);
+			Result->SetStringField(TEXT("error"), TEXT("Invalid PropertiesJson format"));
+			FString Str;
+			TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
+			FJsonSerializer::Serialize(Result, W);
+			return Str;
+		}
+	}
+
+	// 3. 결과
+	Result->SetBoolField(TEXT("success"), true);
+	Result->SetStringField(TEXT("asset_path"), AssetPath);
+	Result->SetStringField(TEXT("class"), ParentClassName);
+
+	if (FailedProps.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> FailedArr;
+		for (const FString& P : FailedProps)
+		{
+			FailedArr.Add(MakeShared<FJsonValueString>(P));
+		}
+		Result->SetArrayField(TEXT("failed_properties"), FailedArr);
+		Result->SetStringField(TEXT("warning"), TEXT("Some properties failed to set"));
+	}
+
+	FString ResultStr;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultStr);
+	FJsonSerializer::Serialize(Result, Writer);
+	return ResultStr;
 }
 
 bool UHktMcpEditorSubsystem::DeleteAsset(const FString& AssetPath)

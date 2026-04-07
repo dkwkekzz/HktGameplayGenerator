@@ -41,6 +41,13 @@ FString UHktTextureGeneratorFunctionLibrary::McpGetPendingRequests(const FString
 	return Sub->McpGetPendingRequests(JsonRequests);
 }
 
+FString UHktTextureGeneratorFunctionLibrary::McpCheckSDServerStatus()
+{
+	UHktTextureGeneratorSubsystem* Sub = HktTexture::GetTexSubsystem();
+	if (!Sub) return HktTexture::MakeError(TEXT("TextureGenerator subsystem not available"));
+	return Sub->McpCheckSDServerStatus();
+}
+
 FString UHktTextureGeneratorFunctionLibrary::McpListGeneratedTextures(const FString& Directory)
 {
 	UHktTextureGeneratorSubsystem* Sub = HktTexture::GetTexSubsystem();

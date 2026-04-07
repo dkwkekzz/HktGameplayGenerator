@@ -30,7 +30,9 @@ public class HktGeneratorEditor : ModuleRules
 				"DesktopPlatform",
 				"DeveloperSettings",
 				"HktMcpBridge",
-				"HktMcpBridgeEditor"
+				"HktMcpBridgeEditor",
+				"HktTextureGenerator",
+				"Settings"
 			}
 		);
 	}
