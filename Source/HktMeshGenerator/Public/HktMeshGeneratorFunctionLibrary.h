@@ -43,4 +43,8 @@ public:
 	/** 스켈레톤 풀 정보 */
 	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator|MCP")
 	static FString McpGetSkeletonPool();
+
+	/** ActorVisualDataAsset 생성 (임포트된 메시/BP와 Tag 연결) */
+	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator|MCP")
+	static FString McpCreateActorDataAsset(const FString& TagString, const FString& ActorClassPath, const FString& OutputDir = TEXT(""));
 };

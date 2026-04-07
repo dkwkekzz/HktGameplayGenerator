@@ -61,3 +61,27 @@ async def get_skeleton_pool(bridge: EditorBridge) -> str:
     logger.info("Getting skeleton pool")
     data = await bridge.call_method("McpGetSkeletonPool", object_path=OBJECT_PATH)
     return json.dumps({"success": data is not None, "data": data}, indent=2)
+
+
+async def create_actor_data_asset(
+    bridge: EditorBridge,
+    tag_string: str,
+    actor_class_path: str,
+    output_dir: str = "",
+) -> str:
+    """Create ActorVisualDataAsset linking a GameplayTag to an imported mesh/BP.
+
+    Args:
+        tag_string: GameplayTag (e.g. "Entity.Character.Goblin")
+        actor_class_path: Path to the actor class or BP (e.g. "/Game/Generated/Characters/Goblin/BP_Goblin.BP_Goblin_C")
+        output_dir: Output directory (optional, defaults to /Game/Generated/Characters)
+    """
+    logger.info(f"Creating ActorVisualDataAsset: tag={tag_string}, class={actor_class_path}")
+    data = await bridge.call_method(
+        "McpCreateActorDataAsset",
+        object_path=OBJECT_PATH,
+        TagString=tag_string,
+        ActorClassPath=actor_class_path,
+        OutputDir=output_dir,
+    )
+    return json.dumps({"success": data is not None, "data": data}, indent=2)

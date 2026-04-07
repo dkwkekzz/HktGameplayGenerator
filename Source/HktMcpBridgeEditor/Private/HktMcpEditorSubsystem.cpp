@@ -24,6 +24,7 @@
 #include "IPythonScriptPlugin.h"
 #include "UObject/SavePackage.h"
 #include "Factories/DataAssetFactory.h"
+#include "GameplayTagContainer.h"
 #include "HAL/PlatformProcess.h"
 #include "Async/Async.h"
 
@@ -198,19 +199,71 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 	FProperty* Property = Asset->GetClass()->FindPropertyByName(FName(*PropertyName));
 	if (!Property)
 	{
-		UE_LOG(LogHktMcpEditor, Warning, TEXT("Property not found: %s"), *PropertyName);
+		UE_LOG(LogHktMcpEditor, Warning, TEXT("Property not found: %s on %s"), *PropertyName, *Asset->GetClass()->GetName());
 		return false;
 	}
 
 	void* PropertyValue = Property->ContainerPtrToValuePtr<void>(Asset);
-	const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
-	if (Ret == nullptr)
+	bool bSuccess = false;
+
+	// FGameplayTag — MCP 호출자가 "Entity.Character.Goblin" 같은 단순 문자열 전달
+	if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
 	{
-		UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set property value"));
-		return false;
+		if (StructProp->Struct == FGameplayTag::StaticStruct())
+		{
+			FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*NewValue), false);
+			if (!Tag.IsValid())
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Invalid GameplayTag: %s"), *NewValue);
+				return false;
+			}
+			*static_cast<FGameplayTag*>(PropertyValue) = Tag;
+			bSuccess = true;
+		}
+		else if (StructProp->Struct == TBaseStructure<FSoftObjectPath>::Get())
+		{
+			*static_cast<FSoftObjectPath*>(PropertyValue) = FSoftObjectPath(NewValue);
+			bSuccess = true;
+		}
+		else if (StructProp->Struct == TBaseStructure<FSoftClassPath>::Get())
+		{
+			*static_cast<FSoftClassPath*>(PropertyValue) = FSoftClassPath(NewValue);
+			bSuccess = true;
+		}
 	}
 
+	// 하드 오브젝트 참조 (UObject*, TObjectPtr) — 경로로 로드 후 설정
+	if (!bSuccess)
+	{
+		if (FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(Property))
+		{
+			UObject* RefObj = UEditorAssetLibrary::LoadAsset(NewValue);
+			if (!RefObj)
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to load referenced object: %s"), *NewValue);
+				return false;
+			}
+			ObjProp->SetObjectPropertyValue(PropertyValue, RefObj);
+			bSuccess = true;
+		}
+	}
+
+	// 기본: ImportText_Direct 사용 (int, float, bool, FString, enum 등)
+	if (!bSuccess)
+	{
+		const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
+		if (Ret == nullptr)
+		{
+			UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set property %s = %s (ImportText failed)"), *PropertyName, *NewValue);
+			return false;
+		}
+		bSuccess = true;
+	}
+
+	// 수정 후 저장
 	Asset->MarkPackageDirty();
+	UEditorAssetLibrary::SaveAsset(AssetPath, false);
+	UE_LOG(LogHktMcpEditor, Log, TEXT("ModifyAssetProperty: %s.%s = %s"), *AssetPath, *PropertyName, *NewValue);
 	return true;
 }
 

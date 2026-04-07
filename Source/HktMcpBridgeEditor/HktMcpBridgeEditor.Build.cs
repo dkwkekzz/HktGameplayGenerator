@@ -12,6 +12,7 @@ public class HktMcpBridgeEditor : ModuleRules
 				"Core",
 				"CoreUObject",
 				"Engine",
+				"GameplayTags",
 				"Json",
 				"JsonUtilities",
 				"HktMcpBridge"

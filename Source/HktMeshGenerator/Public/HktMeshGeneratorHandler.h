@@ -13,7 +13,7 @@
  *
  * "Entity.*" 태그에 대한 IHktGeneratorHandler 구현.
  * FHktCharacterIntent로 파싱 → MCP Agent에게 메시 생성 위임.
- * Phase 1: Convention path 반환 + 펜딩 요청 생성
+ * 메시 임포트 후 UHktActorVisualDataAsset 생성하여 TagDataAsset 시스템과 연결.
  */
 UCLASS()
 class HKTMESHGENERATOR_API UHktMeshGeneratorHandler : public UObject, public IHktGeneratorHandler
@@ -23,4 +23,7 @@ class HKTMESHGENERATOR_API UHktMeshGeneratorHandler : public UObject, public IHk
 public:
 	virtual bool CanHandle(const FGameplayTag& Tag) const override;
 	virtual FSoftObjectPath HandleTagMiss(const FGameplayTag& Tag) override;
+
+	/** 임포트된 메시/BP에 대해 UHktActorVisualDataAsset 생성 및 저장 */
+	FSoftObjectPath CreateActorVisualDataAsset(const FGameplayTag& Tag, const FSoftObjectPath& ActorClassPath, const FString& OutputDir);
 };

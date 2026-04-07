@@ -6,10 +6,16 @@
 #include "HktGeneratorRouter.h"
 #include "HktAssetSubsystem.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetToolsModule.h"
+#include "AssetImportTask.h"
+#include "EditorAssetLibrary.h"
 #include "Editor.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
+#include "Misc/Paths.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHktMeshGeneratorSubsystem, Log, All);
 
@@ -60,10 +66,56 @@ FSoftObjectPath UHktMeshGeneratorSubsystem::RequestMeshGeneration(const FHktChar
 
 UObject* UHktMeshGeneratorSubsystem::ImportMeshFromFile(const FString& FilePath, const FString& DestinationPath)
 {
-	// TODO: Phase 2 — FBX/OBJ → UE5 에셋 임포트
-	// UAutomatedAssetImportData + AssetTools 사용
-	UE_LOG(LogHktMeshGeneratorSubsystem, Warning, TEXT("ImportMeshFromFile: Not yet implemented (Phase 2). File: %s"), *FilePath);
-	return nullptr;
+	if (!FPaths::FileExists(FilePath))
+	{
+		UE_LOG(LogHktMeshGeneratorSubsystem, Error, TEXT("ImportMeshFromFile: File not found: %s"), *FilePath);
+		return nullptr;
+	}
+
+	FString Extension = FPaths::GetExtension(FilePath, false).ToLower();
+	if (Extension != TEXT("fbx") && Extension != TEXT("obj") && Extension != TEXT("gltf") && Extension != TEXT("glb"))
+	{
+		UE_LOG(LogHktMeshGeneratorSubsystem, Error, TEXT("ImportMeshFromFile: Unsupported format: %s (expected fbx/obj/gltf/glb)"), *Extension);
+		return nullptr;
+	}
+
+	FString DestPath = DestinationPath.IsEmpty() ? ResolveOutputDir(TEXT("")) : DestinationPath;
+
+	// UAssetImportTask 기반 임포트
+	UAssetImportTask* ImportTask = NewObject<UAssetImportTask>();
+	ImportTask->Filename = FilePath;
+	ImportTask->DestinationPath = DestPath;
+	ImportTask->DestinationName = FPaths::GetBaseFilename(FilePath);
+	ImportTask->bReplaceExisting = true;
+	ImportTask->bAutomated = true;
+	ImportTask->bSave = true;
+
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
+	AssetTools.ImportAssetTasks({ ImportTask });
+
+	// 결과 확인
+	if (ImportTask->GetObjects().Num() == 0)
+	{
+		UE_LOG(LogHktMeshGeneratorSubsystem, Error, TEXT("ImportMeshFromFile: Import returned no objects for: %s"), *FilePath);
+		return nullptr;
+	}
+
+	UObject* ImportedAsset = ImportTask->GetObjects()[0];
+
+	// 펜딩 요청 완료 처리
+	FString ImportedPath = ImportedAsset->GetPathName();
+	for (FHktMeshGenerationRequest& Req : PendingRequests)
+	{
+		if (!Req.bCompleted && Req.ConventionPath.ToString().Contains(FPaths::GetBaseFilename(FilePath)))
+		{
+			Req.bCompleted = true;
+			UE_LOG(LogHktMeshGeneratorSubsystem, Log, TEXT("Pending request completed: %s → %s"), *Req.Intent.Name, *ImportedPath);
+			break;
+		}
+	}
+
+	UE_LOG(LogHktMeshGeneratorSubsystem, Log, TEXT("ImportMeshFromFile: Success — %s → %s"), *FilePath, *ImportedPath);
+	return ImportedAsset;
 }
 
 FString UHktMeshGeneratorSubsystem::McpRequestCharacterMesh(const FString& JsonIntent)
@@ -114,18 +166,31 @@ FString UHktMeshGeneratorSubsystem::McpRequestCharacterMesh(const FString& JsonI
 
 FString UHktMeshGeneratorSubsystem::McpImportMesh(const FString& FilePath, const FString& JsonIntent)
 {
-	UObject* Imported = ImportMeshFromFile(FilePath);
+	// JsonIntent에서 DestinationPath 추출 (선택)
+	FString DestinationPath;
+	if (!JsonIntent.IsEmpty())
+	{
+		TSharedPtr<FJsonObject> JsonObj;
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonIntent);
+		if (FJsonSerializer::Deserialize(Reader, JsonObj) && JsonObj.IsValid())
+		{
+			DestinationPath = JsonObj->GetStringField(TEXT("destinationPath"));
+		}
+	}
+
+	UObject* Imported = ImportMeshFromFile(FilePath, DestinationPath);
 
 	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
 	if (Imported)
 	{
 		Result->SetStringField(TEXT("assetPath"), Imported->GetPathName());
+		Result->SetStringField(TEXT("assetClass"), Imported->GetClass()->GetName());
 		Result->SetBoolField(TEXT("success"), true);
 	}
 	else
 	{
 		Result->SetBoolField(TEXT("success"), false);
-		Result->SetStringField(TEXT("error"), TEXT("Import not yet implemented (Phase 2)"));
+		Result->SetStringField(TEXT("error"), TEXT("Failed to import mesh file"));
 		Result->SetStringField(TEXT("filePath"), FilePath);
 	}
 
@@ -233,6 +298,61 @@ FString UHktMeshGeneratorSubsystem::McpGetSkeletonPool()
 	FString ResultStr;
 	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultStr);
 	FJsonSerializer::Serialize(Root, Writer);
+	return ResultStr;
+}
+
+FString UHktMeshGeneratorSubsystem::McpCreateActorDataAsset(const FString& TagString, const FString& ActorClassPath, const FString& OutputDir)
+{
+	TSharedRef<FJsonObject> Result = MakeShared<FJsonObject>();
+
+	if (TagString.IsEmpty())
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), TEXT("TagString is required"));
+		FString Str;
+		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
+		FJsonSerializer::Serialize(Result, W);
+		return Str;
+	}
+
+	FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagString), false);
+	if (!Tag.IsValid())
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), FString::Printf(TEXT("Invalid GameplayTag: %s"), *TagString));
+		FString Str;
+		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
+		FJsonSerializer::Serialize(Result, W);
+		return Str;
+	}
+
+	if (!MeshHandler)
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), TEXT("MeshHandler not initialized"));
+		FString Str;
+		TSharedRef<TJsonWriter<>> W = TJsonWriterFactory<>::Create(&Str);
+		FJsonSerializer::Serialize(Result, W);
+		return Str;
+	}
+
+	FSoftObjectPath DataAssetPath = MeshHandler->CreateActorVisualDataAsset(Tag, FSoftObjectPath(ActorClassPath), OutputDir);
+
+	if (DataAssetPath.IsValid())
+	{
+		Result->SetBoolField(TEXT("success"), true);
+		Result->SetStringField(TEXT("dataAssetPath"), DataAssetPath.ToString());
+		Result->SetStringField(TEXT("tag"), TagString);
+	}
+	else
+	{
+		Result->SetBoolField(TEXT("success"), false);
+		Result->SetStringField(TEXT("error"), TEXT("Failed to create ActorVisualDataAsset"));
+	}
+
+	FString ResultStr;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&ResultStr);
+	FJsonSerializer::Serialize(Result, Writer);
 	return ResultStr;
 }
 

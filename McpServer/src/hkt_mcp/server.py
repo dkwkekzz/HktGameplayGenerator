@@ -1049,6 +1049,19 @@ async def list_tools() -> list[Tool]:
             description="Get available base skeleton information for mesh generation.",
             inputSchema={"type": "object", "properties": {}}
         ),
+        Tool(
+            name="create_actor_data_asset",
+            description="Create ActorVisualDataAsset linking a GameplayTag to an imported mesh/BP for runtime tag-based asset loading.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tag_string": {"type": "string", "description": "GameplayTag (e.g. Entity.Character.Goblin)"},
+                    "actor_class_path": {"type": "string", "description": "Path to actor class or BP (e.g. /Game/Generated/Characters/Goblin/BP_Goblin.BP_Goblin_C)"},
+                    "output_dir": {"type": "string", "description": "Output directory (optional)", "default": ""}
+                },
+                "required": ["tag_string", "actor_class_path"]
+            }
+        ),
     ])
 
     # ==================== Item Generator Tools ====================
@@ -1675,6 +1688,13 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await mesh_tools.list_generated_meshes(bridge, arguments.get("directory", ""))
     elif name == "get_skeleton_pool":
         return await mesh_tools.get_skeleton_pool(bridge)
+    elif name == "create_actor_data_asset":
+        return await mesh_tools.create_actor_data_asset(
+            bridge,
+            arguments["tag_string"],
+            arguments["actor_class_path"],
+            arguments.get("output_dir", ""),
+        )
 
     # Item Generator Tools
     elif name == "request_item":
