@@ -33,6 +33,9 @@ class McpConfig:
     rpc_timeout: float = 30.0
     connection_timeout: float = 10.0
 
+    # Monolith MCP proxy
+    monolith_url: str = "http://localhost:9316/mcp"
+
     # Local SD WebUI settings (A1111/Forge)
     sd_url: str = "http://127.0.0.1:7860"
     sd_timeout: float = 120.0
@@ -94,6 +97,11 @@ class McpConfig:
         sd_auto = os.environ.get("SD_AUTO_GENERATE")
         if sd_auto is not None:
             config.sd_auto_generate = sd_auto.lower() != "false"
+
+        # Monolith MCP
+        monolith_url = os.environ.get("MONOLITH_URL")
+        if monolith_url:
+            config.monolith_url = monolith_url
 
         return config
     

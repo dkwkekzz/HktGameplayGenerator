@@ -67,7 +67,7 @@ FSoftObjectPath UHktMeshGeneratorHandler::CreateActorVisualDataAsset(const FGame
 	// ActorClass 참조 설정 (BP 또는 NativeClass)
 	if (ActorClassPath.IsValid())
 	{
-		DataAsset->ActorClass = TSoftClassPtr<AActor>(ActorClassPath);
+		DataAsset->ActorClass = Cast<UClass>(ActorClassPath.TryLoad());
 	}
 
 	// 패키지 저장

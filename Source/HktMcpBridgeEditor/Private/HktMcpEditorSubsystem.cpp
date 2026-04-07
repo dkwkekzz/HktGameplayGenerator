@@ -364,6 +364,7 @@ FString UHktMcpEditorSubsystem::CreateDataAssetWithProperties(const FString& Ass
 				{
 					// 비-문자열 값 → 문자열 변환
 					double NumVal;
+					bool bSuccess;
 					if (Pair.Value->TryGetNumber(NumVal))
 					{
 						Value = FString::SanitizeFloat(NumVal);

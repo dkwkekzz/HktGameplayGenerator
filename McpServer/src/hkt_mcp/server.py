@@ -24,6 +24,7 @@ from .tools import asset_tools, level_tools, query_tools, runtime_tools
 from .tools import vfx_tools, story_tools, texture_tools, anim_tools, mesh_tools, item_tools
 from .tools import step_tools, map_tools, python_tools
 from .bridge import editor_bridge, runtime_bridge
+from .bridge.monolith_client import MonolithClient
 
 # Configure logging
 logging.basicConfig(
@@ -38,6 +39,7 @@ server = Server("hkt-unreal")
 # Global bridge instances
 _editor_bridge: editor_bridge.EditorBridge | None = None
 _runtime_bridge: runtime_bridge.RuntimeBridge | None = None
+_monolith_client: MonolithClient | None = None
 
 
 def get_editor_bridge() -> editor_bridge.EditorBridge:
@@ -56,11 +58,20 @@ def get_runtime_bridge() -> runtime_bridge.RuntimeBridge:
     return _runtime_bridge
 
 
+def _get_monolith_client() -> MonolithClient:
+    """Get or create the monolith proxy client"""
+    global _monolith_client
+    if _monolith_client is None:
+        from .config import get_config
+        config = get_config()
+        _monolith_client = MonolithClient(mcp_url=config.monolith_url)
+    return _monolith_client
+
+
 # ==================== Tool Definitions ====================
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    """Return all available MCP tools"""
+def _get_hkt_tools() -> list[Tool]:
+    """Return hkt-unreal native tools"""
     tools = []
     
     # Asset Tools
@@ -1437,11 +1448,33 @@ async def list_tools() -> list[Tool]:
     return tools
 
 
+@server.list_tools()
+async def list_tools() -> list[Tool]:
+    """Return all available MCP tools (hkt + monolith merged)"""
+    tools = _get_hkt_tools()
+    monolith = _get_monolith_client()
+    if monolith.is_available:
+        monolith_tools = await monolith.fetch_tools()
+        tools.extend(monolith_tools)
+    return tools
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-    """Handle tool execution requests"""
+    """Handle tool execution requests (routes to monolith or hkt)"""
     logger.info(f"Calling tool: {name} with arguments: {arguments}")
-    
+
+    # monolith 도구면 프록시
+    monolith = _get_monolith_client()
+    if name in monolith.cached_tool_names and monolith.is_available:
+        try:
+            content = await monolith.call_tool(name, arguments)
+            return [TextContent(type="text", text=item.get("text", "")) if isinstance(item, dict) else item for item in content]
+        except Exception as e:
+            logger.error(f"Monolith tool '{name}' failed: {e}")
+            return [TextContent(type="text", text=f"Monolith error: {str(e)}")]
+
+    # hkt 도구
     try:
         result = await dispatch_tool(name, arguments)
         return [TextContent(type="text", text=str(result))]
@@ -1956,9 +1989,32 @@ async def run_server():
         get_editor_bridge().set_unreal_module(unreal)
     except ImportError:
         logger.info("Running outside Unreal Engine - will use subprocess/RPC")
-    
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+
+    # Start monolith proxy health polling
+    monolith = _get_monolith_client()
+    logger.info(f"Monolith proxy target: {monolith.mcp_url}")
+
+    async def _on_monolith_state_change():
+        """monolith 상태 전환 시 tools/list_changed 알림 시도"""
+        # request_context는 요청 처리 중에만 유효하므로 백그라운드에서는 실패할 수 있음
+        # 실패해도 다음 tools/list 요청 시 최신 상태가 반영됨
+        try:
+            session = server.request_context.session
+            await session.send_tool_list_changed()
+            logger.info("Sent tools/list_changed notification")
+        except Exception:
+            logger.debug("tools/list_changed skipped (no active session context)")
+
+    poll_task = asyncio.create_task(
+        monolith.start_health_poll(on_state_change=_on_monolith_state_change)
+    )
+
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    finally:
+        poll_task.cancel()
+        await monolith.close()
 
 
 def main():
