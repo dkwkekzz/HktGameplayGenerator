@@ -1453,6 +1453,9 @@ async def list_tools() -> list[Tool]:
     """Return all available MCP tools (hkt + monolith merged)"""
     tools = _get_hkt_tools()
     monolith = _get_monolith_client()
+    # 헬스 폴링 결과와 무관하게 매번 직접 확인 (초기 tools/list가 폴링보다 먼저 올 수 있음)
+    if not monolith.is_available:
+        monolith.is_available = await monolith._health_check()
     if monolith.is_available:
         monolith_tools = await monolith.fetch_tools()
         tools.extend(monolith_tools)
