@@ -206,7 +206,7 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 	void* PropertyValue = Property->ContainerPtrToValuePtr<void>(Asset);
 	bool bSuccess = false;
 
-	// FGameplayTag — MCP 호출자가 "Entity.Character.Goblin" 같은 단순 문자열 전달
+	// FGameplayTag — "Entity.Character.Goblin" 단순 문자열
 	if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
 	{
 		if (StructProp->Struct == FGameplayTag::StaticStruct())
@@ -220,6 +220,29 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 			*static_cast<FGameplayTag*>(PropertyValue) = Tag;
 			bSuccess = true;
 		}
+		else if (StructProp->Struct == FGameplayTagContainer::StaticStruct())
+		{
+			// 쉼표 구분 태그 목록: "Tag.A, Tag.B, Tag.C"
+			FGameplayTagContainer* Container = static_cast<FGameplayTagContainer*>(PropertyValue);
+			Container->Reset();
+			TArray<FString> TagStrings;
+			NewValue.ParseIntoArray(TagStrings, TEXT(","));
+			for (FString& TagStr : TagStrings)
+			{
+				TagStr.TrimStartAndEndInline();
+				FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagStr), false);
+				if (Tag.IsValid())
+				{
+					Container->AddTag(Tag);
+				}
+			}
+			bSuccess = Container->Num() > 0;
+			if (!bSuccess)
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("No valid tags in container value: %s"), *NewValue);
+				return false;
+			}
+		}
 		else if (StructProp->Struct == TBaseStructure<FSoftObjectPath>::Get())
 		{
 			*static_cast<FSoftObjectPath*>(PropertyValue) = FSoftObjectPath(NewValue);
@@ -228,6 +251,23 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 		else if (StructProp->Struct == TBaseStructure<FSoftClassPath>::Get())
 		{
 			*static_cast<FSoftClassPath*>(PropertyValue) = FSoftClassPath(NewValue);
+			bSuccess = true;
+		}
+	}
+
+	// TSoftObjectPtr<T> — FSoftObjectProperty는 FObjectPropertyBase가 아닌 별도 타입
+	if (!bSuccess)
+	{
+		if (FSoftObjectProperty* SoftObjProp = CastField<FSoftObjectProperty>(Property))
+		{
+			FSoftObjectPtr SoftPtr(FSoftObjectPath(NewValue));
+			SoftObjProp->SetPropertyValue(PropertyValue, SoftPtr);
+			bSuccess = true;
+		}
+		else if (FSoftClassProperty* SoftClsProp = CastField<FSoftClassProperty>(Property))
+		{
+			FSoftObjectPtr SoftPtr(FSoftObjectPath(NewValue));
+			SoftClsProp->SetPropertyValue(PropertyValue, SoftPtr);
 			bSuccess = true;
 		}
 	}
@@ -245,6 +285,25 @@ bool UHktMcpEditorSubsystem::ModifyAssetProperty(const FString& AssetPath, const
 			}
 			ObjProp->SetObjectPropertyValue(PropertyValue, RefObj);
 			bSuccess = true;
+		}
+	}
+
+	// TArray — JSON 배열 문자열: ["a","b","c"] 또는 쉼표 구분 값
+	if (!bSuccess)
+	{
+		if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
+		{
+			// ImportText로 시도 (UE5 내부 배열 형식 지원)
+			const TCHAR* Ret = Property->ImportText_Direct(*NewValue, PropertyValue, Asset, EPropertyPortFlags::PPF_None);
+			if (Ret != nullptr)
+			{
+				bSuccess = true;
+			}
+			else
+			{
+				UE_LOG(LogHktMcpEditor, Warning, TEXT("Failed to set array property %s (try UE5 text format like: (\"a\",\"b\",\"c\"))"), *PropertyName);
+				return false;
+			}
 		}
 	}
 
