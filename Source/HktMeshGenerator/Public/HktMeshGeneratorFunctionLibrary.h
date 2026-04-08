@@ -43,4 +43,20 @@ public:
 	/** 스켈레톤 풀 정보 */
 	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator|MCP")
 	static FString McpGetSkeletonPool();
+
+	// =========================================================================
+	// Shape Generator (Layer 3 — MCP 노출)
+	// =========================================================================
+
+	/** Shape StaticMesh 에셋 생성. JSON 파라미터로 타입/크기 지정. 해시 캐싱. */
+	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator|MCP")
+	static FString McpCreateShape(const FString& JsonParams, const FString& OutputDir = TEXT(""));
+
+	/** Shape 카탈로그 조회 (기존 에셋 + 캐시 목록) */
+	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator|MCP")
+	static FString McpListShapes();
+
+	/** 이름으로 Shape 에셋 경로 검색 */
+	UFUNCTION(BlueprintCallable, Category = "HKT|MeshGenerator|MCP")
+	static FString McpFindShape(const FString& ShapeName);
 };

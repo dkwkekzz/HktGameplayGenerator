@@ -61,3 +61,33 @@ async def get_skeleton_pool(bridge: EditorBridge) -> str:
     logger.info("Getting skeleton pool")
     data = await bridge.call_method("McpGetSkeletonPool", object_path=OBJECT_PATH)
     return json.dumps({"success": data is not None, "data": data}, indent=2)
+
+
+# ============================================================================
+# Shape Generator Tools (Layer 3)
+# ============================================================================
+
+async def create_shape(bridge: EditorBridge, json_params: str, output_dir: str = "") -> str:
+    """Create a procedural shape StaticMesh asset for Niagara particles"""
+    logger.info("Creating shape asset")
+    data = await bridge.call_method(
+        "McpCreateShape", object_path=OBJECT_PATH,
+        JsonParams=json_params, OutputDir=output_dir,
+    )
+    return json.dumps({"success": data is not None, "data": data}, indent=2)
+
+
+async def list_shapes(bridge: EditorBridge) -> str:
+    """List all available shape assets (catalog + existing on disk)"""
+    logger.info("Listing shape catalog")
+    data = await bridge.call_method("McpListShapes", object_path=OBJECT_PATH)
+    return json.dumps({"success": data is not None, "data": data}, indent=2)
+
+
+async def find_shape(bridge: EditorBridge, shape_name: str) -> str:
+    """Find a shape asset by name"""
+    logger.info(f"Finding shape: {shape_name}")
+    data = await bridge.call_method(
+        "McpFindShape", object_path=OBJECT_PATH, ShapeName=shape_name,
+    )
+    return json.dumps({"success": data is not None, "data": data}, indent=2)

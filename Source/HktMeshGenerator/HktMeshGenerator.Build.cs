@@ -28,6 +28,8 @@ public class HktMeshGenerator : ModuleRules
 				"HktPresentation",
 				"HktGeneratorCore",
 				"HktTextureGenerator",
+				"MeshDescription",
+				"StaticMeshDescription",
 				"Json",
 				"JsonUtilities",
 			}

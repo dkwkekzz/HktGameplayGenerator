@@ -1085,6 +1085,50 @@ def _get_hkt_tools() -> list[Tool]:
             description="Get available base skeleton information for mesh generation.",
             inputSchema={"type": "object", "properties": {}}
         ),
+        # --- Shape Generator ---
+        Tool(
+            name="create_shape",
+            description=(
+                "Create a procedural shape StaticMesh asset for Niagara Mesh Renderer particles. "
+                "Supports: Star, Ring, Disc, Sphere, Hemisphere, Petal, Diamond, Beam, ShockwaveRing, Spike, Cross. "
+                "Hash-based caching — same params reuse existing asset. "
+                "json_params example: {\"shapeType\":\"Star\",\"name\":\"Star_5pt\",\"points\":5,\"outerRadius\":100,\"innerRadius\":40,\"thickness\":5}"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "json_params": {
+                        "type": "string",
+                        "description": (
+                            "Shape params JSON. Required: shapeType, name. "
+                            "Optional: scale(default 1), pivot('center'|'bottom'). "
+                            "Shape-specific params vary by type (see description)."
+                        )
+                    },
+                    "output_dir": {
+                        "type": "string",
+                        "description": "Output directory (default: /Game/Generated/VFX/Shapes)"
+                    }
+                },
+                "required": ["json_params"]
+            }
+        ),
+        Tool(
+            name="list_shapes",
+            description="List all available shape StaticMesh assets (catalog + on-disk). Use before creating to avoid duplicates.",
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        Tool(
+            name="find_shape",
+            description="Find a shape asset by name. Returns asset path if found.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "shape_name": {"type": "string", "description": "Shape name to search for"}
+                },
+                "required": ["shape_name"]
+            }
+        ),
     ])
 
     # ==================== Item Generator Tools ====================
@@ -1743,6 +1787,15 @@ async def dispatch_tool(name: str, arguments: dict[str, Any]) -> Any:
         return await mesh_tools.list_generated_meshes(bridge, arguments.get("directory", ""))
     elif name == "get_skeleton_pool":
         return await mesh_tools.get_skeleton_pool(bridge)
+    # Shape Generator
+    elif name == "create_shape":
+        return await mesh_tools.create_shape(
+            bridge, arguments["json_params"], arguments.get("output_dir", "")
+        )
+    elif name == "list_shapes":
+        return await mesh_tools.list_shapes(bridge)
+    elif name == "find_shape":
+        return await mesh_tools.find_shape(bridge, arguments["shape_name"])
 
     # Item Generator Tools
     elif name == "request_item":

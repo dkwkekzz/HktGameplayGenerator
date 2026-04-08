@@ -2,7 +2,26 @@
 
 #include "HktMeshGeneratorFunctionLibrary.h"
 #include "HktMeshGeneratorSubsystem.h"
+#include "HktShapeFactory.h"
 #include "Editor.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+
+namespace
+{
+	UHktShapeFactory* GetShapeFactory()
+	{
+		static TWeakObjectPtr<UHktShapeFactory> Singleton;
+		if (!Singleton.IsValid())
+		{
+			Singleton = NewObject<UHktShapeFactory>(GetTransientPackage());
+			Singleton->AddToRoot();
+		}
+		return Singleton.Get();
+	}
+}
 
 FString UHktMeshGeneratorFunctionLibrary::McpRequestCharacterMesh(const FString& JsonIntent)
 {
@@ -47,4 +66,65 @@ FString UHktMeshGeneratorFunctionLibrary::McpGetSkeletonPool()
 		return Sub->McpGetSkeletonPool();
 	}
 	return TEXT("{\"error\": \"MeshGeneratorSubsystem not available\"}");
+}
+
+// ============================================================================
+// Shape Generator MCP
+// ============================================================================
+
+FString UHktMeshGeneratorFunctionLibrary::McpCreateShape(const FString& JsonParams, const FString& OutputDir)
+{
+	UHktShapeFactory* Factory = GetShapeFactory();
+	if (!Factory)
+	{
+		return TEXT("{\"success\":false,\"error\":\"ShapeFactory not available\"}");
+	}
+
+	FString AssetPath = Factory->CreateShapeAsset(JsonParams, OutputDir);
+	if (AssetPath.IsEmpty())
+	{
+		return TEXT("{\"success\":false,\"error\":\"Failed to create shape asset\"}");
+	}
+
+	FString Output;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	Writer->WriteObjectStart();
+	Writer->WriteValue(TEXT("success"), true);
+	Writer->WriteValue(TEXT("assetPath"), AssetPath);
+	Writer->WriteObjectEnd();
+	Writer->Close();
+	return Output;
+}
+
+FString UHktMeshGeneratorFunctionLibrary::McpListShapes()
+{
+	UHktShapeFactory* Factory = GetShapeFactory();
+	if (!Factory)
+	{
+		return TEXT("{\"shapes\":[]}");
+	}
+	return Factory->GetCatalogJson();
+}
+
+FString UHktMeshGeneratorFunctionLibrary::McpFindShape(const FString& ShapeName)
+{
+	UHktShapeFactory* Factory = GetShapeFactory();
+	if (!Factory)
+	{
+		return TEXT("{\"success\":false,\"error\":\"ShapeFactory not available\"}");
+	}
+
+	FString Path = Factory->FindShapeByName(ShapeName);
+
+	FString Output;
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Output);
+	Writer->WriteObjectStart();
+	Writer->WriteValue(TEXT("success"), !Path.IsEmpty());
+	if (!Path.IsEmpty())
+	{
+		Writer->WriteValue(TEXT("assetPath"), Path);
+	}
+	Writer->WriteObjectEnd();
+	Writer->Close();
+	return Output;
 }
