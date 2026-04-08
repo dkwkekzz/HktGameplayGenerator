@@ -53,11 +53,8 @@ FString UHktShapeFactory::CreateShapeAsset(const FString& JsonParams, const FStr
 		}
 	}
 
-	// MeshDescription 빌드
+	// MeshDescription 빌드 (Register는 Commit 내부에서 수행)
 	FMeshDescription MeshDesc;
-	FStaticMeshAttributes Attrs(MeshDesc);
-	Attrs.Register();
-
 	if (!FHktShapeGenerator::BuildFromJson(JsonObj, MeshDesc))
 	{
 		UE_LOG(LogHktShapeFactory, Error, TEXT("CreateShapeAsset: BuildFromJson failed for '%s'"), *Name);
@@ -107,17 +104,19 @@ UStaticMesh* UHktShapeFactory::SaveMeshAsset(FMeshDescription& MeshDesc, const F
 	UStaticMesh* StaticMesh = NewObject<UStaticMesh>(Package, FName(*AssetName), RF_Public | RF_Standalone);
 
 	// --- StaticMesh에 MeshDescription 커밋 ---
-	// NOTE: UE5 엔진 버전에 따라 API가 다를 수 있음.
-	// UStaticMesh::BuildFromMeshDescriptions() 또는
-	// UStaticMesh::GetMeshDescription(0) + CommitMeshDescription(0) 사용.
+	// NOTE: UE5 엔진 버전에 따라 BuildFromMeshDescriptions API가 다를 수 있음.
+	// 컴파일 에러 시 아래 블록을 대체:
+	//   StaticMesh->CreateMeshDescription(0, MoveTemp(MeshDesc));
+	//   StaticMesh->CommitMeshDescription(0);
+	//   StaticMesh->Build(false);
 	TArray<const FMeshDescription*> MeshDescs;
 	MeshDescs.Add(&MeshDesc);
 
-	UStaticMesh::FBuildMeshDescriptionsParams Params;
-	Params.bMarkPackageDirty = true;
-	Params.bBuildSimpleCollision = false;       // 파티클용 — collision 불필요
-	Params.bCommitMeshDescription = true;
-	StaticMesh->BuildFromMeshDescriptions(MeshDescs, Params);
+	UStaticMesh::FBuildMeshDescriptionsParams BuildParams;
+	BuildParams.bMarkPackageDirty = true;
+	BuildParams.bBuildSimpleCollision = false;       // 파티클용 — collision 불필요
+	BuildParams.bCommitMeshDescription = true;
+	StaticMesh->BuildFromMeshDescriptions(MeshDescs, BuildParams);
 
 	// 머티리얼 슬롯 (기본 1개)
 	if (StaticMesh->GetStaticMaterials().Num() == 0)
