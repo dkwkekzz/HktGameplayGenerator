@@ -476,7 +476,7 @@ void FHktShapeGenerator::BuildCross(const FHktCrossParams& P, float S, EHktShape
 // JSON 디스패처
 // ============================================================================
 
-static EHktShapeType ParseShapeType(const FString& Str)
+EHktShapeType FHktShapeGenerator::ParseShapeType(const FString& Str)
 {
 	if (Str.Equals(TEXT("Star"), ESearchCase::IgnoreCase)) return EHktShapeType::Star;
 	if (Str.Equals(TEXT("Ring"), ESearchCase::IgnoreCase)) return EHktShapeType::Ring;

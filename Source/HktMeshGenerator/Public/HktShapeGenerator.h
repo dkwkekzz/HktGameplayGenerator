@@ -33,6 +33,9 @@ public:
 	static void BuildSpike(const FHktSpikeParams& Params, float Scale, EHktShapePivot Pivot, FMeshDescription& OutMesh);
 	static void BuildCross(const FHktCrossParams& Params, float Scale, EHktShapePivot Pivot, FMeshDescription& OutMesh);
 
+	/** 문자열 → EHktShapeType 변환 (매칭 실패 시 Disc fallback) */
+	static EHktShapeType ParseShapeType(const FString& TypeString);
+
 	/** JSON에서 타입 + 파라미터 파싱 후 적절한 Build 호출 */
 	static bool BuildFromJson(const TSharedPtr<class FJsonObject>& JsonParams, FMeshDescription& OutMesh);
 };

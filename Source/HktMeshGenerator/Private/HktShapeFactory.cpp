@@ -79,7 +79,8 @@ FString UHktShapeFactory::CreateShapeAsset(const FString& JsonParams, const FStr
 	// 카탈로그 등록
 	FHktShapeCatalogEntry Entry;
 	Entry.Name = Name;
-	Entry.ShapeType = (EHktShapeType)0; // TODO: JSON에서 파싱
+	Entry.ShapeType = FHktShapeGenerator::ParseShapeType(
+		JsonObj->HasField(TEXT("shapeType")) ? JsonObj->GetStringField(TEXT("shapeType")) : TEXT("Disc"));
 	Entry.AssetPath = AssetPath;
 	Entry.ParamsHash = Hash;
 	Entry.ParamsJson = JsonParams;
